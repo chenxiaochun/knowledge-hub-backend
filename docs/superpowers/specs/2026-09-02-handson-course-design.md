@@ -33,8 +33,8 @@
 
 | 路径 | 用途 |
 |---|---|
-| `docs/course/README.md` | 总大纲、依赖顺序、如何使用、与现有 `src/` 关系 |
-| `docs/course/00-scaffold-config.md` … `08-team-mail-align.md` | 各课讲义 |
+| `docs/course/index.html` | 总大纲、依赖顺序、如何使用、与现有 `src/` 关系 |
+| `docs/course/00-scaffold-config.html` … `08-team-mail-align.html` | 各课讲义（静态 HTML，浏览器直接打开） |
 | 根目录 `docker-compose.yml` | 沿用；每课注明本课需 `up` 的服务 |
 
 设计本文档路径：`docs/superpowers/specs/2026-09-02-handson-course-design.md`。
@@ -52,15 +52,15 @@
 
 | 课 | 文件 | 学完能做 | 本课新依赖 | 对照 origin |
 |---|---|---|---|---|
-| 0 | `00-scaffold-config.md` | 入口、Config、健康检查、目录约定 | 无 | `main.ts`、`app.module.ts` |
-| 1 | `01-user-crud.md` | User：Entity/DTO/Controller/Service/分页 | Postgres + TypeORM | `src/user/` |
-| 2 | `02-auth-rbac.md` | JWT 登录、Guard、角色/权限装饰器（可简化 RBAC） | Redis（可选） | `src/auth/`、user 权限相关 |
-| 3 | `03-document-sync.md` | 上传→解析→元数据 Postgres + 正文 Mongo + 文件存储 | Mongo + 对象存储（可先本地盘再换 S3） | `src/document/`、`storage/` |
-| 4 | `04-review-mq.md` | 审核发布后发 MQ；消费者处理 | RabbitMQ | `src/mq/`、document 审核 |
-| 5 | `05-pipeline-search-index.md` | ES 全文索引 + 简单搜索 API | Elasticsearch | `pipeline/search-index`、`search/` |
-| 6 | `06-pipeline-rag.md` | 分块→Embedding→向量检索 | OpenAI（或 mock） | `chunking`、`embedding`、`vector-index` |
-| 7 | `07-pipeline-kg.md` | 抽实体关系→Neo4j + 图查询 API | Neo4j | `extraction`、`graph-build`、`graph/` |
-| 8 | `08-team-mail-align.md` | Team、邮件激活/重置等收尾对齐 | Mailer | `team/`、auth 邮件相关 |
+| 0 | `00-scaffold-config.html` | 入口、Config、健康检查、目录约定 | 无 | `main.ts`、`app.module.ts` |
+| 1 | `01-user-crud.html` | User：Entity/DTO/Controller/Service/分页 | Postgres + TypeORM | `src/user/` |
+| 2 | `02-auth-rbac.html` | JWT 登录、Guard、角色/权限装饰器（可简化 RBAC） | Redis（可选） | `src/auth/`、user 权限相关 |
+| 3 | `03-document-sync.html` | 上传→解析→元数据 Postgres + 正文 Mongo + 文件存储 | Mongo + 对象存储（可先本地盘再换 S3） | `src/document/`、`storage/` |
+| 4 | `04-review-mq.html` | 审核发布后发 MQ；消费者处理 | RabbitMQ | `src/mq/`、document 审核 |
+| 5 | `05-pipeline-search-index.html` | ES 全文索引 + 简单搜索 API | Elasticsearch | `pipeline/search-index`、`search/` |
+| 6 | `06-pipeline-rag.html` | 分块→Embedding→向量检索 | OpenAI（或 mock） | `chunking`、`embedding`、`vector-index` |
+| 7 | `07-pipeline-kg.html` | 抽实体关系→Neo4j + 图查询 API | Neo4j | `extraction`、`graph-build`、`graph/` |
+| 8 | `08-team-mail-align.html` | Team、邮件激活/重置等收尾对齐 | Mailer | `team/`、auth 邮件相关 |
 
 **顺序**：串行；未完成 N 不建议跳到 N+2。课 0 若脚手架已熟可略读。课 6 正文同时给真实 Embedding 与 mock 两套。
 
@@ -77,7 +77,7 @@
 
 **做**
 
-- 新增 `docs/course/` 大纲 + 课 0–8 讲义。
+- 新增 `docs/course/` 大纲（`index.html`）+ 课 0–8 HTML 讲义。
 - 每课自测示例与预期现象。
 - 说明如何用现有 compose 只起本课服务。
 
@@ -98,4 +98,4 @@
 
 ## 实现阶段备注
 
-确认本 spec 后，用 writing-plans 拆分「撰写 `docs/course/*`」任务；按课文件逐个落地，优先 README + 课 0–2，再 3–8。
+确认本 spec 后，用 writing-plans 拆分「撰写 `docs/course/*.html`」任务；按课文件逐个落地，优先 `index.html` + 课 1 样张，再 0/2，然后 3–8。

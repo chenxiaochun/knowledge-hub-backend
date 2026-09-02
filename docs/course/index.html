@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>从零手敲 · Knowledge Hub 后端课程</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.95rem; }
+    .main { max-width: 920px; margin: 0 auto; padding: 2rem 1.5rem; }
+    h2 { margin-top: 2rem; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.6rem 0.85rem; text-align: left; font-size: 0.95rem; }
+    th { background: #f1f5f9; }
+    a { color: #1d4ed8; }
+    .muted { color: #64748b; }
+    .callout-info {
+      background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6;
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0;
+    }
+    .badge {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #dcfce7; color: #166534; margin-left: 0.35rem;
+    }
+    .badge.wip { background: #f1f5f9; color: #64748b; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>从零手敲 · Knowledge Hub 后端</h1>
+    <p>练习仓讲义 · 对照 origin · 按课渐进依赖</p>
+  </header>
+  <div class="main">
+    <div class="callout-info">
+      <strong>怎么用</strong>：在练习仓
+      <code>/Users/chenxiaochun/Documents/MyProject/knowledge-hub-backend</code>
+      按课手敲。对照答案在
+      <code>knowledge-hub-backend-origin</code>。
+      完整代码写在每课正文里；建议先自己想一步，卡住再对照粘贴。
+    </div>
+
+    <h2>与现有 src/ 的关系</h2>
+    <p>本仓可能已有 <code>document</code> / <code>mq</code> 等。讲义按「从零写清」写；文件已存在就<strong>核对改到一致</strong>，不必删库重来。也可新开分支重做。</p>
+
+    <h2>依赖推进</h2>
+    <p>只用本课需要的 Docker 服务。课 1 起 Postgres；课 3 起 Mongo；课 4 起 RabbitMQ……后面课再加。</p>
+
+    <h2>课表</h2>
+    <table>
+      <thead>
+        <tr><th>课</th><th>标题</th><th>本课新依赖</th><th>状态</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>0</td>
+          <td class="muted">脚手架与 Config</td>
+          <td>无</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td><a href="./01-user-crud.html">User CRUD（Postgres + TypeORM）</a></td>
+          <td>Postgres</td>
+          <td><span class="badge">可学</span></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td class="muted">Auth / JWT / RBAC</td>
+          <td>Redis（可选）</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td class="muted">Document 同步链路</td>
+          <td>Mongo + 存储</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td class="muted">审核发布 + MQ</td>
+          <td>RabbitMQ</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td class="muted">全文索引 + 搜索</td>
+          <td>Elasticsearch</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td class="muted">分块 / Embedding / 向量检索</td>
+          <td>OpenAI 或 mock</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td class="muted">知识图谱 Neo4j</td>
+          <td>Neo4j</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td class="muted">Team / 邮件收尾</td>
+          <td>Mailer</td>
+          <td><span class="badge wip">待写</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="muted">设计规格：<code>docs/superpowers/specs/2026-09-02-handson-course-design.md</code></p>
+  </div>
+</body>
+</html>
