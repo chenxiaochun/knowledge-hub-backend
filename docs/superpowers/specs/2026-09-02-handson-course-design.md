@@ -34,6 +34,7 @@
 | 路径 | 用途 |
 |---|---|
 | `docs/course/index.html` | 总大纲、依赖顺序、如何使用、与现有 `src/` 关系 |
+| `docs/course/authoring.html` | 课程编写思路备忘（决策、骨架、续写检查清单；非主教材） |
 | `docs/course/00-scaffold-config.html` … `08-team-mail-align.html` | 各课讲义（静态 HTML，浏览器直接打开） |
 | 根目录 `docker-compose.yml` | 沿用；每课注明本课需 `up` 的服务 |
 

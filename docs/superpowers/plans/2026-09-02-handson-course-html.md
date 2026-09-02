@@ -4,7 +4,7 @@
 
 **Goal:** 在练习仓 `docs/course/` 落地可浏览器打开的 HTML 讲义（课 0–8 + 目录页），正文含完整步骤与代码。
 
-**Architecture:** 每课一个独立 HTML（自带样式，可单独打开）；`index.html` 作总大纲与导航。对照仓 origin 只引用路径，不写入 origin。练习版允许相对 origin 简化（课内「差异说明」写清）。
+**Architecture:** 每课一个独立 HTML（自带样式，可单独打开）；`index.html` 作总大纲与导航；`authoring.html` 记录编写思路以免后续漂移。对照仓 origin 只引用路径，不写入 origin。练习版允许相对 origin 简化（课内「差异说明」写清）。写课体例以 `authoring.html` + 课 1 样张为准。
 
 **Tech Stack:** 静态 HTML/CSS/少量 JS（目录高亮、代码复制）；课程内容对齐 NestJS 11 + TypeORM + Postgres 等按课渐进依赖。
 

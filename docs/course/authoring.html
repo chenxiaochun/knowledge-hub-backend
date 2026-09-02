@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课程编写思路备忘</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .main { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+    h2 { margin-top: 2rem; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.35rem; }
+    h3 { margin-top: 1.35rem; color: #1e293b; font-size: 1.05rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; background: #fff; font-size: 0.95rem; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em; }
+    ul, ol { padding-left: 1.35rem; }
+    li { margin: 0.35rem 0; }
+    .callout-info {
+      background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6;
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0;
+    }
+    .callout-warning {
+      background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316;
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0;
+    }
+    .meta { color: #64748b; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>课程编写思路备忘</h1>
+    <p><a href="./index.html">← 课程目录</a> · 给后续写课 / AI 续写用 · 不是给学生的主教材</p>
+  </header>
+
+  <div class="main">
+    <p class="meta">记录日期：2026-09-02 · 练习仓 <code>knowledge-hub-backend</code> · 对照仓 <code>knowledge-hub-backend-origin</code></p>
+
+    <div class="callout-info">
+      <strong>一句话</strong>：按 origin 的模块边界拆成 9 课；依赖按课渐进；讲义是静态 HTML；完整代码写在正文步骤里；练习仓手敲，origin 只当对照。
+    </div>
+
+    <h2>1. 读者画像与目标</h2>
+    <ul>
+      <li>读者：前端背景，Nest <strong>简单 CRUD 会</strong>；弱项在鉴权、多存储、MQ、检索流水线。</li>
+      <li>终态：练习仓能力对齐 origin 主链路（用户/鉴权 → 文档同步 → MQ → 全文/向量/图谱）。</li>
+      <li>成功标准：只读某课 HTML + origin 对照路径就能动手，不依赖聊天记录。</li>
+    </ul>
+
+    <h2>2. 已拍板的产品决策</h2>
+    <table>
+      <thead><tr><th>决策点</th><th>选择</th><th>为什么</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>范围</td>
+          <td>完整能力，分期多课（原方案 C）</td>
+          <td>要真正对齐仓库，不是只做迷你 CRUD</td>
+        </tr>
+        <tr>
+          <td>动手位置</td>
+          <td>练习仓手敲；origin 只对照</td>
+          <td>不污染对照答案仓；可反复重做</td>
+        </tr>
+        <tr>
+          <td>依赖引入</td>
+          <td>按课渐进（B）</td>
+          <td>前几课不必起全套中间件</td>
+        </tr>
+        <tr>
+          <td>上课方式</td>
+          <td>先写完整讲义，自学；卡住再问</td>
+          <td>可回看、可离线打开</td>
+        </tr>
+        <tr>
+          <td>答案放哪</td>
+          <td><strong>正文步骤内</strong>完整代码，不藏文末</td>
+          <td>读者「想不出来」时需要立刻对照，折叠附录不合适</td>
+        </tr>
+        <tr>
+          <td>课表怎么拆</td>
+          <td>按 origin <code>src/*</code> 目录拆课（方案 1）</td>
+          <td>对照路径最直接</td>
+        </tr>
+        <tr>
+          <td>产出格式</td>
+          <td>全部 <code>.html</code>（浏览器直接打开）</td>
+          <td>用户明确要求；与 origin 的 learn-guide 形态一致</td>
+        </tr>
+        <tr>
+          <td>与现有 src</td>
+          <td>不强制删库；步骤写「新建或核对到一致」</td>
+          <td>练习仓已有 document/mq 等</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>3. 课表与依赖地图（写课顺序）</h2>
+    <p>串行：未完成 N 不建议跳 N+2。课 0 可略读。优先补齐 0→2，再 3→8。</p>
+    <table>
+      <thead><tr><th>课</th><th>文件</th><th>本课新依赖</th><th>练习版简化原则</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td><code>00-scaffold-config.html</code></td><td>无</td><td>只讲入口/Config/目录约定</td></tr>
+        <tr><td>1</td><td><code>01-user-crud.html</code>（已有样张）</td><td>Postgres</td><td>无 RBAC；<code>synchronize: true</code> 可接受</td></tr>
+        <tr><td>2</td><td><code>02-auth-rbac.html</code></td><td>Redis 可选</td><td>RBAC 可先简化，但 Guard/JWT 要真</td></tr>
+        <tr><td>3</td><td><code>03-document-sync.html</code></td><td>Mongo + 存储</td><td>可先本地盘再换 S3</td></tr>
+        <tr><td>4</td><td><code>04-review-mq.html</code></td><td>RabbitMQ</td><td>先打通发布→消费，再对齐多队列</td></tr>
+        <tr><td>5</td><td><code>05-pipeline-search-index.html</code></td><td>ES</td><td>全文索引 + 简单搜</td></tr>
+        <tr><td>6</td><td><code>06-pipeline-rag.html</code></td><td>OpenAI / mock</td><td>正文给真实 + mock 两套</td></tr>
+        <tr><td>7</td><td><code>07-pipeline-kg.html</code></td><td>Neo4j</td><td>不讲算法，只讲接线与数据流</td></tr>
+        <tr><td>8</td><td><code>08-team-mail-align.html</code></td><td>Mailer</td><td>收尾对齐；写清仍简化了什么</td></tr>
+      </tbody>
+    </table>
+
+    <h2>4. 单课固定骨架（写新课时照抄）</h2>
+    <ol>
+      <li><strong>一句话目标 + 自测验收</strong>（curl / 预期现象；本课要 <code>docker compose up</code> 哪些服务）</li>
+      <li><strong>概念</strong>（前端类比表 + 为何这样拆 + 可选 flow 图）</li>
+      <li><strong>本课文件清单</strong>（路径 + 新建/核对）</li>
+      <li><strong>逐步实现</strong>（命令 → 完整文件内容写在该步骤下；可复制按钮）</li>
+      <li><strong>与 origin 差异</strong>（练习版故意简化的表）</li>
+      <li><strong>常见报错</strong></li>
+    </ol>
+    <p>交互约定：左侧锚点目录、代码块一键复制、返回顶部；样式可复用课 1 / origin <code>learn-guide.html</code>。</p>
+
+    <h2>5. 写代码进讲义时的原则</h2>
+    <ul>
+      <li><strong>可运行优先</strong>：练习版允许砍字段/砍接口，但按步骤做完应能 curl 过关。</li>
+      <li><strong>对齐命名</strong>：表名、模块名尽量跟 origin（如 <code>kh_user</code>），方便对照。</li>
+      <li><strong>差异显式</strong>：凡是比 origin 少的，必须在「差异」一节写清，避免读者以为仓库就那么简单。</li>
+      <li><strong>不讲算法课</strong>：Embedding / KG 只到「怎么接、数据怎么流」。</li>
+      <li><strong>环境变量</strong>：每课写清 <code>.env</code> 增量；提醒勿提交密钥。</li>
+      <li><strong>路由陷阱等</strong>：像 <code>GET page</code> 必须在 <code>:id</code> 前这类坑，写进正文或报错表。</li>
+    </ul>
+
+    <h2>6. 仓库与文档落点</h2>
+    <table>
+      <thead><tr><th>路径</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><code>docs/course/*.html</code></td><td>给学生看的讲义（唯一主产出格式）</td></tr>
+        <tr><td><code>docs/course/index.html</code></td><td>课表入口</td></tr>
+        <tr><td><code>docs/course/authoring.html</code></td><td><strong>本文</strong>：编写思路备忘</td></tr>
+        <tr><td><code>docs/superpowers/specs/2026-09-02-handson-course-design.md</code></td><td>已确认的产品设计规格</td></tr>
+        <tr><td><code>docs/superpowers/plans/2026-09-02-handson-course-html.md</code></td><td>实现计划（按 Task 写剩余课）</td></tr>
+        <tr><td>origin <code>docs/learn-guide.html</code></td><td>走读型指南，不是手敲课；可借样式与类比表</td></tr>
+      </tbody>
+    </table>
+    <div class="callout-warning">
+      <strong>禁止</strong>：把课程讲义写进 <code>knowledge-hub-backend-origin</code>；写讲义阶段不默认替读者改练习仓业务代码（除非明确要求带改）。
+    </div>
+
+    <h2>7. 后续续写检查清单</h2>
+    <ol>
+      <li>打开本页 + design spec，确认该课依赖与简化边界。</li>
+      <li>对照 origin 对应目录，列出「练习版必做 / 可砍」。</li>
+      <li>按第 4 节骨架写 HTML；正文给完整代码。</li>
+      <li>自测：按讲义 curl（或等价步骤）在头脑里走通一遍。</li>
+      <li>更新 <code>index.html</code>：该课链接从「待写」改为「可学」。</li>
+      <li>提交练习仓；勿提交 <code>.env</code> / 密钥。</li>
+    </ol>
+
+    <h2>8. 样张参考</h2>
+    <p>第 1 课已作为体例样张：<a href="./01-user-crud.html">01-user-crud.html</a>。后续课保持同级信息密度与语气（中文、短句、步骤编号、callout 提示）。</p>
+
+    <p class="meta">若决策变更：先改 design spec，再改本页与课表，避免三处漂移。</p>
+  </div>
+</body>
+</html>
