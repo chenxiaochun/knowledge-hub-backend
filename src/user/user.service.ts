@@ -46,7 +46,7 @@ export class UserService {
     const user = this.userRepository.create({
       id: nextSnowflakeId(),
       username: dto.username,
-      password: await hash(dto.password, 'sha256'),
+      password: hash('sha256', dto.password, 'hex'),
       email: dto.email,
       realName: dto.realName,
       avatar: dto.avatar,
@@ -100,18 +100,18 @@ export class UserService {
   async updateUser(id: string, dto: UpdateUserDto) {
     const user = await this.findByIdOrThrow(id);
     if (dto.password) {
-      dto.password = await hash(dto.password, 'sha256');
+      user.password = hash('sha256', dto.password, 'hex');
     }
-    if (dto.email) {
+    if (dto.email !== undefined) {
       user.email = dto.email;
     }
-    if (dto.realName) {
+    if (dto.realName !== undefined) {
       user.realName = dto.realName;
     }
-    if (dto.avatar) {
+    if (dto.avatar !== undefined) {
       user.avatar = dto.avatar;
     }
-    if (dto.status) {
+    if (dto.status !== undefined) {
       user.status = dto.status;
     }
     const saved = await this.userRepository.save(user);
