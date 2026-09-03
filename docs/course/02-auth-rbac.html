@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 2 课 · Auth / JWT / RBAC</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 2 课 · Auth / JWT / RBAC</h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./01-user-crud.html">第 1 课</a> ·
+      对照 origin <code>src/auth/</code>
+    </p>
+  </header>
+
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+
+    <main id="main">
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          在第 1 课 User CRUD 之上，加上<strong>真 JWT 登录</strong>与<strong>简化角色守卫</strong>：
+          默认接口要登录；<code>login</code> / <code>register</code> 公开；
+          用户管理接口仅 <code>ROLE_ADMIN</code> 可访问。
+        </p>
+
+        <div class="callout-tip">
+          <strong>本课自测通过标准</strong>：
+          ① 无 token 调 <code>GET /users/page</code> → <code>401</code>；
+          ② 登录拿到 <code>accessToken</code> 后再调 → <code>200</code>（管理员）；
+          ③ 普通用户 token 调管理接口 → <code>403</code>；
+          ④ <code>GET /auth/me</code> 返回当前用户（含 roles）。
+        </div>
+
+        <div class="callout-warning">
+          <strong>前置</strong>：第 1 课已跑通；<code>findByIdOrThrow</code> 返回 <code>UserEntity</code>（不是 VO）；
+          密码用 <code>bcryptjs</code> 的 <code>hash</code> / <code>compare</code>。本课<strong>不起 Redis</strong>（可选依赖留到以后）。
+        </div>
+
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 0) 无 token → 应 401
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/users/page
+
+# 1) 注册普通用户（默认 ROLE_USER）
+curl -s -X POST http://localhost:3000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"bob","password":"secret12","email":"b@example.com"}'
+
+# 2) 用库里已有管理员登录（见后文「种子管理员」）
+curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}'
+# 记下 accessToken
+
+# 3) 带 Bearer 访问分页
+curl -s 'http://localhost:3000/users/page?page=1&amp;pageSize=10' \
+  -H "Authorization: Bearer &lt;adminAccessToken&gt;"
+
+# 4) 当前用户
+curl -s http://localhost:3000/auth/me \
+  -H "Authorization: Bearer &lt;adminAccessToken&gt;"
+
+# 5) bob 登录后访问 /users/page → 应 403
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer &lt;bobAccessToken&gt;" \
+  http://localhost:3000/users/page</code></pre>
+        </div>
+
+        <h3>本课 Docker</h3>
+        <p>仍只需 Postgres（与第 1 课相同）。不起 Redis。</p>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>前端直觉</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>登录后 localStorage 存 token</td><td>服务端签发 JWT；客户端 Header 带 <code>Authorization: Bearer …</code></td></tr>
+            <tr><td>路由守卫 / 鉴权中间件</td><td>全局 <code>JwtAuthGuard</code></td></tr>
+            <tr><td>白名单页（登录页）</td><td><code>@Public()</code></td></tr>
+            <tr><td>按角色隐藏按钮</td><td><code>@Roles(...)</code> + <code>RolesGuard</code> → 403</td></tr>
+            <tr><td>当前登录用户</td><td><code>@CurrentUser()</code> ← <code>request.user</code></td></tr>
+          </tbody>
+        </table>
+
+        <div class="flow">POST /auth/login（@Public）
+  → AuthService.login
+  → UserService.validateCredentials（bcrypt.compare）
+  → 签发 accessToken + refreshToken
+  → 返回 { accessToken, refreshToken, userInfo }
+
+之后任意受保护接口：
+  Authorization: Bearer &lt;accessToken&gt;
+  → JwtAuthGuard（非 @Public）
+  → JwtStrategy.validate → 组装 AuthUser 挂到 request.user
+  → RolesGuard（若标了 @Roles）检查 user.roles
+  → Controller</div>
+
+        <div class="callout-info">
+          <strong>AuthUser ≠ UserVO ≠ UserEntity</strong><br>
+          Entity = 表行（含 password、deleted、roleCodes）；
+          VO = 给前端看的用户资料（不含 password）；
+          AuthUser = 鉴权上下文（userId、roles…），挂在请求上供 Guard / Controller 使用。
+        </div>
+
+        <p>
+          <strong>练习版角色怎么存？</strong>
+          origin 用多表（role / user_role / permission）。本课在 <code>kh_user</code> 上加一列
+          <code>role_codes</code>（simple-array），例如 <code>ROLE_ADMIN,ROLE_USER</code>。
+          Guard / JWT 逻辑与 origin 同构，以后再换成多表即可。
+        </p>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>.env</code></td><td>追加 JWT 变量</td></tr>
+            <tr><td><code>src/common/constants/roles.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/user/entities/user.entity.ts</code></td><td>增加 <code>roleCodes</code></td></tr>
+            <tr><td><code>src/user/vo/user.vo.ts</code></td><td>VO 可带 <code>roleCodes</code>（可选）</td></tr>
+            <tr><td><code>src/user/user.service.ts</code></td><td>加校验登录、组装 AuthUser、注册默认角色</td></tr>
+            <tr><td><code>src/user/user.controller.ts</code></td><td>管理接口加 <code>@Roles(ADMIN)</code></td></tr>
+            <tr><td><code>src/user/user.module.ts</code></td><td>确认 <code>exports: [UserService]</code></td></tr>
+            <tr><td><code>src/auth/auth-user.interface.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/dto/auth.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/decorators/*.ts</code></td><td>新建 Public / Roles / CurrentUser</td></tr>
+            <tr><td><code>src/auth/jwt.strategy.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/jwt-auth.guard.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/roles.guard.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/auth.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/auth.controller.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/auth.module.ts</code></td><td>新建 + 注册全局 Guard</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>imports 加入 AuthModule</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+
+        <ol class="step-list">
+          <li>
+            <h4>安装依赖</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add @nestjs/jwt @nestjs/passport passport passport-jwt
+pnpm add -D @types/passport-jwt</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>环境变量</h4>
+            <p class="file-path">.env（追加）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">JWT_SECRET=dev-secret-change-me
+JWT_ACCESS_EXPIRES=2h
+JWT_REFRESH_EXPIRES=7d</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>角色常量</h4>
+            <p class="file-path">src/common/constants/roles.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 预置角色编码（练习版；origin 与 kh_role.role_code 一致） */
+export const RoleCode = {
+  ADMIN: 'ROLE_ADMIN',
+  REVIEWER: 'ROLE_REVIEWER',
+  USER: 'ROLE_USER',
+} as const;
+
+export type RoleCodeValue = (typeof RoleCode)[keyof typeof RoleCode];</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>Entity 增加 roleCodes</h4>
+            <p>在 <code>UserEntity</code> 里追加（有 <code>synchronize: true</code> 时会自动加列）：</p>
+            <p class="file-path">src/user/entities/user.entity.ts（片段）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 角色编码列表，如 ROLE_ADMIN,ROLE_USER */
+@Column({ name: 'role_codes', type: 'simple-array', default: '' })
+roleCodes: string[];</code></pre>
+            </div>
+            <p>
+              <code>simple-array</code> 在库里存成逗号分隔字符串。新建用户默认
+              <code>[RoleCode.USER]</code>；管理员种子写成
+              <code>[RoleCode.ADMIN, RoleCode.USER]</code>。
+            </p>
+            <p>同步改 <code>toVO</code>，把 <code>roleCodes</code> 带出去（便于调试）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// UserVO 增加
+roleCodes: string[];
+
+// toVO 增加
+roleCodes: user.roleCodes ?? [];</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>UserService：登录校验与 AuthUser</h4>
+            <p>在现有 Service 上<strong>追加</strong>这些方法（保留第 1 课 CRUD）。注意：<code>findByIdOrThrow</code> 必须返回 Entity。</p>
+            <p class="file-path">src/user/user.service.ts（追加 / 调整）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { compare, hash } from 'bcryptjs';
+import { UnauthorizedException } from '@nestjs/common';
+import { RoleCode } from '../common/constants/roles';
+import type { AuthUser } from '../auth/auth-user.interface';
+
+// createUser / create 时默认角色：
+// roleCodes: dto 若未传则 [RoleCode.USER]
+
+async validateCredentials(
+  username: string,
+  password: string,
+): Promise&lt;AuthUser&gt; {
+  const user = await this.userRepo.findOne({
+    where: { username, deleted: false },
+  });
+  if (!user) {
+    throw new UnauthorizedException('用户名或密码错误');
+  }
+  const ok = await compare(password, user.password);
+  if (!ok) {
+    throw new UnauthorizedException('用户名或密码错误');
+  }
+  if (user.status !== 1) {
+    throw new UnauthorizedException('账户已禁用');
+  }
+  return this.toAuthUser(user);
+}
+
+toAuthUser(user: UserEntity): AuthUser {
+  return {
+    userId: user.id,
+    username: user.username,
+    realName: user.realName,
+    email: user.email,
+    avatar: user.avatar,
+    roles: user.roleCodes?.length ? user.roleCodes : [RoleCode.USER],
+  };
+}
+
+async buildAuthUser(userId: string): Promise&lt;AuthUser&gt; {
+  const user = await this.findByIdOrThrow(userId);
+  if (user.status !== 1) {
+    throw new UnauthorizedException('账户已禁用');
+  }
+  return this.toAuthUser(user);
+}
+
+/** 公开注册：永远只能拿到 ROLE_USER */
+async register(dto: {
+  username: string;
+  password: string;
+  email?: string;
+  realName?: string;
+}): Promise&lt;{ userId: string; message: string }&gt; {
+  const exists = await this.userRepo.findOne({
+    where: { username: dto.username, deleted: false },
+  });
+  if (exists) {
+    throw new ConflictException('用户名已存在');
+  }
+  const user = this.userRepo.create({
+    id: nextSnowflakeId(),
+    username: dto.username,
+    password: await hash(dto.password, 10),
+    email: dto.email ?? null,
+    realName: dto.realName ?? null,
+    status: 1,
+    deleted: false,
+    roleCodes: [RoleCode.USER],
+  });
+  const saved = await this.userRepo.save(user);
+  return { userId: saved.id, message: '注册成功' };
+}</code></pre>
+            </div>
+            <p class="file-path">src/user/user.module.ts</p>
+            <p>确认 <code>exports: [UserService]</code>，否则 AuthModule 注入不到。</p>
+          </li>
+
+          <li>
+            <h4>AuthUser 与 DTO</h4>
+            <p class="file-path">src/auth/auth-user.interface.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** JWT 校验后注入到 Controller 的当前用户 */
+export interface AuthUser {
+  userId: string;
+  username: string;
+  realName?: string | null;
+  email?: string | null;
+  avatar?: string | null;
+  roles: string[];
+}</code></pre>
+            </div>
+            <p class="file-path">src/auth/dto/auth.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { IsOptional, IsString, MinLength, IsEmail } from 'class-validator';
+
+export class LoginDto {
+  @IsString()
+  username: string;
+
+  @IsString()
+  password: string;
+}
+
+export class RegisterDto {
+  @IsString()
+  username: string;
+
+  @IsString()
+  @MinLength(6)
+  password: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  realName?: string;
+}
+
+export class RefreshTokenDto {
+  @IsString()
+  refreshToken: string;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>装饰器</h4>
+            <p class="file-path">src/auth/decorators/public.decorator.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { SetMetadata } from '@nestjs/common';
+
+export const IS_PUBLIC_KEY = 'isPublic';
+
+/** 标记接口无需 JWT */
+export const Public = () =&gt; SetMetadata(IS_PUBLIC_KEY, true);</code></pre>
+            </div>
+            <p class="file-path">src/auth/decorators/roles.decorator.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { SetMetadata } from '@nestjs/common';
+import { RoleCodeValue } from '../../common/constants/roles';
+
+export const ROLES_KEY = 'roles';
+
+export const Roles = (...roles: RoleCodeValue[]) =&gt;
+  SetMetadata(ROLES_KEY, roles);</code></pre>
+            </div>
+            <p class="file-path">src/auth/decorators/current-user.decorator.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { AuthUser } from '../auth-user.interface';
+
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): AuthUser =&gt; {
+    const request = ctx.switchToHttp().getRequest&lt;{ user: AuthUser }&gt;();
+    return request.user;
+  },
+);</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>JwtStrategy + Guards</h4>
+            <p class="file-path">src/auth/jwt.strategy.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UserService } from '../user/user.service';
+
+interface JwtPayload {
+  sub: string;
+  username: string;
+  type: 'access' | 'refresh';
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(
+    config: ConfigService,
+    private readonly userService: UserService,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: config.get&lt;string&gt;('JWT_SECRET', 'dev-secret-change-me'),
+    });
+  }
+
+  async validate(payload: JwtPayload) {
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException('无效的 access token');
+    }
+    return this.userService.buildAuthUser(payload.sub);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/auth/jwt-auth.guard.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { IS_PUBLIC_KEY } from './decorators/public.decorator';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride&lt;boolean&gt;(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+    return super.canActivate(context);
+  }
+
+  handleRequest&lt;TUser&gt;(err: Error | null, user: TUser): TUser {
+    if (err || !user) {
+      throw err ?? new UnauthorizedException('未登录或 token 已失效');
+    }
+    return user;
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/auth/roles.guard.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthUser } from './auth-user.interface';
+import { ROLES_KEY } from './decorators/roles.decorator';
+import { RoleCodeValue } from '../common/constants/roles';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride&lt;RoleCodeValue[]&gt;(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (!requiredRoles?.length) {
+      return true;
+    }
+
+    const request = context.switchToHttp().getRequest&lt;{ user?: AuthUser }&gt;();
+    const user = request.user;
+    if (!user?.roles?.length) {
+      throw new ForbiddenException('权限不足');
+    }
+
+    const ok = requiredRoles.some((role) =&gt; user.roles.includes(role));
+    if (!ok) {
+      throw new ForbiddenException('权限不足');
+    }
+    return true;
+  }
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>AuthService / Controller / Module</h4>
+            <p class="file-path">src/auth/auth.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { UserService } from '../user/user.service';
+import { AuthUser } from './auth-user.interface';
+import { LoginDto, RegisterDto } from './dto/auth.dto';
+
+interface TokenPayload {
+  sub: string;
+  username: string;
+  type: 'access' | 'refresh';
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly userService: UserService,
+    private readonly jwtService: JwtService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private accessExpires(): string {
+    return this.config.get&lt;string&gt;('JWT_ACCESS_EXPIRES', '2h');
+  }
+
+  private refreshExpires(): string {
+    return this.config.get&lt;string&gt;('JWT_REFRESH_EXPIRES', '7d');
+  }
+
+  private accessExpiresSeconds(): number {
+    const raw = this.accessExpires();
+    const m = /^(\d+)([smhd])$/.exec(raw);
+    if (!m) return 7200;
+    const n = Number(m[1]);
+    const u = m[2];
+    if (u === 's') return n;
+    if (u === 'm') return n * 60;
+    if (u === 'h') return n * 3600;
+    return n * 86400;
+  }
+
+  private sign(user: AuthUser, type: 'access' | 'refresh'): string {
+    const payload: TokenPayload = {
+      sub: user.userId,
+      username: user.username,
+      type,
+    };
+    const expiresIn =
+      type === 'access' ? this.accessExpires() : this.refreshExpires();
+    return this.jwtService.sign(payload, {
+      expiresIn: expiresIn as `${number}${'s' | 'm' | 'h' | 'd'}`,
+    });
+  }
+
+  private buildLoginResult(user: AuthUser) {
+    return {
+      accessToken: this.sign(user, 'access'),
+      refreshToken: this.sign(user, 'refresh'),
+      tokenType: 'Bearer' as const,
+      expiresIn: this.accessExpiresSeconds(),
+      userInfo: user,
+    };
+  }
+
+  login(dto: LoginDto) {
+    return this.userService
+      .validateCredentials(dto.username, dto.password)
+      .then((user) =&gt; this.buildLoginResult(user));
+  }
+
+  register(dto: RegisterDto) {
+    return this.userService.register(dto);
+  }
+
+  async refresh(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify&lt;TokenPayload&gt;(refreshToken);
+      if (payload.type !== 'refresh') {
+        throw new UnauthorizedException('无效的 refresh token');
+      }
+      const user = await this.userService.buildAuthUser(payload.sub);
+      return this.buildLoginResult(user);
+    } catch {
+      throw new UnauthorizedException('refresh token 无效或已过期');
+    }
+  }
+
+  async getMe(userId: string) {
+    return this.userService.getUserVO(userId);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/auth/auth.controller.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Body, Controller, Get, Post } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import { Public } from './decorators/public.decorator';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { AuthUser } from './auth-user.interface';
+
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Post('register')
+  register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Post('logout')
+  logout() {
+    return { message: '已退出登录' };
+  }
+
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.authService.getMe(user.userId);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/auth/auth.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { UserModule } from '../user/user.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './jwt.strategy';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { RolesGuard } from './roles.guard';
+
+@Module({
+  imports: [
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =&gt; ({
+        secret: config.get&lt;string&gt;('JWT_SECRET', 'dev-secret-change-me'),
+      }),
+    }),
+    UserModule,
+  ],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+  exports: [AuthService],
+})
+export class AuthModule {}</code></pre>
+            </div>
+            <div class="callout-info">
+              <strong>APP_GUARD 顺序</strong>：先注册 JwtAuthGuard，再 RolesGuard。
+              这样先确认「是谁」，再判断「角色够不够」。
+            </div>
+          </li>
+
+          <li>
+            <h4>保护 User 管理接口 + 接入 AppModule</h4>
+            <p class="file-path">src/user/user.controller.ts（关键改动）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Roles } from '../auth/decorators/roles.decorator';
+import { RoleCode } from '../common/constants/roles';
+
+@Controller('users')
+export class UserController {
+  // ...
+
+  @Get('page')
+  @Roles(RoleCode.ADMIN)
+  pageUsers(@Query() query: QueryUserDto) {
+    return this.userService.pageUsers(query);
+  }
+
+  @Get(':id')
+  @Roles(RoleCode.ADMIN)
+  getUser(@Param('id') id: string) {
+    return this.userService.getUserVO(id);
+  }
+
+  @Post()
+  @Roles(RoleCode.ADMIN)
+  createUser(@Body() dto: CreateUserDto) {
+    return this.userService.createUser(dto);
+  }
+
+  @Put(':id')
+  @Roles(RoleCode.ADMIN)
+  updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    return this.userService.updateUser(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(RoleCode.ADMIN)
+  removeUser(@Param('id') id: string) {
+    return this.userService.softDelete(id);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/app.module.ts</p>
+            <p>在 <code>imports</code> 里加入 <code>AuthModule</code>（与 <code>UserModule</code> 并列即可）。</p>
+          </li>
+
+          <li>
+            <h4>种子管理员</h4>
+            <p>
+              注册接口只会给 <code>ROLE_USER</code>，需要手动造一个管理员。
+              任选其一：
+            </p>
+            <p><strong>方式 A</strong>：临时写个脚本 / 启动时检查（推荐练习）——在 <code>AuthService</code> 或单独 provider 里：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// 可放在 UserService.ensureAdmin()，AppModule 里 OnModuleInit 调用
+async ensureAdmin() {
+  const username = 'admin';
+  const exists = await this.userRepo.findOne({
+    where: { username, deleted: false },
+  });
+  if (exists) return;
+  await this.userRepo.save(
+    this.userRepo.create({
+      id: nextSnowflakeId(),
+      username,
+      password: await hash('admin123', 10),
+      email: 'admin@example.com',
+      realName: 'Admin',
+      status: 1,
+      deleted: false,
+      roleCodes: [RoleCode.ADMIN, RoleCode.USER],
+    }),
+  );
+}</code></pre>
+            </div>
+            <p><strong>方式 B</strong>：用 psql / pgAdmin 把某个用户的 <code>role_codes</code> 改成 <code>ROLE_ADMIN,ROLE_USER</code>（密码仍须是 bcrypt 哈希，改角色比改密码简单）。</p>
+            <div class="callout-warning">
+              生产环境绝不要写死 <code>admin123</code>。本课仅本地演示。
+            </div>
+          </li>
+
+          <li>
+            <h4>启动自测</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm start:dev
+# 按本节开头 curl：401 → login → 200 → bob 的 403</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin 差异（练习版故意简化）</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>role / permission 多表 + PermissionsGuard</td><td>仅 <code>role_codes</code> 列 + RolesGuard</td></tr>
+            <tr><td>邮件激活、重置密码、Redis</td><td>不做</td></tr>
+            <tr><td>JwtStrategy → AuthService.buildAuthUser</td><td>Strategy 直接调 UserService（少一层环）</td></tr>
+            <tr><td>AuthUser 含 permissions[]</td><td>只有 roles[]</td></tr>
+            <tr><td>logout 无状态丢 token</td><td>相同（返回提示即可）</td></tr>
+          </tbody>
+        </table>
+        <p>
+          对照阅读：origin
+          <code>jwt-auth.guard.ts</code>、<code>roles.guard.ts</code>、<code>auth.module.ts</code> 的 <code>APP_GUARD</code>。
+          权限码（<code>@RequirePermission</code>）等对齐到课 8 或你读 document 模块时再补。
+        </p>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>所有接口都 401（含 login）</td>
+              <td>login / register 是否漏了 <code>@Public()</code>；或 Guard 没读到元数据</td>
+            </tr>
+            <tr>
+              <td>有 token 仍 401</td>
+              <td>Header 是否 <code>Authorization: Bearer …</code>（注意空格）；是否误传了 refreshToken；JWT_SECRET 是否一致</td>
+            </tr>
+            <tr>
+              <td>管理员也 403</td>
+              <td>库里 <code>role_codes</code> 是否真有 <code>ROLE_ADMIN</code>；simple-array 空字符串会变成 <code>['']</code>，注意默认值</td>
+            </tr>
+            <tr>
+              <td>Nest 循环依赖 Auth ↔ User</td>
+              <td>JwtStrategy 只注入 UserService；AuthModule imports UserModule；UserModule 不要反向 import AuthModule（装饰器路径引用类型即可）</td>
+            </tr>
+            <tr>
+              <td>compare 永远失败</td>
+              <td>第 1 课若误用 <code>crypto.hash</code> 存的不是 bcrypt，需用 <code>bcryptjs.hash</code> 重建用户</td>
+            </tr>
+            <tr>
+              <td>save(UserVO) 报错 / 无 deleted</td>
+              <td>回到第 1 课结论：改库用 Entity，<code>findByIdOrThrow</code> 不要提前 toVO</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout-tip">
+          <strong>过关后</strong>：回到 <a href="./index.html">课程目录</a>。
+          下一课将做文档同步链路（上传 → Postgres 元数据 + Mongo 正文 + 文件存储）。
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>
