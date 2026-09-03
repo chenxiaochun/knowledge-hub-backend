@@ -20,7 +20,14 @@ export class UserController {
 
   @Post()
   createUser(@Body() createUserDto: CreateUserDto) {
-    return this.userService.create(createUserDto);
+    return this.userService.createUser(createUserDto);
+  }
+
+  @Post('register')
+  register(
+    @Body() registerDto: { username: string; password: string; email?: string; realName?: string },
+  ) {
+    return this.userService.register(registerDto);
   }
 
   @Put(':id')

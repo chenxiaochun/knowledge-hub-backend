@@ -8,4 +8,5 @@ export class UserVO {
   status!: number;
   createdAt!: Date;
   updatedAt!: Date;
+  roleCodes!: string[];
 }

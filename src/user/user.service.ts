@@ -1,4 +1,10 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { compare } from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { hash } from 'crypto';
 import { Repository } from 'typeorm';
@@ -8,12 +14,37 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UserVO } from './vo/user.vo';
 import { UserEntity } from './entities/user.entity';
+import type { AuthUser } from '../auth/auth-user.interface';
+import { RoleCode } from 'src/common/constant/roles';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
   ) {}
+
+  /** 规范化角色列表（simple-array 空串可能变成 ['']） */
+  private normalizeRoles(roleCodes?: string[] | null): string[] {
+    const roles = (roleCodes ?? []).filter((r) => !!r);
+    return roles.length ? roles : [RoleCode.USER];
+  }
+
+  async validateCredentials(username: string, password: string): Promise<AuthUser> {
+    const user = await this.userRepository.findOne({
+      where: { username, deleted: false },
+    });
+    if (!user) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+    const ok = await compare(password, user.password);
+    if (!ok) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+    if (user.status !== 1) {
+      throw new UnauthorizedException('用户已禁用');
+    }
+    return this.toAuthUser(user);
+  }
 
   toVO(user: UserEntity): UserVO {
     return {
@@ -25,7 +56,27 @@ export class UserService {
       status: user.status,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      roleCodes: user.roleCodes,
     };
+  }
+
+  toAuthUser(user: UserEntity): AuthUser {
+    return {
+      userId: user.id,
+      username: user.username,
+      realName: user.realName,
+      email: user.email,
+      avatar: user.avatar,
+      roles: this.normalizeRoles(user.roleCodes),
+    };
+  }
+
+  async buildAuthUser(userId: string): Promise<AuthUser> {
+    const user = await this.findByIdOrThrow(userId);
+    if (user.status !== 1) {
+      throw new UnauthorizedException('用户已禁用');
+    }
+    return this.toAuthUser(user);
   }
 
   async findByIdOrThrow(id: string): Promise<UserEntity> {
@@ -36,7 +87,7 @@ export class UserService {
     return user;
   }
 
-  async create(dto: CreateUserDto) {
+  async createUser(dto: CreateUserDto): Promise<UserVO> {
     const exists = await this.userRepository.findOne({
       where: { username: dto.username, deleted: false },
     });
@@ -52,9 +103,42 @@ export class UserService {
       avatar: dto.avatar,
       status: dto.status || 1,
       deleted: false,
+      roleCodes: this.normalizeRoles(dto.roleCodes),
     });
     const saved = await this.userRepository.save(user);
     return this.toVO(saved);
+  }
+
+  async register(dto: {
+    username: string;
+    password: string;
+    email?: string;
+    realName?: string;
+  }): Promise<{
+    userId: string;
+    message: string;
+  }> {
+    const exists = await this.userRepository.findOne({
+      where: { username: dto.username, deleted: false },
+    });
+    if (exists) {
+      throw new ConflictException('用户名已存在');
+    }
+    const user = this.userRepository.create({
+      id: nextSnowflakeId(),
+      username: dto.username,
+      password: hash('sha256', dto.password, 'hex'),
+      email: dto.email,
+      realName: dto.realName,
+      deleted: false,
+      status: 1,
+      roleCodes: [RoleCode.USER],
+    });
+    const saved = await this.userRepository.save(user);
+    return {
+      userId: saved.id,
+      message: '注册成功',
+    };
   }
 
   async pageUsers(query: QueryUserDto) {

@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -24,4 +24,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsInt()
   status?: number;
+
+  @IsOptional()
+  @IsArray()
+  roleCodes?: string[];
 }

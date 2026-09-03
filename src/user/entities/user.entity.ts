@@ -34,4 +34,7 @@ export class UserEntity {
 
   @Column({ type: 'boolean', default: false })
   deleted!: boolean;
+
+  @Column({ name: 'role_codes', type: 'simple-array', default: '' })
+  roleCodes!: string[];
 }
