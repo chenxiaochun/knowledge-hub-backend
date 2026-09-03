@@ -311,87 +311,263 @@ roleCodes: user.roleCodes ?? [];</code></pre>
           </li>
 
           <li>
-            <h4>UserService：登录校验与 AuthUser</h4>
-            <p>在现有 Service 上<strong>追加</strong>这些方法（保留第 1 课 CRUD）。注意：<code>findByIdOrThrow</code> 必须返回 Entity。</p>
-            <p class="file-path">src/user/user.service.ts（追加 / 调整）</p>
+            <h4>UserService（完整文件）</h4>
+            <p>
+              在第 1 课 CRUD 基础上合并本课鉴权方法。可整文件替换
+              <code>src/user/user.service.ts</code>。
+              注意：<code>findByIdOrThrow</code> 返回 <strong>UserEntity</strong>，不要提前 <code>toVO</code>。
+            </p>
+            <div class="callout-info">
+              <strong>CreateUserDto 可选扩展</strong>（管理员创建时可指定角色；不传则默认 <code>ROLE_USER</code>）：
+              <pre style="margin:0.5rem 0 0;padding-top:1rem"><code class="lang-ts">@IsOptional()
+@IsArray()
+@IsString({ each: true })
+roleCodes?: string[];</code></pre>
+              并补上 <code>IsArray</code> 的 import。
+            </div>
+            <p class="file-path">src/user/user.service.ts</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">import { compare, hash } from 'bcryptjs';
-import { UnauthorizedException } from '@nestjs/common';
-import { RoleCode } from '../common/constants/roles';
+              <pre><code class="lang-ts">import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { compare, hash } from 'bcryptjs';
+import { Repository } from 'typeorm';
 import type { AuthUser } from '../auth/auth-user.interface';
+import { RoleCode } from '../common/constants/roles';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { CreateUserDto } from './dto/create-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UserEntity } from './entities/user.entity';
+import { UserVO } from './vo/user.vo';
 
-// createUser / create 时默认角色：
-// roleCodes: dto 若未传则 [RoleCode.USER]
+@Injectable()
+export class UserService {
+  constructor(
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository&lt;UserEntity&gt;,
+  ) {}
 
-async validateCredentials(
-  username: string,
-  password: string,
-): Promise&lt;AuthUser&gt; {
-  const user = await this.userRepo.findOne({
-    where: { username, deleted: false },
-  });
-  if (!user) {
-    throw new UnauthorizedException('用户名或密码错误');
+  /** 规范化角色列表（simple-array 空串可能变成 ['']） */
+  private normalizeRoles(roleCodes?: string[] | null): string[] {
+    const roles = (roleCodes ?? []).filter((r) =&gt; !!r);
+    return roles.length ? roles : [RoleCode.USER];
   }
-  const ok = await compare(password, user.password);
-  if (!ok) {
-    throw new UnauthorizedException('用户名或密码错误');
-  }
-  if (user.status !== 1) {
-    throw new UnauthorizedException('账户已禁用');
-  }
-  return this.toAuthUser(user);
-}
 
-toAuthUser(user: UserEntity): AuthUser {
-  return {
-    userId: user.id,
-    username: user.username,
-    realName: user.realName,
-    email: user.email,
-    avatar: user.avatar,
-    roles: user.roleCodes?.length ? user.roleCodes : [RoleCode.USER],
-  };
-}
-
-async buildAuthUser(userId: string): Promise&lt;AuthUser&gt; {
-  const user = await this.findByIdOrThrow(userId);
-  if (user.status !== 1) {
-    throw new UnauthorizedException('账户已禁用');
+  toVO(user: UserEntity): UserVO {
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      realName: user.realName,
+      avatar: user.avatar,
+      status: user.status,
+      roleCodes: this.normalizeRoles(user.roleCodes),
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
-  return this.toAuthUser(user);
-}
 
-/** 公开注册：永远只能拿到 ROLE_USER */
-async register(dto: {
-  username: string;
-  password: string;
-  email?: string;
-  realName?: string;
-}): Promise&lt;{ userId: string; message: string }&gt; {
-  const exists = await this.userRepo.findOne({
-    where: { username: dto.username, deleted: false },
-  });
-  if (exists) {
-    throw new ConflictException('用户名已存在');
+  toAuthUser(user: UserEntity): AuthUser {
+    return {
+      userId: user.id,
+      username: user.username,
+      realName: user.realName,
+      email: user.email,
+      avatar: user.avatar,
+      roles: this.normalizeRoles(user.roleCodes),
+    };
   }
-  const user = this.userRepo.create({
-    id: nextSnowflakeId(),
-    username: dto.username,
-    password: await hash(dto.password, 10),
-    email: dto.email ?? null,
-    realName: dto.realName ?? null,
-    status: 1,
-    deleted: false,
-    roleCodes: [RoleCode.USER],
-  });
-  const saved = await this.userRepo.save(user);
-  return { userId: saved.id, message: '注册成功' };
+
+  async findByIdOrThrow(id: string): Promise&lt;UserEntity&gt; {
+    const user = await this.userRepo.findOne({
+      where: { id, deleted: false },
+    });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+    return user;
+  }
+
+  async getUserVO(id: string): Promise&lt;UserVO&gt; {
+    return this.toVO(await this.findByIdOrThrow(id));
+  }
+
+  async buildAuthUser(userId: string): Promise&lt;AuthUser&gt; {
+    const user = await this.findByIdOrThrow(userId);
+    if (user.status !== 1) {
+      throw new UnauthorizedException('账户已禁用');
+    }
+    return this.toAuthUser(user);
+  }
+
+  async validateCredentials(
+    username: string,
+    password: string,
+  ): Promise&lt;AuthUser&gt; {
+    const user = await this.userRepo.findOne({
+      where: { username, deleted: false },
+    });
+    if (!user) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+    const ok = await compare(password, user.password);
+    if (!ok) {
+      throw new UnauthorizedException('用户名或密码错误');
+    }
+    if (user.status !== 1) {
+      throw new UnauthorizedException('账户已禁用');
+    }
+    return this.toAuthUser(user);
+  }
+
+  /** 管理员创建用户（可带 roleCodes；默认 ROLE_USER） */
+  async createUser(dto: CreateUserDto): Promise&lt;UserVO&gt; {
+    const exists = await this.userRepo.findOne({
+      where: { username: dto.username, deleted: false },
+    });
+    if (exists) {
+      throw new ConflictException('用户名已存在');
+    }
+
+    const user = this.userRepo.create({
+      id: nextSnowflakeId(),
+      username: dto.username,
+      password: await hash(dto.password, 10),
+      email: dto.email ?? null,
+      realName: dto.realName ?? null,
+      avatar: dto.avatar ?? null,
+      status: dto.status ?? 1,
+      deleted: false,
+      roleCodes: this.normalizeRoles(
+        (dto as { roleCodes?: string[] }).roleCodes,
+      ),
+    });
+    const saved = await this.userRepo.save(user);
+    return this.toVO(saved);
+  }
+
+  /** 公开注册：永远只能拿到 ROLE_USER */
+  async register(dto: {
+    username: string;
+    password: string;
+    email?: string;
+    realName?: string;
+  }): Promise&lt;{ userId: string; message: string }&gt; {
+    const exists = await this.userRepo.findOne({
+      where: { username: dto.username, deleted: false },
+    });
+    if (exists) {
+      throw new ConflictException('用户名已存在');
+    }
+    const user = this.userRepo.create({
+      id: nextSnowflakeId(),
+      username: dto.username,
+      password: await hash(dto.password, 10),
+      email: dto.email ?? null,
+      realName: dto.realName ?? null,
+      status: 1,
+      deleted: false,
+      roleCodes: [RoleCode.USER],
+    });
+    const saved = await this.userRepo.save(user);
+    return { userId: saved.id, message: '注册成功' };
+  }
+
+  async pageUsers(query: QueryUserDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .where('u.deleted = false');
+
+    if (query.keyword) {
+      qb.andWhere(
+        '(u.username ILIKE :kw OR u.real_name ILIKE :kw OR u.email ILIKE :kw)',
+        { kw: `%${query.keyword}%` },
+      );
+    }
+
+    qb.orderBy('u.created_at', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+
+    const [list, total] = await qb.getManyAndCount();
+    return {
+      list: list.map((u) =&gt; this.toVO(u)),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async updateUser(id: string, dto: UpdateUserDto): Promise&lt;UserVO&gt; {
+    const user = await this.findByIdOrThrow(id);
+    if (dto.password) {
+      user.password = await hash(dto.password, 10);
+    }
+    if (dto.email !== undefined) user.email = dto.email;
+    if (dto.realName !== undefined) user.realName = dto.realName;
+    if (dto.avatar !== undefined) user.avatar = dto.avatar;
+    if (dto.status !== undefined) user.status = dto.status;
+    const saved = await this.userRepo.save(user);
+    return this.toVO(saved);
+  }
+
+  async softDelete(id: string): Promise&lt;{ message: string }&gt; {
+    const user = await this.findByIdOrThrow(id);
+    user.deleted = true;
+    await this.userRepo.save(user);
+    return { message: '已删除' };
+  }
+
+  /** 本地演示用：没有 admin 则创建一个（密码 admin123） */
+  async ensureAdmin(): Promise&lt;void&gt; {
+    const username = 'admin';
+    const exists = await this.userRepo.findOne({
+      where: { username, deleted: false },
+    });
+    if (exists) return;
+
+    await this.userRepo.save(
+      this.userRepo.create({
+        id: nextSnowflakeId(),
+        username,
+        password: await hash('admin123', 10),
+        email: 'admin@example.com',
+        realName: 'Admin',
+        status: 1,
+        deleted: false,
+        roleCodes: [RoleCode.ADMIN, RoleCode.USER],
+      }),
+    );
+  }
 }</code></pre>
             </div>
             <p class="file-path">src/user/user.module.ts</p>
-            <p>确认 <code>exports: [UserService]</code>，否则 AuthModule 注入不到。</p>
+            <p>确认 <code>exports: [UserService]</code>，否则 AuthModule 注入不到。完整示例：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UserEntity } from './entities/user.entity';
+import { UserController } from './user.controller';
+import { UserService } from './user.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([UserEntity])],
+  controllers: [UserController],
+  providers: [UserService],
+  exports: [UserService],
+})
+export class UserModule {}</code></pre>
+            </div>
           </li>
 
           <li>
