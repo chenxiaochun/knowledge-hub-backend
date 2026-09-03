@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 3 课 · Document 同步链路</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 3 课 · Document 同步链路</h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./02-auth-rbac.html">第 2 课</a> ·
+      对照 origin <code>src/document/</code>、<code>src/storage/</code>
+    </p>
+  </header>
+
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+
+    <main id="main">
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          打通文档的<strong>同步入库</strong>：上传文件 → 解析成 Markdown →
+          <strong>Postgres 存元数据</strong> + <strong>Mongo 存正文</strong> +
+          <strong>本地磁盘存原文件</strong>。状态先只做「草稿」。
+          审核发布与 MQ 留给第 4 课。
+        </p>
+
+        <div class="callout-tip">
+          <strong>本课自测通过标准</strong>：
+          ① 带 JWT 上传一个 <code>.md</code> / <code>.txt</code>，返回 <code>documentId</code>；
+          ② <code>GET /documents</code> 列表能看到标题与状态 0（草稿）；
+          ③ <code>GET /documents/:id</code> 能看到 Markdown 正文；
+          ④ 磁盘 <code>uploads/documents/</code> 下有原文件；Mongo <code>document_content</code> 有对应文档。
+        </div>
+
+        <div class="callout-warning">
+          <strong>前置</strong>：第 1–2 课已完成（登录拿 token）。
+          本课新起 <strong>MongoDB</strong>；存储先用本地目录，不强制起 MinIO/RustFS。
+        </div>
+
+        <h3>本课 Docker</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d postgres mongodb
+# 可选：mongo-express 网页看库 → localhost:8081（账号见 docker-compose.yml）</code></pre>
+        </div>
+
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 先准备一个测试文件
+echo '# Hello KH' > /tmp/demo.md
+
+# 登录拿 token（第 2 课）
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .accessToken)
+
+# 上传解析（字段名必须是 file）
+curl -s -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/demo.md"
+
+# 列表（仅元数据）
+curl -s "http://localhost:3000/documents?page=1&amp;pageSize=10" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 详情（含正文）— 换成返回的 documentId
+curl -s http://localhost:3000/documents/&lt;documentId&gt; \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>放哪里</th><th>存什么</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Postgres <code>kh_document</code></td>
+              <td>标题、状态、作者、contentId、fileUrl…</td>
+              <td>列表筛选、权限、状态机需要结构化字段</td>
+            </tr>
+            <tr>
+              <td>Mongo <code>document_content</code></td>
+              <td>Markdown 正文（可能很长）</td>
+              <td>大文本、少联表；和元数据一对一</td>
+            </tr>
+            <tr>
+              <td>本地 <code>uploads/</code>（练习）</td>
+              <td>原始上传文件</td>
+              <td>以后可换成 S3/RustFS，接口形状保持不变</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="flow">POST /documents/upload/parse  (multipart: file)
+  → JwtAuthGuard（需登录）
+  → FileParserService.parse → Markdown 字符串
+  → LocalStorageService.save → fileUrl
+  → 生成 documentId（雪花）+ Mongo _id
+  → Mongo 写入 content
+  → Postgres 写入元数据（content_id、file_url、status=Draft）
+  → 返回 { documentId, title, contentPreview, ... }</div>
+
+        <div class="callout-info">
+          <strong>同步 vs 异步</strong>：本课整条链路在一次 HTTP 里做完（用户几秒内看到草稿）。
+          origin 里「发布后向量化 / 建索引」才是异步（第 4–7 课）。别把两段揉在一起。
+        </div>
+
+        <p>前端对照：上传要用 <code>FormData</code>，不要发 JSON body；字段名 <code>file</code> 必须与 <code>FileInterceptor('file')</code> 一致。</p>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>.env</code></td><td>追加 <code>MONGO_URI</code>、<code>UPLOAD_DIR</code></td></tr>
+            <tr><td><code>src/document/document-status.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/entities/document.entity.ts</code></td><td>新建（简化字段）</td></tr>
+            <tr><td><code>src/document/schemas/document-content.schema.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/dto/upload-parse.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/dto/query-document.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/parser/file-parser.service.ts</code></td><td>新建（先只支持 txt/md）</td></tr>
+            <tr><td><code>src/storage/local-storage.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/storage/storage.module.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/document.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/document.controller.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/document.module.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>接入 Mongo + DocumentModule；Entity 注册</td></tr>
+            <tr><td><code>.gitignore</code></td><td>忽略 <code>uploads/</code></td></tr>
+          </tbody>
+        </table>
+        <p>若练习仓已有残缺的 document/mq 代码：按本课<strong>核对改到一致</strong>，MQ 相关本课先不要引用。</p>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+
+        <ol class="step-list">
+          <li>
+            <h4>依赖与环境</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add @nestjs/mongoose mongoose
+pnpm add -D @types/multer
+
+# 练习仓若已有上述包可跳过</code></pre>
+            </div>
+            <p class="file-path">.env（追加）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">MONGO_URI=mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin
+UPLOAD_DIR=uploads</code></pre>
+            </div>
+            <p>账号密码与根目录 <code>docker-compose.yml</code> 里 Mongo 服务保持一致。</p>
+            <p>在 <code>.gitignore</code> 加入：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code>uploads/</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>文档状态</h4>
+            <p class="file-path">src/document/document-status.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 与 origin / kh_document.status 一致；本课主要用 Draft */
+export enum DocumentStatus {
+  Draft = 0,
+  Published = 1,
+  Archived = 2,
+  PendingReview = 3,
+}
+
+export const DOCUMENT_STATUS_LABEL: Record&lt;DocumentStatus, string&gt; = {
+  [DocumentStatus.Draft]: '草稿',
+  [DocumentStatus.Published]: '已发布',
+  [DocumentStatus.Archived]: '已归档',
+  [DocumentStatus.PendingReview]: '待审核',
+};</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>Postgres Entity（简化）</h4>
+            <p class="file-path">src/document/entities/document.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+import { DocumentStatus } from '../document-status';
+
+@Entity('kh_document')
+export class DocumentEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ type: 'varchar' })
+  title: string;
+
+  /** 对应 Mongo document_content._id */
+  @Column({ name: 'content_id', type: 'varchar', unique: true })
+  contentId: string;
+
+  @Column({
+    name: 'author_id',
+    type: 'bigint',
+    nullable: true,
+    transformer: bigintTransformer,
+  })
+  authorId?: string | null;
+
+  @Column({ name: 'file_url', type: 'varchar', nullable: true })
+  fileUrl?: string | null;
+
+  @Column({ name: 'file_ext', type: 'varchar', length: 20, nullable: true })
+  fileExt?: string | null;
+
+  @Column({ type: 'smallint', default: DocumentStatus.Draft })
+  status: DocumentStatus;
+
+  @Column({ name: 'word_count', type: 'int', default: 0 })
+  wordCount: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  tags?: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+
+  @Column({ type: 'boolean', default: false })
+  deleted: boolean;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>Mongo Schema</h4>
+            <p class="file-path">src/document/schemas/document-content.schema.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument, Types } from 'mongoose';
+
+export type DocumentContentDocument = HydratedDocument&lt;DocumentContent&gt;;
+
+@Schema({
+  collection: 'document_content',
+  timestamps: true,
+  versionKey: false,
+})
+export class DocumentContent {
+  _id: Types.ObjectId;
+
+  @Prop({ type: String, required: true, index: true })
+  documentId: string;
+
+  @Prop({ type: String, required: true, default: '' })
+  content: string;
+
+  @Prop({ type: Number, default: 0 })
+  contentLength: number;
+
+  @Prop({ type: String, default: '' })
+  contentSummary: string;
+
+  @Prop({ type: Boolean, default: false })
+  deleted: boolean;
+}
+
+export const DocumentContentSchema =
+  SchemaFactory.createForClass(DocumentContent);</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>DTO</h4>
+            <p class="file-path">src/document/dto/upload-parse.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { IsOptional, IsString } from 'class-validator';
+
+/** multipart 里除 file 外的可选字段 */
+export class UploadParseDto {
+  @IsOptional()
+  @IsString()
+  tags?: string;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+}</code></pre>
+            </div>
+            <p class="file-path">src/document/dto/query-document.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+
+export class QueryDocumentDto {
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number = 10;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>解析器（练习版：仅 txt / md）</h4>
+            <p class="file-path">src/document/parser/file-parser.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { BadRequestException, Injectable } from '@nestjs/common';
+import { extname } from 'path';
+
+const SUPPORTED = new Set(['txt', 'md']);
+
+export interface ParseInput {
+  originalname: string;
+  buffer: Buffer;
+}
+
+@Injectable()
+export class FileParserService {
+  getExtension(filename: string): string {
+    return extname(filename).replace(/^\./, '').toLowerCase();
+  }
+
+  isSupported(ext: string): boolean {
+    return SUPPORTED.has(ext);
+  }
+
+  supportedList(): string {
+    return [...SUPPORTED].join(', ');
+  }
+
+  async parse(file: ParseInput): Promise&lt;string&gt; {
+    const ext = this.getExtension(file.originalname);
+    if (!this.isSupported(ext)) {
+      throw new BadRequestException(
+        `不支持的文件格式: ${ext || '(无扩展名)'}，本课支持: ${this.supportedList()}`,
+      );
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException('文件内容为空');
+    }
+    return file.buffer.toString('utf8');
+  }
+}</code></pre>
+            </div>
+            <div class="callout-info">
+              origin 还有 pdf / docx / xlsx / pptx 等 parser。本课先把「解析 → 入库」链路跑通；格式可之后对照 origin 逐个加。
+            </div>
+          </li>
+
+          <li>
+            <h4>本地存储（替代 RustFS）</h4>
+            <p class="file-path">src/storage/local-storage.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
+
+@Injectable()
+export class LocalStorageService implements OnModuleInit {
+  private readonly logger = new Logger(LocalStorageService.name);
+  private rootDir = 'uploads';
+
+  constructor(private readonly config: ConfigService) {}
+
+  async onModuleInit() {
+    this.rootDir = this.config.get&lt;string&gt;('UPLOAD_DIR', 'uploads');
+    await mkdir(join(this.rootDir, 'documents'), { recursive: true });
+    this.logger.log(`本地上传目录: ${this.rootDir}`);
+  }
+
+  /** 返回可存进 DB 的相对路径，如 documents/uuid-name.md */
+  async saveDocument(
+    buffer: Buffer,
+    originalName: string,
+  ): Promise&lt;string&gt; {
+    const safe = originalName.replace(/[/\\?%*:|"&lt;&gt;]/g, '_');
+    const key = `documents/${randomUUID()}-${safe}`;
+    const full = join(this.rootDir, key);
+    await writeFile(full, buffer);
+    return key;
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/storage/storage.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Global, Module } from '@nestjs/common';
+import { LocalStorageService } from './local-storage.service';
+
+@Global()
+@Module({
+  providers: [LocalStorageService],
+  exports: [LocalStorageService],
+})
+export class StorageModule {}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>DocumentService</h4>
+            <p class="file-path">src/document/document.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Model, Types } from 'mongoose';
+import { Repository } from 'typeorm';
+import type { AuthUser } from '../auth/auth-user.interface';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { LocalStorageService } from '../storage/local-storage.service';
+import { DocumentStatus } from './document-status';
+import { QueryDocumentDto } from './dto/query-document.dto';
+import { UploadParseDto } from './dto/upload-parse.dto';
+import { DocumentEntity } from './entities/document.entity';
+import { FileParserService } from './parser/file-parser.service';
+import {
+  DocumentContent,
+  DocumentContentDocument,
+} from './schemas/document-content.schema';
+
+@Injectable()
+export class DocumentService {
+  constructor(
+    @InjectRepository(DocumentEntity)
+    private readonly docRepo: Repository&lt;DocumentEntity&gt;,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model&lt;DocumentContentDocument&gt;,
+    private readonly fileParser: FileParserService,
+    private readonly storage: LocalStorageService,
+  ) {}
+
+  async uploadAndCreateDocument(
+    file: Express.Multer.File,
+    meta: UploadParseDto,
+    actor: AuthUser,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('文件不能为空');
+    }
+
+    const originalname = Buffer.from(file.originalname, 'latin1').toString(
+      'utf8',
+    );
+    const ext = this.fileParser.getExtension(originalname);
+    const markdown = await this.fileParser.parse({
+      originalname,
+      buffer: file.buffer,
+    });
+
+    const fileUrl = await this.storage.saveDocument(file.buffer, originalname);
+
+    const documentId = nextSnowflakeId();
+    const contentId = new Types.ObjectId();
+    const title =
+      originalname.replace(/\.[^.]+$/, '') || `文档-${documentId.slice(-6)}`;
+    const summary = markdown.slice(0, 200);
+
+    await this.contentModel.create({
+      _id: contentId,
+      documentId,
+      content: markdown,
+      contentLength: markdown.length,
+      contentSummary: summary,
+      deleted: false,
+    });
+
+    const entity = this.docRepo.create({
+      id: documentId,
+      title,
+      contentId: String(contentId),
+      authorId: actor.userId,
+      fileUrl,
+      fileExt: ext,
+      status: DocumentStatus.Draft,
+      wordCount: markdown.length,
+      tags: meta.tags ?? null,
+      deleted: false,
+    });
+    await this.docRepo.save(entity);
+
+    return {
+      documentId,
+      title,
+      fileUrl,
+      fileSize: file.size,
+      fileExtension: ext,
+      contentLength: markdown.length,
+      contentPreview: summary,
+      status: DocumentStatus.Draft,
+    };
+  }
+
+  async pageDocuments(query: QueryDocumentDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const qb = this.docRepo
+      .createQueryBuilder('d')
+      .where('d.deleted = false');
+
+    if (query.keyword) {
+      qb.andWhere('d.title ILIKE :kw', { kw: `%${query.keyword}%` });
+    }
+
+    qb.orderBy('d.created_at', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+
+    const [list, total] = await qb.getManyAndCount();
+    return { list, total, page, pageSize };
+  }
+
+  async getDetail(id: string) {
+    const doc = await this.docRepo.findOne({
+      where: { id, deleted: false },
+    });
+    if (!doc) {
+      throw new NotFoundException('文档不存在');
+    }
+    const content = await this.contentModel
+      .findOne({ documentId: id, deleted: false })
+      .lean();
+    return {
+      ...doc,
+      content: content?.content ?? '',
+      contentLength: content?.contentLength ?? 0,
+    };
+  }
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>Controller / Module</h4>
+            <p class="file-path">src/document/document.controller.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+  Body,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/auth-user.interface';
+import { DocumentService } from './document.service';
+import { QueryDocumentDto } from './dto/query-document.dto';
+import { UploadParseDto } from './dto/upload-parse.dto';
+
+@Controller('documents')
+export class DocumentController {
+  constructor(private readonly documentService: DocumentService) {}
+
+  @Post('upload/parse')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  uploadAndParse(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() meta: UploadParseDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (!file) {
+      throw new BadRequestException('请上传文件（form-data 字段名: file）');
+    }
+    return this.documentService.uploadAndCreateDocument(file, meta, user);
+  }
+
+  /** 列表须在 :id 之前 */
+  @Get()
+  page(@Query() query: QueryDocumentDto) {
+    return this.documentService.pageDocuments(query);
+  }
+
+  @Get(':id')
+  detail(@Param('id') id: string) {
+    return this.documentService.getDetail(id);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/document/document.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DocumentController } from './document.controller';
+import { DocumentService } from './document.service';
+import { DocumentEntity } from './entities/document.entity';
+import { FileParserService } from './parser/file-parser.service';
+import {
+  DocumentContent,
+  DocumentContentSchema,
+} from './schemas/document-content.schema';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([DocumentEntity]),
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
+  ],
+  controllers: [DocumentController],
+  providers: [DocumentService, FileParserService],
+  exports: [DocumentService],
+})
+export class DocumentModule {}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>接入 AppModule</h4>
+            <p>在现有 Config / TypeORM / Auth / User 基础上追加 Mongo 与 Document（示意）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { MongooseModule } from '@nestjs/mongoose';
+import { DocumentEntity } from './document/entities/document.entity';
+import { DocumentModule } from './document/document.module';
+import { StorageModule } from './storage/storage.module';
+
+// imports 中：
+StorageModule,
+MongooseModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) =&gt; ({
+    uri: config.get&lt;string&gt;(
+      'MONGO_URI',
+      'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
+    ),
+  }),
+}),
+// TypeORM entities 数组里加上 DocumentEntity
+DocumentModule,</code></pre>
+            </div>
+            <div class="callout-warning">
+              Multer 默认把文件放内存（<code>file.buffer</code>）。本课依赖 buffer；
+              若你改成 diskStorage，要同步改 Service 读法。
+            </div>
+          </li>
+
+          <li>
+            <h4>启动自测</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">docker compose up -d postgres mongodb
+pnpm start:dev
+# 按本节开头 curl 验收
+ls uploads/documents/</code></pre>
+            </div>
+            <p>也可用 mongo-express 打开 <code>document_content</code> 集合，确认 <code>documentId</code> 与 Postgres 一致。</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin 差异（练习版故意简化）</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>RustFS / S3 对象存储</td><td>本地 <code>uploads/</code></td></tr>
+            <tr><td>pdf/docx/xlsx/pptx 等多 parser</td><td>仅 txt / md</td></tr>
+            <tr><td>完整元数据字段 + 计数器</td><td>精简 Entity</td></tr>
+            <tr><td><code>@RequirePermission</code> 细粒度权限</td><td>仅需登录（全局 JWT）；权限码以后再加</td></tr>
+            <tr><td>发布 / 审核 / MQ 索引</td><td>第 4 课及之后</td></tr>
+          </tbody>
+        </table>
+        <p>
+          对照阅读：origin
+          <code>document.controller.ts</code> 的 <code>upload/parse</code>、
+          <code>document.service.ts</code> 的 <code>uploadAndCreateDocument</code>、
+          <code>schemas/document-content.schema.ts</code>。
+        </p>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Mongo 连接失败</td>
+              <td><code>docker compose ps</code>；URI 是否含 <code>authSource=admin</code>；用户密码是否与 compose 一致</td>
+            </tr>
+            <tr>
+              <td>请上传文件 / file 为空</td>
+              <td>form-data 字段名必须是 <code>file</code>；不要用 JSON</td>
+            </tr>
+            <tr>
+              <td>file.buffer 为 undefined</td>
+              <td>确认未改成只落盘的 diskStorage；或从 path 读文件</td>
+            </tr>
+            <tr>
+              <td>401</td>
+              <td>忘记带 Bearer；或 token 过期</td>
+            </tr>
+            <tr>
+              <td>中文文件名乱码</td>
+              <td>本课 Service 里用了 latin1→utf8 解码；浏览器/curl 行为不同时可再调</td>
+            </tr>
+            <tr>
+              <td>TypeORM 找不到 DocumentEntity</td>
+              <td><code>forRoot</code> 的 <code>entities</code> 是否加入；<code>forFeature</code> 是否在 DocumentModule</td>
+            </tr>
+            <tr>
+              <td>列表路由 404 / 被当成 id</td>
+              <td><code>GET /documents</code> 与 <code>GET :id</code> 顺序；upload 路径写在前面</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout-tip">
+          <strong>过关后</strong>：回到 <a href="./index.html">课程目录</a>。
+          下一课：草稿 → 审核/发布 → 往 RabbitMQ 丢消息（异步流水线入口）。
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>
