@@ -2,6 +2,7 @@
 /dist
 /node_modules
 /build
+uploads/
 volumes/
 
 # Logs
@@ -28,13 +29,6 @@ lerna-debug.log*
 *.launch
 .settings/
 *.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
 
 # dotenv environment variable files
 .env

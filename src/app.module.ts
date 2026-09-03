@@ -6,6 +6,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './user/entities/user.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { DocumentModule } from './document/document.module';
+import { StorageModule } from './storage/storage.module';
+import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
   imports: [
@@ -25,6 +28,17 @@ import { AuthModule } from './auth/auth.module';
     }),
     UserModule,
     AuthModule,
+    DocumentModule,
+    StorageModule,
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.get<string>(
+          'MONGO_URI',
+          'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
+        ),
+      }),
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
