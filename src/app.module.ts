@@ -36,10 +36,7 @@ import { SearchModule } from './search/search.module';
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        uri: config.get<string>(
-          'MONGO_URI',
-          'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
-        ),
+        uri: config.get<string>('MONGO_URI'),
       }),
     }),
   ],

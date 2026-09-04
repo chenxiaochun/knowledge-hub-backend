@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { SearchIndexService } from '../pipeline/search-index.service';
 import { SearchDocumentsDto } from './dto/search.dto';
 
@@ -6,12 +6,12 @@ import { SearchDocumentsDto } from './dto/search.dto';
 export class SearchController {
   constructor(private readonly searchIndex: SearchIndexService) {}
 
-  @Post()
-  search(@Body() dto: SearchDocumentsDto) {
+  @Get()
+  search(@Query() params: SearchDocumentsDto) {
     return this.searchIndex.searchDocuments({
-      keyword: dto.keyword,
-      page: dto.page || 1,
-      pageSize: dto.pageSize || 10,
+      keyword: params.keyword,
+      page: params.page || 1,
+      pageSize: params.pageSize || 10,
     });
   }
 }

@@ -156,7 +156,9 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
           fields: ['title^3', 'summary^2', 'content'],
         },
       },
+      // 不返回 content 字段
       _source: { excludes: ['content'] },
+      // 高亮显示 title 和 content 字段
       highlight: {
         fields: {
           title: { number_of_fragments: 0 },
