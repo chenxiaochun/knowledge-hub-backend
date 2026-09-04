@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { StorageModule } from './storage/storage.module';
 import { MongooseModule } from '@nestjs/mongoose';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MongooseModule } from '@nestjs/mongoose';
     AuthModule,
     DocumentModule,
     StorageModule,
+    SearchModule,
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

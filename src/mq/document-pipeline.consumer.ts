@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConsumeMessage } from 'amqplib';
+import { SearchIndexService } from '../pipeline/search-index.service';
 import { SEARCH_INDEX_QUEUE } from './mq.constant';
 import { SearchIndexMessage } from './messages/pipeline.messages';
 import { RabbitMQService } from './rabbitmq.service';
@@ -9,7 +10,10 @@ import { RabbitMQService } from './rabbitmq.service';
 export class DocumentPipelineConsumer {
   private readonly logger = new Logger(DocumentPipelineConsumer.name);
 
-  constructor(private readonly rabbit: RabbitMQService) {
+  constructor(
+    private readonly rabbit: RabbitMQService,
+    private readonly searchIndex: SearchIndexService,
+  ) {
     this.rabbit.registerHandler(SEARCH_INDEX_QUEUE, (msg) => this.handleSearch(msg));
   }
 
@@ -18,5 +22,11 @@ export class DocumentPipelineConsumer {
     this.logger.log(
       `[Search] type=${body.type}, taskId=${body.taskId}, documentId=${body.documentId}`,
     );
+
+    if (body.type === 'INDEX') {
+      await this.searchIndex.indexFromDocumentId(body.documentId);
+    } else if (body.type === 'DELETE') {
+      await this.searchIndex.deleteDocument(body.documentId);
+    }
   }
 }

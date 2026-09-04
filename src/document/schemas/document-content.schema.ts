@@ -44,4 +44,6 @@ export class DocumentContent {
   deleted!: boolean;
 }
 
+// 下面这行代码是什么意思？
+// 这行代码是创建一个 Schema，用于定义 DocumentContent 模型的结构
 export const DocumentContentSchema = SchemaFactory.createForClass(DocumentContent);
