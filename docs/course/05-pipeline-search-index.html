@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 5 课 · 全文索引 + 搜索</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 5 课 · 全文索引 + 搜索</h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> · 上接 <a href="./04-review-mq.html">第 4 课</a> · 对照 origin <code>pipeline/search-index</code>、<code>search/</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          接上第 4 课 MQ：消费者收到 <code>INDEX</code> 后，从 Postgres + Mongo 拉文档，
+          写入 Elasticsearch <code>kh_document</code>；并提供
+          <code>POST /search</code> 关键词检索已发布文档。
+        </p>
+        <div class="callout-tip">
+          <strong>自测通过</strong>：
+          ① 发布后稍等，ES 有该文档；
+          ② <code>POST /search</code> 用标题关键词能搜到；
+          ③ 归档/删除投递 DELETE 后搜不到（若你实现了 archive）。
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 4 课发布→消费日志已通。本课新起 <strong>Elasticsearch</strong>。
+          练习版用官方镜像 + 标准分词即可（不强制 IK）。
+        </div>
+        <h3>Docker</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-yaml">  # docker-compose.yml 追加（开发用，无 IK）
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    container_name: knowledge_hub_elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/es/data:/usr/share/elasticsearch/data
+    restart: unless-stopped</code></pre>
+        </div>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d elasticsearch
+curl -s http://localhost:9200 | head</code></pre>
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">TOKEN=... # 登录
+
+# 确保有已发布文档后：
+curl -s -X POST http://localhost:3000/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"keyword":"Hello","page":1,"pageSize":10}'
+
+# 直接看 ES
+curl -s 'http://localhost:9200/kh_document/_search?q=Hello&pretty' | head -40</code></pre>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>对照</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>本课 Search 索引</td><td>整篇文档一条（title / summary / content），关键词搜</td></tr>
+            <tr><td>第 6 课 RAG</td><td>多 chunk + 向量，语义检索（别混）</td></tr>
+            <tr><td>消息只带 documentId</td><td>消费者自己读库拼全文，避免 MQ 塞大正文</td></tr>
+          </tbody>
+        </table>
+        <div class="flow">Consumer 收到 INDEX
+  → 读 kh_document（须 Published）
+  → 读 Mongo content
+  → ES index kh_document/_doc/{id}
+  → POST /search → multi_match(title^3, summary^2, content)</div>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>.env</code></td><td>追加 ELASTICSEARCH_*</td></tr>
+            <tr><td><code>src/pipeline/search-index.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/pipeline/pipeline.module.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/search/dto/search.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/search/search.controller.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/search/search.module.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/mq/document-pipeline.consumer.ts</code></td><td>改为真正建索引</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>接入 PipelineModule / SearchModule</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>依赖与环境</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add @elastic/elasticsearch
+
+# .env
+ELASTICSEARCH_ENABLED=true
+ELASTICSEARCH_NODE=http://localhost:9200</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>SearchIndexService（完整）</h4>
+            <p class="file-path">src/pipeline/search-index.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Client } from '@elastic/elasticsearch';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Model } from 'mongoose';
+import { Repository } from 'typeorm';
+import { DocumentStatus } from '../document/document-status';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentDocument,
+} from '../document/schemas/document-content.schema';
+
+const ES_INDEX = 'kh_document';
+
+@Injectable()
+export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(SearchIndexService.name);
+  private es: Client | null = null;
+  private readonly esEnabled: boolean;
+
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(DocumentEntity)
+    private readonly docRepo: Repository&lt;DocumentEntity&gt;,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model&lt;DocumentContentDocument&gt;,
+  ) {
+    this.esEnabled =
+      this.config.get&lt;string&gt;('ELASTICSEARCH_ENABLED', 'true') !== 'false';
+  }
+
+  async onModuleInit() {
+    if (!this.esEnabled) {
+      this.logger.warn('Elasticsearch 已禁用');
+      return;
+    }
+    const node = this.config.get('ELASTICSEARCH_NODE', 'http://localhost:9200');
+    this.es = new Client({ node });
+    try {
+      await this.es.cluster.health();
+      await this.ensureIndex();
+      this.logger.log(`SearchIndex ES 已连接：${node}`);
+    } catch (e) {
+      this.logger.warn(
+        `ES 不可用，将跳过写入：${e instanceof Error ? e.message : e}`,
+      );
+      this.es = null;
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.es?.close();
+  }
+
+  private async ensureIndex() {
+    if (!this.es) return;
+    const exists = await this.es.indices.exists({ index: ES_INDEX });
+    if (exists) return;
+    await this.es.indices.create({
+      index: ES_INDEX,
+      mappings: {
+        properties: {
+          id: { type: 'keyword' },
+          title: { type: 'text' },
+          summary: { type: 'text' },
+          content: { type: 'text' },
+          authorId: { type: 'keyword' },
+          status: { type: 'integer' },
+          publishTime: { type: 'date' },
+          indexedAt: { type: 'date' },
+        },
+      },
+    });
+  }
+
+  /** 供 MQ Consumer 调用：按文档 ID 重建全文索引 */
+  async indexFromDocumentId(documentId: string) {
+    if (!this.es) {
+      this.logger.warn(`跳过索引（ES 不可用）：${documentId}`);
+      return;
+    }
+    const doc = await this.docRepo.findOne({
+      where: { id: documentId, deleted: false },
+    });
+    if (!doc || doc.status !== DocumentStatus.Published) {
+      this.logger.warn(`跳过索引（不存在或未发布）：${documentId}`);
+      return;
+    }
+    const content = await this.contentModel
+      .findOne({ documentId, deleted: false })
+      .lean();
+    const body = {
+      id: doc.id,
+      title: doc.title,
+      summary: (content?.contentSummary as string) || '',
+      content: (content?.content as string) || '',
+      authorId: doc.authorId ?? null,
+      status: doc.status,
+      publishTime: doc.publishTime ?? null,
+      indexedAt: new Date().toISOString(),
+    };
+    await this.es.index({
+      index: ES_INDEX,
+      id: doc.id,
+      document: body,
+      refresh: true,
+    });
+    this.logger.log(`搜索索引已写入：documentId=${doc.id}`);
+  }
+
+  async deleteDocument(documentId: string) {
+    if (!this.es) return;
+    try {
+      await this.es.delete({ index: ES_INDEX, id: documentId, refresh: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('404')) {
+        this.logger.warn(`ES 删除失败：${documentId}, ${msg}`);
+      }
+    }
+  }
+
+  async searchDocuments(params: {
+    keyword: string;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const page = params.page ?? 1;
+    const pageSize = Math.min(params.pageSize ?? 10, 50);
+    const from = (page - 1) * pageSize;
+    if (!this.es) {
+      return { items: [], total: 0, page, pageSize };
+    }
+    const keyword = params.keyword.trim();
+    const response = await this.es.search({
+      index: ES_INDEX,
+      from,
+      size: pageSize,
+      query: {
+        multi_match: {
+          query: keyword,
+          fields: ['title^3', 'summary^2', 'content'],
+        },
+      },
+      _source: { excludes: ['content'] },
+      highlight: {
+        fields: {
+          title: { number_of_fragments: 0 },
+          content: { fragment_size: 160, number_of_fragments: 3 },
+        },
+      },
+    });
+    const totalRaw = response.hits.total;
+    const total =
+      typeof totalRaw === 'number' ? totalRaw : (totalRaw?.value ?? 0);
+    const items = response.hits.hits.map((h) =&gt; ({
+      id: h._id,
+      score: h._score,
+      ...(h._source as object),
+      highlight: h.highlight,
+    }));
+    return { items, total, page, pageSize };
+  }
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>Pipeline / Search Module</h4>
+            <p class="file-path">src/pipeline/pipeline.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentSchema,
+} from '../document/schemas/document-content.schema';
+import { SearchIndexService } from './search-index.service';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([DocumentEntity]),
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
+  ],
+  providers: [SearchIndexService],
+  exports: [SearchIndexService],
+})
+export class PipelineModule {}</code></pre>
+            </div>
+            <p class="file-path">src/search/dto/search.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+
+export class SearchDocumentsDto {
+  @IsString()
+  @MinLength(1)
+  keyword: string;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  pageSize?: number = 10;
+}</code></pre>
+            </div>
+            <p class="file-path">src/search/search.controller.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Body, Controller, Post } from '@nestjs/common';
+import { SearchIndexService } from '../pipeline/search-index.service';
+import { SearchDocumentsDto } from './dto/search.dto';
+
+@Controller('search')
+export class SearchController {
+  constructor(private readonly searchIndex: SearchIndexService) {}
+
+  @Post()
+  search(@Body() dto: SearchDocumentsDto) {
+    return this.searchIndex.searchDocuments({
+      keyword: dto.keyword,
+      page: dto.page,
+      pageSize: dto.pageSize,
+    });
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/search/search.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { PipelineModule } from '../pipeline/pipeline.module';
+import { SearchController } from './search.controller';
+
+@Module({
+  imports: [PipelineModule],
+  controllers: [SearchController],
+})
+export class SearchModule {}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>改 Consumer：真正建索引</h4>
+            <p class="file-path">src/mq/document-pipeline.consumer.ts（完整替换）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConsumeMessage } from 'amqplib';
+import { SearchIndexService } from '../pipeline/search-index.service';
+import { SEARCH_INDEX_QUEUE } from './mq.constants';
+import { SearchIndexMessage } from './messages/pipeline.messages';
+import { RabbitMqService } from './rabbitmq.service';
+
+@Injectable()
+export class DocumentPipelineConsumer {
+  private readonly logger = new Logger(DocumentPipelineConsumer.name);
+
+  constructor(
+    private readonly rabbit: RabbitMqService,
+    private readonly searchIndex: SearchIndexService,
+  ) {
+    this.rabbit.registerHandler(SEARCH_INDEX_QUEUE, (msg) =&gt;
+      this.handleSearch(msg),
+    );
+  }
+
+  private async handleSearch(msg: ConsumeMessage) {
+    const body = JSON.parse(
+      msg.content.toString('utf8'),
+    ) as SearchIndexMessage;
+    this.logger.log(
+      `[Search] type=${body.type}, documentId=${body.documentId}`,
+    );
+    if (body.type === 'INDEX') {
+      await this.searchIndex.indexFromDocumentId(body.documentId);
+    } else if (body.type === 'DELETE') {
+      await this.searchIndex.deleteDocument(body.documentId);
+    }
+  }
+}</code></pre>
+            </div>
+            <p><code>MqModule</code> 需要 <code>imports: [PipelineModule]</code>，才能注入 SearchIndexService。</p>
+            <p><code>AppModule</code> imports：<code>PipelineModule</code>、<code>SearchModule</code>（以及已有的 MqModule）。</p>
+          </li>
+          <li>
+            <h4>启动自测</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">docker compose up -d elasticsearch rabbitmq
+pnpm start:dev
+# 上传 → publish → 等日志「搜索索引已写入」→ POST /search</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin 差异</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>自建镜像 + IK 中文分词</td><td>官方镜像 + 默认 analyzer</td></tr>
+            <tr><td>PipelineOrchestrator 统一调度</td><td>Consumer 直接调 SearchIndexService</td></tr>
+            <tr><td>权限码 @RequirePermission(search)</td><td>仅需登录（全局 JWT）</td></tr>
+            <tr><td>RAG / KG 同发布触发</td><td>仍只有 Search 队列（第 6–7 课再加）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>ES 连不上 / 内存不够</td><td>调大 Docker 内存；检查 9200；看 ES 日志</td></tr>
+            <tr><td>索引了但搜不到</td><td>是否 Published；keyword 是否匹配；refresh:true 是否生效</td></tr>
+            <tr><td>Consumer 注入失败</td><td>MqModule 是否 imports PipelineModule</td></tr>
+            <tr><td>中文分词效果差</td><td>练习版无 IK；要对齐 origin 再换带 IK 的镜像</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          <strong>过关后</strong>：下一课是分块 + Embedding + 向量检索（可 mock）。回到
+          <a href="./index.html">课程目录</a>。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>
