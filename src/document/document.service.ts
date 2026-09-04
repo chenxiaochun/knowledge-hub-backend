@@ -27,21 +27,8 @@ export class DocumentService {
     @InjectModel(DocumentContent.name)
     private readonly contentModel: Model<DocumentContentDocument>,
 
-    /** 为什么使用 InjectRepository？
-     * 1. 方便使用 TypeORM 的 Repository
-     *
-     * TypeORM 的 Repository 是什么？
-     * 1. TypeORM 的 Repository 是 TypeORM 的仓库，用于操作 PostgreSQL 的表
-     */
-    @InjectRepository(DocumentContent)
+    /** 正文在 Mongo，用 InjectModel；FileParser / Storage 是普通 Provider，直接注入即可 */
     private readonly fileParser: FileParserService,
-
-    /** 为什么使用 LocalStorageService？
-     * 1. 方便使用本地存储
-     *
-     * LocalStorageService 是什么？
-     * 1. LocalStorageService 是本地存储服务，用于存储文件
-     */
     private readonly storage: LocalStorageService,
   ) {}
 

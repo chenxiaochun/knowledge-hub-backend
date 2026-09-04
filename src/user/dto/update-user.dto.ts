@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -21,4 +21,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsInt()
   status?: number;
+
+  /** 角色编码，如 ROLE_ADMIN / ROLE_USER / ROLE_REVIEWER */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roleCodes?: string[];
 }

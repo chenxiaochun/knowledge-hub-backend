@@ -4,9 +4,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { compare } from 'bcrypt';
+import { compare, hash } from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { hash } from 'crypto';
 import { Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -97,7 +96,7 @@ export class UserService {
     const user = this.userRepository.create({
       id: nextSnowflakeId(),
       username: dto.username,
-      password: hash('sha256', dto.password, 'hex'),
+      password: await hash(dto.password, 10),
       email: dto.email,
       realName: dto.realName,
       avatar: dto.avatar,
@@ -127,7 +126,7 @@ export class UserService {
     const user = this.userRepository.create({
       id: nextSnowflakeId(),
       username: dto.username,
-      password: hash('sha256', dto.password, 'hex'),
+      password: await hash(dto.password, 10),
       email: dto.email,
       realName: dto.realName,
       deleted: false,
@@ -184,7 +183,7 @@ export class UserService {
   async updateUser(id: string, dto: UpdateUserDto) {
     const user = await this.findByIdOrThrow(id);
     if (dto.password) {
-      user.password = hash('sha256', dto.password, 'hex');
+      user.password = await hash(dto.password, 10);
     }
     if (dto.email !== undefined) {
       user.email = dto.email;
@@ -197,6 +196,9 @@ export class UserService {
     }
     if (dto.status !== undefined) {
       user.status = dto.status;
+    }
+    if (dto.roleCodes !== undefined) {
+      user.roleCodes = this.normalizeRoles(dto.roleCodes);
     }
     const saved = await this.userRepository.save(user);
     return this.toVO(saved);
