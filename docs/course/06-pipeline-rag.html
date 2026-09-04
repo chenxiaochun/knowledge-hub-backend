@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 6 课 · 分块 / Embedding / 向量检索</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 6 课 · 分块 / Embedding / 向量检索</h1>
+    <p><a href="./index.html">← 课程目录</a> · 上接 <a href="./05-pipeline-search-index.html">第 5 课</a> · 对照 origin <code>chunking</code> / <code>embedding</code> / <code>vector-index</code></p>
+  </header>
+  <div class="layout">
+    <nav id="nav"><ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+    </ul></nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          发布后异步跑 <strong>RAG 管线</strong>：分块 → Embedding → 写入 ES
+          <code>kh_chunk</code>（dense_vector）；提供语义检索接口。
+          <strong>正文同时给 mock 与真实 Embedding 两套</strong>，无 API Key 也能过关。
+        </p>
+        <div class="callout-tip">
+          <strong>自测</strong>：发布后日志出现「RAG 索引完成」；
+          <code>POST /search/semantic</code> 能返回相近 chunk。
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 4–5 课 MQ + ES 已通。本课扩展 RAG 队列（可与 Search 共用 ES）。
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 发布文档后：
+curl -s -X POST http://localhost:3000/search/semantic \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"知识库是什么","topK":5}'</code></pre></div>
+      </section>
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>步骤</th><th>做什么</th></tr></thead>
+          <tbody>
+            <tr><td>Chunking</td><td>长文切成重叠段落，便于检索与嵌入</td></tr>
+            <tr><td>Embedding</td><td>文本 → 固定维浮点向量</td></tr>
+            <tr><td>Vector index</td><td>ES <code>kh_chunk</code> + <code>dense_vector</code> + knn</td></tr>
+          </tbody>
+        </table>
+        <div class="flow">MQ RAG 消息 BY_DOC_IDS
+  → 清旧 chunk
+  → ChunkingService
+  → EmbeddingService（mock 或 OpenAI 兼容）
+  → VectorIndexService bulk 写入
+  → POST /search/semantic → knn</div>
+        <div class="callout-info">与第 5 课全文搜不同：全文是关键词；本课是向量相似度。</div>
+      </section>
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/mq/mq.constants.ts</code></td><td>追加 RAG 常量</td></tr>
+            <tr><td><code>src/pipeline/chunking.service.ts</code></td><td>新建（练习版可自写切分）</td></tr>
+            <tr><td><code>src/pipeline/embedding.service.ts</code></td><td>新建（mock + 真实）</td></tr>
+            <tr><td><code>src/pipeline/vector-index.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/pipeline/rag.service.ts</code></td><td>编排单文档重建</td></tr>
+            <tr><td><code>src/mq/document-pipeline.*</code></td><td>发布时投递 RAG；Consumer 处理</td></tr>
+            <tr><td><code>src/search/search.controller.ts</code></td><td>加 semantic</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>环境变量</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># mock：无 Key 也能跑
+EMBEDDING_MODE=mock
+EMBEDDING_DIMENSION=64
+
+# 真实（OpenAI 兼容，如 DashScope）时：
+# EMBEDDING_MODE=openai
+# EMBEDDING_API_KEY=sk-xxx
+# EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+# EMBEDDING_MODEL=text-embedding-v3
+# EMBEDDING_DIMENSION=1024</code></pre></div>
+            <p>可选：<code>pnpm add @langchain/openai @langchain/textsplitters</code>（练习版下面用简易切分，可不装）。</p>
+          </li>
+          <li>
+            <h4>RAG MQ 常量</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// mq.constants.ts 追加
+export const RAG_REINDEX_EXCHANGE = 'rag.reindex.exchange';
+export const RAG_REINDEX_QUEUE = 'kh.rag.reindex.queue';
+export const RAG_RK_BY_IDS = 'rag.reindex.by_ids';
+export const RAG_RK_DELETE = 'rag.reindex.delete';</code></pre></div>
+            <p>在 <code>RabbitMqService</code> 的 setup 里同样 assertExchange / assertQueue / bind；Publisher <code>afterPublish</code> 再投一条 RAG 消息；Consumer 再 registerHandler。</p>
+          </li>
+          <li>
+            <h4>ChunkingService（完整·练习版）</h4>
+            <p class="file-path">src/pipeline/chunking.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { createHash } from 'crypto';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+export interface DocumentChunk {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  content: string;
+  chunkIndex: number;
+}
+
+@Injectable()
+export class ChunkingService {
+  private readonly chunkSize: number;
+  private readonly overlap: number;
+
+  constructor(config: ConfigService) {
+    // 字符级；origin 用 token≈2 字符换算
+    this.chunkSize = Number(config.get('RAG_CHUNK_CHARS', 800));
+    this.overlap = Number(config.get('RAG_CHUNK_OVERLAP_CHARS', 100));
+  }
+
+  chunk(params: {
+    content: string;
+    documentId: string;
+    documentTitle: string;
+  }): DocumentChunk[] {
+    const text = (params.content || '').trim();
+    if (!text) return [];
+    const parts: DocumentChunk[] = [];
+    let start = 0;
+    let idx = 0;
+    while (start &lt; text.length) {
+      const end = Math.min(start + this.chunkSize, text.length);
+      const content = text.slice(start, end);
+      const chunkId = createHash('sha1')
+        .update(`${params.documentId}:${idx}:${content}`)
+        .digest('hex')
+        .slice(0, 16);
+      parts.push({
+        chunkId,
+        documentId: params.documentId,
+        documentTitle: params.documentTitle,
+        content,
+        chunkIndex: idx,
+      });
+      if (end &gt;= text.length) break;
+      start = Math.max(end - this.overlap, start + 1);
+      idx += 1;
+    }
+    return parts;
+  }
+}</code></pre></div>
+          </li>
+          <li>
+            <h4>EmbeddingService（mock + openai）</h4>
+            <p class="file-path">src/pipeline/embedding.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { createHash } from 'crypto';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+@Injectable()
+export class EmbeddingService {
+  private readonly logger = new Logger(EmbeddingService.name);
+  readonly dimension: number;
+  private readonly mode: string;
+  private readonly apiKey?: string;
+  private readonly baseUrl: string;
+  private readonly model: string;
+
+  constructor(config: ConfigService) {
+    this.mode = config.get('EMBEDDING_MODE', 'mock');
+    this.dimension = Number(config.get('EMBEDDING_DIMENSION', 64));
+    this.apiKey =
+      config.get('EMBEDDING_API_KEY') ||
+      config.get('DASHSCOPE_API_KEY') ||
+      config.get('OPENAI_API_KEY') ||
+      undefined;
+    this.baseUrl = config.get(
+      'EMBEDDING_BASE_URL',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    );
+    this.model = config.get('EMBEDDING_MODEL', 'text-embedding-v3');
+  }
+
+  async embedBatch(texts: string[]): Promise&lt;number[][]&gt; {
+    if (!texts.length) return [];
+    if (this.mode === 'mock' || !this.apiKey) {
+      this.logger.debug(`mock embedding count=${texts.length}`);
+      return texts.map((t) =&gt; this.mockEmbed(t));
+    }
+    const res = await fetch(`${this.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: this.model, input: texts }),
+    });
+    if (!res.ok) {
+      throw new Error(`Embedding API ${res.status}: ${await res.text()}`);
+    }
+    const json = (await res.json()) as {
+      data: { embedding: number[]; index: number }[];
+    };
+    return json.data
+      .sort((a, b) =&gt; a.index - b.index)
+      .map((d) =&gt; d.embedding);
+  }
+
+  /** 稳定伪随机向量（同文同向量），仅供本地联调 */
+  private mockEmbed(text: string): number[] {
+    const buf = createHash('sha256').update(text).digest();
+    const out: number[] = [];
+    for (let i = 0; i &lt; this.dimension; i++) {
+      const v = buf[i % buf.length] / 255;
+      out.push(v * 2 - 1);
+    }
+    // L2 normalize
+    const norm = Math.sqrt(out.reduce((s, x) =&gt; s + x * x, 0)) || 1;
+    return out.map((x) =&gt; x / norm);
+  }
+}</code></pre></div>
+          </li>
+          <li>
+            <h4>VectorIndexService（完整要点）</h4>
+            <p class="file-path">src/pipeline/vector-index.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Client } from '@elastic/elasticsearch';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DocumentChunk } from './chunking.service';
+
+const CHUNK_INDEX = 'kh_chunk';
+
+@Injectable()
+export class VectorIndexService implements OnModuleInit {
+  private readonly logger = new Logger(VectorIndexService.name);
+  private es: Client | null = null;
+  private dims: number;
+
+  constructor(private readonly config: ConfigService) {
+    this.dims = Number(config.get('EMBEDDING_DIMENSION', 64));
+  }
+
+  async onModuleInit() {
+    const node = this.config.get('ELASTICSEARCH_NODE', 'http://localhost:9200');
+    this.es = new Client({ node });
+    try {
+      await this.es.cluster.health();
+      await this.ensureIndex();
+    } catch (e) {
+      this.logger.warn(`ES 不可用：${e instanceof Error ? e.message : e}`);
+      this.es = null;
+    }
+  }
+
+  private async ensureIndex() {
+    if (!this.es) return;
+    const exists = await this.es.indices.exists({ index: CHUNK_INDEX });
+    if (exists) return;
+    await this.es.indices.create({
+      index: CHUNK_INDEX,
+      mappings: {
+        properties: {
+          chunk_id: { type: 'keyword' },
+          document_id: { type: 'keyword' },
+          document_title: { type: 'text' },
+          content: { type: 'text' },
+          chunk_index: { type: 'integer' },
+          embedding: {
+            type: 'dense_vector',
+            dims: this.dims,
+            index: true,
+            similarity: 'cosine',
+          },
+        },
+      },
+    });
+  }
+
+  async deleteByDocId(documentId: string) {
+    if (!this.es) return;
+    await this.es.deleteByQuery({
+      index: CHUNK_INDEX,
+      query: { term: { document_id: documentId } },
+      refresh: true,
+    });
+  }
+
+  async bulkIndex(chunks: DocumentChunk[], vectors: number[][]) {
+    if (!this.es || !chunks.length) return;
+    const ops: object[] = [];
+    chunks.forEach((c, i) =&gt; {
+      ops.push({ index: { _index: CHUNK_INDEX, _id: c.chunkId } });
+      ops.push({
+        chunk_id: c.chunkId,
+        document_id: c.documentId,
+        document_title: c.documentTitle,
+        content: c.content,
+        chunk_index: c.chunkIndex,
+        embedding: vectors[i],
+      });
+    });
+    await this.es.bulk({ refresh: true, operations: ops });
+    this.logger.log(`写入向量块 ${chunks.length} 条`);
+  }
+
+  async knnSearch(vector: number[], topK: number) {
+    if (!this.es) return [];
+    const res = await this.es.search({
+      index: CHUNK_INDEX,
+      knn: {
+        field: 'embedding',
+        query_vector: vector,
+        k: topK,
+        num_candidates: Math.max(topK * 10, 50),
+      },
+      _source: ['document_id', 'document_title', 'content', 'chunk_index'],
+    });
+    return res.hits.hits.map((h) =&gt; ({
+      id: h._id,
+      score: h._score,
+      ...(h._source as object),
+    }));
+  }
+}</code></pre></div>
+            <div class="callout-warning">
+              若曾用不同 <code>EMBEDDING_DIMENSION</code> 建过索引，需删索引重建：
+              <code>curl -X DELETE http://localhost:9200/kh_chunk</code>
+            </div>
+          </li>
+          <li>
+            <h4>RagService 编排 + Consumer / API</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// rag.service.ts 核心
+async reindexDocument(documentId: string, title: string, content: string) {
+  await this.vectorIndex.deleteByDocId(documentId);
+  const chunks = this.chunking.chunk({ content, documentId, documentTitle: title });
+  const vectors = await this.embedding.embedBatch(chunks.map((c) =&gt; c.content));
+  await this.vectorIndex.bulkIndex(chunks, vectors);
+}
+
+// Consumer handleRag：
+// type BY_DOC_IDS → 读库 → rag.reindexDocument
+// type DELETE_BY_DOC_IDS → vectorIndex.deleteByDocId
+
+// search.controller.ts
+@Post('semantic')
+async semantic(@Body() dto: { query: string; topK?: number }) {
+  const [vec] = await this.embedding.embedBatch([dto.query]);
+  return this.vectorIndex.knnSearch(vec, dto.topK ?? 5);
+}</code></pre></div>
+            <p>Publisher <code>afterPublish</code> 增加投递 RAG（与 Search 并行 <code>Promise.all</code>）。把新 Service 放进 <code>PipelineModule</code> exports。</p>
+          </li>
+          <li>
+            <h4>自测</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># EMBEDDING_MODE=mock
+# 上传含「知识库」字样的 md → publish → semantic 查询</code></pre></div>
+          </li>
+        </ol>
+      </section>
+      <section id="diff">
+        <h2>与 origin 差异</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>LangChain Markdown splitter</td><td>字符滑窗切分</td></tr>
+            <tr><td>OpenAIEmbeddings 强制 Key</td><td>mock 默认 + 可选真实 API</td></tr>
+            <tr><td>PipelineOrchestrator 统一调度</td><td>RagService + Consumer</td></tr>
+            <tr><td>dims 默认 1024</td><td>mock 用 64 省事</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>dense_vector dims 不匹配</td><td>删 kh_chunk 重建；维度与 Embedding 一致</td></tr>
+            <tr><td>knn 报错</td><td>ES 版本需支持 knn；mapping 含 index:true</td></tr>
+            <tr><td>真实 API 400</td><td>batch size、模型名、baseURL</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip"><strong>下一步</strong>：<a href="./07-pipeline-kg.html">第 7 课知识图谱</a></div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>

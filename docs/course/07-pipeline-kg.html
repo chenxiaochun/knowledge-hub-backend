@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 7 课 · 知识图谱 Neo4j</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 7 课 · 知识图谱 Neo4j</h1>
+    <p><a href="./index.html">← 课程目录</a> · 上接 <a href="./06-pipeline-rag.html">第 6 课</a> · 对照 origin <code>extraction</code> / <code>graph-build</code> / <code>graph/</code></p>
+  </header>
+  <div class="layout">
+    <nav id="nav"><ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+    </ul></nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          发布后异步构建<strong>知识图谱</strong>：分块 → 抽实体/关系 → 写入 Neo4j；
+          提供简单图查询 API。抽取支持 <strong>mock 规则</strong>与可选 LLM。
+        </p>
+        <div class="callout-tip">
+          <strong>自测</strong>：发布后 Neo4j Browser 能看到 Document / Entity 节点；
+          <code>GET /graph/search?keyword=…</code> 有结果。
+        </div>
+        <h3>Docker</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-yaml">  neo4j:
+    image: neo4j:5
+    container_name: knowledge_hub_neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/12345678
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/neo4j/data:/data</code></pre></div>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d neo4j
+# Browser http://localhost:7474  neo4j / 12345678</code></pre></div>
+      </section>
+      <section id="concept">
+        <h2>概念</h2>
+        <div class="flow">(KnowledgeDocument)-[:HAS_CHUNK]-&gt;(DocumentChunk)
+DocumentChunk-[:MENTIONS]-&gt;(KnowledgeEntity)
+(KnowledgeEntity)-[:RELATED_TO]-&gt;(KnowledgeEntity)</div>
+        <p>与 RAG 共用分块；本课重点是图存储与查询，不深究 NLP 算法。</p>
+      </section>
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/mq/mq.constants.ts</code></td><td>追加 KG 常量</td></tr>
+            <tr><td><code>src/pipeline/extraction.service.ts</code></td><td>新建（mock / LLM）</td></tr>
+            <tr><td><code>src/pipeline/graph-build.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/graph/graph.controller.ts</code> 等</td><td>查询 API</td></tr>
+            <tr><td>Publisher / Consumer</td><td>投递与处理 KG 消息</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>依赖与环境</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add neo4j-driver
+
+NEO4J_ENABLED=true
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=12345678
+KG_EXTRACT_MODE=mock
+# KG_EXTRACT_MODE=llm 时再配 OPENAI_API_KEY / OPENAI_BASE_URL / MODEL_NAME</code></pre></div>
+          </li>
+          <li>
+            <h4>MQ 常量</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export const KG_GRAPH_EXCHANGE = 'kg.graph.exchange';
+export const KG_GRAPH_QUEUE = 'kh.kg.graph.queue';
+export const KG_RK_BUILD_BY_IDS = 'kg.graph.build.by_ids';
+export const KG_RK_DELETE = 'kg.graph.delete';</code></pre></div>
+          </li>
+          <li>
+            <h4>ExtractionService（mock 完整）</h4>
+            <p class="file-path">src/pipeline/extraction.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+export interface ExtractionResult {
+  entities: { name: string; type: string }[];
+  relations: { from: string; to: string; type: string }[];
+}
+
+@Injectable()
+export class ExtractionService {
+  private readonly logger = new Logger(ExtractionService.name);
+  private readonly mode: string;
+
+  constructor(config: ConfigService) {
+    this.mode = config.get('KG_EXTRACT_MODE', 'mock');
+  }
+
+  async extract(content: string, _heading?: string): Promise&lt;ExtractionResult&gt; {
+    if (this.mode === 'llm') {
+      // 可选：对照 origin extraction.service.ts 接 ChatOpenAI.withStructuredOutput
+      this.logger.warn('llm 模式未在练习课展开，回退 mock');
+    }
+    return this.mockExtract(content);
+  }
+
+  /** 抽出「连续中文词 / 大写英文词」当实体，相邻实体连 RELATED_TO */
+  private mockExtract(content: string): ExtractionResult {
+    const names = new Set&lt;string&gt;();
+    for (const m of content.matchAll(/[\u4e00-\u9fff]{2,8}/g)) {
+      names.add(m[0]);
+      if (names.size &gt;= 12) break;
+    }
+    for (const m of content.matchAll(/\b[A-Z][a-zA-Z]{2,}\b/g)) {
+      names.add(m[0]);
+      if (names.size &gt;= 16) break;
+    }
+    const entities = [...names].map((name) =&gt; ({ name, type: 'Concept' }));
+    const relations: ExtractionResult['relations'] = [];
+    for (let i = 0; i &lt; entities.length - 1 &amp;&amp; relations.length &lt; 15; i++) {
+      relations.push({
+        from: entities[i].name,
+        to: entities[i + 1].name,
+        type: 'RELATED_TO',
+      });
+    }
+    return { entities, relations };
+  }
+}</code></pre></div>
+          </li>
+          <li>
+            <h4>GraphBuildService（完整要点）</h4>
+            <p class="file-path">src/pipeline/graph-build.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import neo4j, { Driver } from 'neo4j-driver';
+import { ChunkingService } from './chunking.service';
+import { ExtractionService } from './extraction.service';
+
+@Injectable()
+export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(GraphBuildService.name);
+  private driver: Driver | null = null;
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly chunking: ChunkingService,
+    private readonly extraction: ExtractionService,
+  ) {}
+
+  async onModuleInit() {
+    if (this.config.get('NEO4J_ENABLED', 'true') === 'false') return;
+    const uri = this.config.get('NEO4J_URI', 'bolt://localhost:7687');
+    this.driver = neo4j.driver(
+      uri,
+      neo4j.auth.basic(
+        this.config.get('NEO4J_USER', 'neo4j'),
+        this.config.get('NEO4J_PASSWORD', '12345678'),
+      ),
+    );
+    try {
+      await this.driver.verifyConnectivity();
+      this.logger.log(`Neo4j 已连接：${uri}`);
+    } catch (e) {
+      this.logger.warn(`Neo4j 不可用：${e instanceof Error ? e.message : e}`);
+      await this.driver.close();
+      this.driver = null;
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.driver?.close();
+  }
+
+  async deleteForDocument(documentId: string) {
+    if (!this.driver) return;
+    const session = this.driver.session();
+    try {
+      await session.run(
+        `MATCH (d:KnowledgeDocument {id: $id})
+         OPTIONAL MATCH (d)-[:HAS_CHUNK]-&gt;(c:DocumentChunk)
+         OPTIONAL MATCH (c)-[:MENTIONS]-&gt;(e)
+         DETACH DELETE d, c`,
+        { id: documentId },
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
+  async buildForDocument(doc: {
+    id: string;
+    title: string;
+    content: string;
+  }) {
+    if (!this.driver) return;
+    await this.deleteForDocument(doc.id);
+    const session = this.driver.session();
+    try {
+      await session.run(
+        `MERGE (d:KnowledgeDocument {id: $id}) SET d.title = $title`,
+        { id: doc.id, title: doc.title },
+      );
+      const chunks = this.chunking.chunk({
+        content: doc.content,
+        documentId: doc.id,
+        documentTitle: doc.title,
+      });
+      for (const ch of chunks) {
+        await session.run(
+          `MATCH (d:KnowledgeDocument {id: $docId})
+           MERGE (c:DocumentChunk {id: $cid})
+           SET c.content = $content, c.idx = $idx
+           MERGE (d)-[:HAS_CHUNK]-&gt;(c)`,
+          {
+            docId: doc.id,
+            cid: ch.chunkId,
+            content: ch.content.slice(0, 500),
+            idx: ch.chunkIndex,
+          },
+        );
+        const { entities, relations } = await this.extraction.extract(
+          ch.content,
+        );
+        for (const e of entities) {
+          await session.run(
+            `MATCH (c:DocumentChunk {id: $cid})
+             MERGE (en:KnowledgeEntity {name: $name})
+             SET en.type = $type
+             MERGE (c)-[:MENTIONS]-&gt;(en)`,
+            { cid: ch.chunkId, name: e.name, type: e.type },
+          );
+        }
+        for (const r of relations) {
+          await session.run(
+            `MATCH (a:KnowledgeEntity {name: $from})
+             MATCH (b:KnowledgeEntity {name: $to})
+             MERGE (a)-[rel:RELATED_TO]-&gt;(b)
+             SET rel.type = $type`,
+            { from: r.from, to: r.to, type: r.type },
+          );
+        }
+      }
+      this.logger.log(`KG 构建完成：documentId=${doc.id}, chunks=${chunks.length}`);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async searchGraph(keyword: string, limit = 50) {
+    if (!this.driver) return [];
+    const session = this.driver.session();
+    try {
+      const res = await session.run(
+        `MATCH (n)
+         WHERE (n:KnowledgeEntity OR n:KnowledgeDocument)
+           AND toLower(coalesce(n.name, n.title, '')) CONTAINS toLower($kw)
+         RETURN labels(n) AS labels, properties(n) AS props
+         LIMIT $limit`,
+        { kw: keyword, limit: neo4j.int(limit) },
+      );
+      return res.records.map((r) =&gt; ({
+        labels: r.get('labels'),
+        props: r.get('props'),
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+}</code></pre></div>
+          </li>
+          <li>
+            <h4>Graph API + MQ 接线</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// graph.controller.ts
+@Controller('graph')
+export class GraphController {
+  constructor(private readonly graph: GraphBuildService) {}
+
+  @Get('search')
+  search(@Query('keyword') keyword: string, @Query('limit') limit?: string) {
+    return this.graph.searchGraph(keyword, limit ? Number(limit) : 50);
+  }
+}
+
+// Publisher.afterPublish 增加 triggerKgBuild
+// Consumer 增加 handleKg → load doc → graph.buildForDocument
+// 删除消息 → deleteForDocument</code></pre></div>
+          </li>
+          <li>
+            <h4>自测</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># Neo4j Browser:
+MATCH (n) RETURN n LIMIT 25
+
+curl -s 'http://localhost:3000/graph/search?keyword=知识' \
+  -H "Authorization: Bearer $TOKEN"</code></pre></div>
+          </li>
+        </ol>
+      </section>
+      <section id="diff">
+        <h2>与 origin 差异</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>LLM structured output 抽实体</td><td>默认 mock 规则；llm 可后续对齐</td></tr>
+            <tr><td>更完整的图查询 / 清理 Cypher</td><td>最小可演示子集</td></tr>
+            <tr><td>APOC 插件</td><td>不依赖</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>认证失败</td><td>首次启动密码须符合策略；与 NEO4J_AUTH 一致</td></tr>
+            <tr><td>无节点</td><td>Consumer 是否处理 KG 队列；文档是否 Published 且有正文</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip"><strong>下一步</strong>：<a href="./08-team-mail-align.html">第 8 课收尾对齐</a></div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>
