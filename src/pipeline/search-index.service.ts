@@ -35,6 +35,7 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     if (!this.esEnabled) {
       this.logger.log('Elasticsearch 已被禁用');
+      return;
     }
     // get 方法的第二个参数是什么意思？
     // 第二个参数是默认值，如果第一个参数不存在，则返回第二个参数
@@ -47,7 +48,6 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.es = null;
       this.logger.error('Elasticsearch 初始化失败', error);
-      throw error;
     }
   }
 
@@ -93,14 +93,13 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // 这里为什么换成了 this.documentContentModel.findOne 方法？
-    // 因为 documentContent 是 Mongoose 的模型，而不是 TypeORM 的模型
-    const content = await this.documentContentModel.findOne({ where: { documentId } });
+    // Mongoose 条件直接传字段，不要写成 TypeORM 的 { where: ... }，否则永远查不到正文
+    const content = await this.documentContentModel.findOne({ documentId, deleted: false }).lean();
     const body = {
       id: doc.id,
       title: doc.title,
-      summary: (content?.contentSummary as string) || '',
-      content: (content?.content as string) || '',
+      summary: content?.contentSummary || '',
+      content: content?.content || '',
       authorId: doc.authorId ?? null,
       status: doc.status,
       publishTime: doc.publishTime ?? null,
