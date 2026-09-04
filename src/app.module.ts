@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { UserModule } from './user/user.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './user/entities/user.entity';
+import { DocumentEntity } from './document/entities/document.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
@@ -22,7 +23,7 @@ import { MongooseModule } from '@nestjs/mongoose';
         username: config.get('POSTGRES_USER'),
         password: config.get('POSTGRES_PASSWORD'),
         database: config.get('POSTGRES_DB'),
-        entities: [UserEntity],
+        entities: [UserEntity, DocumentEntity],
         synchronize: true,
       }),
     }),

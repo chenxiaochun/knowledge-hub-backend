@@ -43,8 +43,8 @@ export class DocumentEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
-  @Column({ name: 'publish_time' })
-  publishTime?: Date;
+  @Column({ name: 'publish_time', type: 'timestamp', nullable: true })
+  publishTime?: Date | null;
 
   @Column({ type: 'boolean', default: false })
   deleted!: boolean;
