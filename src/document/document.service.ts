@@ -11,6 +11,7 @@ import { QueryDocumentDto } from './dto/query-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { FileParserService } from './parser/file-parser.service';
+import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
 import { DocumentContent, DocumentContentDocument } from './schemas/document-content.schema';
 
 @Injectable()
@@ -30,6 +31,7 @@ export class DocumentService {
     /** 正文在 Mongo，用 InjectModel；FileParser / Storage 是普通 Provider，直接注入即可 */
     private readonly fileParser: FileParserService,
     private readonly storage: LocalStorageService,
+    private readonly pipelinePublisher: DocumentPipelinePublisher,
   ) {}
 
   async uploadAndCreateDocument(file: Express.Multer.File, meta: UploadParseDto, actor: AuthUser) {
@@ -124,5 +126,25 @@ export class DocumentService {
       content: content?.content ?? '',
       contentLength: content?.contentLength ?? 0,
     };
+  }
+
+  async publish(id: string, _actor: AuthUser) {
+    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+    if (!doc) throw new NotFoundException('文档不存在');
+    if (
+      doc.status !== DocumentStatus.Draft &&
+      doc.status !== DocumentStatus.Published &&
+      doc.status !== DocumentStatus.Archived
+    ) {
+      throw new BadRequestException('当前状态不允许发布');
+    }
+
+    doc.status = DocumentStatus.Published;
+    doc.publishTime = new Date();
+    const saved = await this.docRepo.save(doc);
+
+    // 投递失败不回滚（与 origin 一致）
+    await this.pipelinePublisher.afterPublish(saved.id);
+    return saved;
   }
 }

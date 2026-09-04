@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -15,6 +16,8 @@ import type { AuthUser } from '../auth/auth-user.interface';
 import { DocumentService } from './document.service';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RoleCode } from 'src/common/constant/roles';
 
 @Controller('document')
 export class DocumentController {
@@ -42,5 +45,11 @@ export class DocumentController {
   @Get(':id')
   detail(@Param('id') id: string) {
     return this.documentService.getDetail(id);
+  }
+
+  @Put(':id/publish')
+  @Roles(RoleCode.ADMIN)
+  publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.publish(id, user);
   }
 }

@@ -43,6 +43,9 @@ export class DocumentEntity {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
+  @Column({ name: 'publish_time' })
+  publishTime?: Date;
+
   @Column({ type: 'boolean', default: false })
   deleted!: boolean;
 }
