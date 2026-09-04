@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -51,5 +52,11 @@ export class DocumentController {
   @Roles(RoleCode.ADMIN)
   publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.documentService.publish(id, user);
+  }
+
+  @Delete(':id')
+  @Roles(RoleCode.ADMIN)
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.remove(id, user);
   }
 }

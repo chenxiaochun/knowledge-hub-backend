@@ -147,4 +147,25 @@ export class DocumentService {
     await this.pipelinePublisher.afterPublish(saved.id);
     return saved;
   }
+
+  /**
+   * 软删除文档：Postgres / Mongo 均标记 deleted。
+   * 已发布文档会异步清理搜索索引。
+   */
+  async remove(id: string, _actor: AuthUser) {
+    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+    if (!doc) {
+      throw new NotFoundException('文档不存在');
+    }
+
+    if (doc.status === DocumentStatus.Published) {
+      await this.pipelinePublisher.afterUnpublish(id);
+    }
+
+    doc.deleted = true;
+    await this.docRepo.save(doc);
+    await this.contentModel.updateOne({ documentId: id }, { $set: { deleted: true } });
+
+    return { id, deleted: true };
+  }
 }
