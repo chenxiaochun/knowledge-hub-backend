@@ -163,9 +163,10 @@ curl -s -X POST http://localhost:3000/search/semantic \
             <tr><td><code>src/pipeline/chunking.service.ts</code></td><td>新建（练习版可自写切分）</td></tr>
             <tr><td><code>src/pipeline/embedding.service.ts</code></td><td>新建（mock + 真实）</td></tr>
             <tr><td><code>src/pipeline/vector-index.service.ts</code></td><td>新建</td></tr>
-            <tr><td><code>src/pipeline/rag.service.ts</code></td><td>编排单文档重建</td></tr>
-            <tr><td><code>src/mq/document-pipeline.*</code></td><td>发布时投递 RAG；Consumer 处理</td></tr>
-            <tr><td><code>src/search/search.controller.ts</code></td><td>加 semantic</td></tr>
+            <tr><td><code>src/pipeline/rag.service.ts</code></td><td>新建（编排：读库→分块→向量→写入）</td></tr>
+            <tr><td><code>src/mq/document-pipeline.*</code></td><td>发布投递 RAG；Consumer 调 RagService</td></tr>
+            <tr><td><code>src/search/search.controller.ts</code></td><td>加 <code>POST /search/semantic</code></td></tr>
+            <tr><td><code>src/pipeline/pipeline.module.ts</code></td><td>注册并导出本课全部 Service</td></tr>
           </tbody>
         </table>
       </section>
@@ -436,33 +437,343 @@ export class VectorIndexService implements OnModuleInit {
             </div>
           </li>
           <li>
-            <h4>RagService 编排 + Consumer / API</h4>
+            <h4>RagService 编排 + Consumer / API（完整）</h4>
+            <div class="callout-info">
+              <strong>怎么串起来（用法）</strong>：你<strong>不用手动调</strong>
+              <code>RagService</code>。流程是：
+              <code>PUT …/publish</code>
+              → Publisher 往 RAG 队列丢 <code>{ type:'BY_DOC_IDS', documentIds:[id] }</code>
+              → Consumer 收到后调 <code>ragService.reindexByIds</code>
+              → 分块 / 向量 / 写入 <code>kh_chunk</code>。
+              前端语义搜则调 <code>POST /search/semantic</code>，内部：query 向量化 → knn。
+            </div>
+
+            <p class="file-path">src/mq/messages/pipeline.messages.ts（追加类型）</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">// rag.service.ts 核心
-async reindexDocument(documentId: string, title: string, content: string) {
-  await this.vectorIndex.deleteByDocId(documentId);
-  const chunks = this.chunking.chunk({ content, documentId, documentTitle: title });
-  const vectors = await this.embedding.embedBatch(chunks.map((c) =&gt; c.content));
-  await this.vectorIndex.bulkIndex(chunks, vectors);
+              <pre><code class="lang-ts">export interface SearchIndexMessage {
+  taskId: string;
+  type: 'INDEX' | 'DELETE';
+  documentId: string;
 }
 
-// Consumer handleRag：
-// type BY_DOC_IDS → 读库 → rag.reindexDocument
-// type DELETE_BY_DOC_IDS → vectorIndex.deleteByDocId
-
-// search.controller.ts
-@Post('semantic')
-async semantic(@Body() dto: { query: string; topK?: number }) {
-  const [vec] = await this.embedding.embedBatch([dto.query]);
-  return this.vectorIndex.knnSearch(vec, dto.topK ?? 5);
+/** RAG 重建 / 删除 */
+export interface ReindexMessage {
+  taskId: string;
+  type: 'BY_DOC_IDS' | 'DELETE_BY_DOC_IDS';
+  documentIds: string[];
 }</code></pre></div>
-            <p>Publisher <code>afterPublish</code> 增加投递 RAG（与 Search 并行 <code>Promise.all</code>）。把新 Service 放进 <code>PipelineModule</code> exports。</p>
+
+            <p class="file-path">src/pipeline/rag.service.ts（完整文件）</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Model } from 'mongoose';
+import { Repository } from 'typeorm';
+import { DocumentStatus } from '../document/document-status';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentDocument,
+} from '../document/schemas/document-content.schema';
+import { ChunkingService } from './chunking.service';
+import { EmbeddingService } from './embedding.service';
+import { VectorIndexService } from './vector-index.service';
+
+/**
+ * RAG 编排：读库 → 分块 → Embedding → 写 kh_chunk。
+ * 由 MQ Consumer 调用，不直接碰 RabbitMQ。
+ */
+@Injectable()
+export class RagService {
+  private readonly logger = new Logger(RagService.name);
+
+  constructor(
+    @InjectRepository(DocumentEntity)
+    private readonly docRepo: Repository&lt;DocumentEntity&gt;,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model&lt;DocumentContentDocument&gt;,
+    private readonly chunking: ChunkingService,
+    private readonly embedding: EmbeddingService,
+    private readonly vectorIndex: VectorIndexService,
+  ) {}
+
+  async reindexByIds(documentIds: string[]) {
+    for (const id of documentIds) {
+      try {
+        await this.reindexOne(id);
+      } catch (e) {
+        this.logger.error(
+          `RAG 失败 documentId=${id}: ${e instanceof Error ? e.message : e}`,
+        );
+      }
+    }
+  }
+
+  async deleteByIds(documentIds: string[]) {
+    for (const id of documentIds) {
+      await this.vectorIndex.deleteByDocId(id);
+    }
+  }
+
+  private async reindexOne(documentId: string) {
+    const doc = await this.docRepo.findOne({
+      where: { id: documentId, deleted: false },
+    });
+    if (!doc || doc.status !== DocumentStatus.Published) {
+      this.logger.warn(`跳过 RAG（不存在或未发布）：${documentId}`);
+      return;
+    }
+    const contentDoc = await this.contentModel
+      .findOne({ documentId, deleted: false })
+      .lean();
+    const content = (contentDoc?.content as string) || '';
+    if (!content.trim()) {
+      this.logger.log(`正文为空，跳过 RAG：${documentId}`);
+      return;
+    }
+
+    await this.vectorIndex.deleteByDocId(documentId);
+    const chunks = this.chunking.chunk({
+      content,
+      documentId,
+      documentTitle: doc.title,
+    });
+    if (!chunks.length) return;
+
+    const vectors = await this.embedding.embedBatch(
+      chunks.map((c) =&gt; c.content),
+    );
+    await this.vectorIndex.bulkIndex(chunks, vectors);
+    this.logger.log(
+      `RAG 索引完成：documentId=${documentId}, chunks=${chunks.length}`,
+    );
+  }
+
+  /** 给 HTTP 语义搜用：query → 向量 → knn */
+  async semanticSearch(query: string, topK = 5) {
+    const [vec] = await this.embedding.embedBatch([query]);
+    return this.vectorIndex.knnSearch(vec, topK);
+  }
+}</code></pre></div>
+
+            <p class="file-path">src/pipeline/pipeline.module.ts（本课完整版）</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentSchema,
+} from '../document/schemas/document-content.schema';
+import { ChunkingService } from './chunking.service';
+import { EmbeddingService } from './embedding.service';
+import { RagService } from './rag.service';
+import { SearchIndexService } from './search-index.service';
+import { VectorIndexService } from './vector-index.service';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([DocumentEntity]),
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
+  ],
+  providers: [
+    SearchIndexService,
+    ChunkingService,
+    EmbeddingService,
+    VectorIndexService,
+    RagService,
+  ],
+  exports: [
+    SearchIndexService,
+    ChunkingService,
+    EmbeddingService,
+    VectorIndexService,
+    RagService,
+  ],
+})
+export class PipelineModule {}</code></pre></div>
+
+            <p class="file-path">Publisher：afterPublish 并行投递 Search + RAG</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// document-pipeline.publisher.ts 关键片段
+import {
+  RAG_REINDEX_EXCHANGE,
+  RAG_RK_BY_IDS,
+  SEARCH_INDEX_EXCHANGE,
+  SEARCH_RK_INDEX,
+} from './mq.constants';
+import { ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
+
+async afterPublish(documentId: string) {
+  await Promise.all([
+    this.triggerSearchIndex(documentId),
+    this.triggerRagReindex(documentId),
+  ]);
+}
+
+private async triggerSearchIndex(documentId: string) {
+  const message: SearchIndexMessage = {
+    taskId: randomUUID(),
+    type: 'INDEX',
+    documentId,
+  };
+  const ok = await this.rabbit.publish(
+    SEARCH_INDEX_EXCHANGE,
+    SEARCH_RK_INDEX,
+    message,
+  );
+  this.logger.log(
+    `Search ${ok ? '已投递' : '失败'}：documentId=${documentId}`,
+  );
+}
+
+private async triggerRagReindex(documentId: string) {
+  const message: ReindexMessage = {
+    taskId: randomUUID(),
+    type: 'BY_DOC_IDS',
+    documentIds: [documentId],
+  };
+  const ok = await this.rabbit.publish(
+    RAG_REINDEX_EXCHANGE,
+    RAG_RK_BY_IDS,
+    message,
+  );
+  this.logger.log(
+    `RAG ${ok ? '已投递' : '失败'}：documentId=${documentId}, taskId=${message.taskId}`,
+  );
+}</code></pre></div>
+            <p>记得在 <code>RabbitMqService.setup</code> 里对 RAG 的 exchange / queue / 两个 routingKey 做 assert + bind（与第 4 课 Search 同写法）。</p>
+
+            <p class="file-path">src/mq/document-pipeline.consumer.ts（含 Search + RAG 的完整示例）</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConsumeMessage } from 'amqplib';
+import { RagService } from '../pipeline/rag.service';
+import { SearchIndexService } from '../pipeline/search-index.service';
+import {
+  RAG_REINDEX_QUEUE,
+  SEARCH_INDEX_QUEUE,
+} from './mq.constants';
+import {
+  ReindexMessage,
+  SearchIndexMessage,
+} from './messages/pipeline.messages';
+import { RabbitMqService } from './rabbitmq.service';
+
+@Injectable()
+export class DocumentPipelineConsumer {
+  private readonly logger = new Logger(DocumentPipelineConsumer.name);
+
+  constructor(
+    private readonly rabbit: RabbitMqService,
+    private readonly searchIndex: SearchIndexService,
+    private readonly ragService: RagService,
+  ) {
+    this.rabbit.registerHandler(SEARCH_INDEX_QUEUE, (msg) =&gt;
+      this.handleSearch(msg),
+    );
+    this.rabbit.registerHandler(RAG_REINDEX_QUEUE, (msg) =&gt;
+      this.handleRag(msg),
+    );
+  }
+
+  private async handleSearch(msg: ConsumeMessage) {
+    const body = JSON.parse(
+      msg.content.toString('utf8'),
+    ) as SearchIndexMessage;
+    this.logger.log(`[Search] ${body.type} ${body.documentId}`);
+    if (body.type === 'INDEX') {
+      await this.searchIndex.indexFromDocumentId(body.documentId);
+    } else if (body.type === 'DELETE') {
+      await this.searchIndex.deleteDocument(body.documentId);
+    }
+  }
+
+  private async handleRag(msg: ConsumeMessage) {
+    const body = JSON.parse(
+      msg.content.toString('utf8'),
+    ) as ReindexMessage;
+    this.logger.log(
+      `[RAG] ${body.type} ids=${JSON.stringify(body.documentIds)}`,
+    );
+    if (body.type === 'BY_DOC_IDS') {
+      await this.ragService.reindexByIds(body.documentIds);
+    } else if (body.type === 'DELETE_BY_DOC_IDS') {
+      await this.ragService.deleteByIds(body.documentIds);
+    }
+  }
+}</code></pre></div>
+            <p><code>MqModule</code> 必须 <code>imports: [PipelineModule]</code>，才能注入 <code>RagService</code> / <code>SearchIndexService</code>。</p>
+
+            <p class="file-path">src/search/dto/semantic-search.dto.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+
+export class SemanticSearchDto {
+  @IsString()
+  @MinLength(1)
+  query: string;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  topK?: number = 5;
+}</code></pre></div>
+
+            <p class="file-path">src/search/search.controller.ts（在原有 POST /search 上追加）</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Body, Controller, Post } from '@nestjs/common';
+import { RagService } from '../pipeline/rag.service';
+import { SearchIndexService } from '../pipeline/search-index.service';
+import { SearchDocumentsDto } from './dto/search.dto';
+import { SemanticSearchDto } from './dto/semantic-search.dto';
+
+@Controller('search')
+export class SearchController {
+  constructor(
+    private readonly searchIndex: SearchIndexService,
+    private readonly ragService: RagService,
+  ) {}
+
+  /** 第 5 课：关键词全文 */
+  @Post()
+  search(@Body() dto: SearchDocumentsDto) {
+    return this.searchIndex.searchDocuments({
+      keyword: dto.keyword,
+      page: dto.page,
+      pageSize: dto.pageSize,
+    });
+  }
+
+  /** 第 6 课：语义检索（向量 knn） */
+  @Post('semantic')
+  semantic(@Body() dto: SemanticSearchDto) {
+    return this.ragService.semanticSearch(dto.query, dto.topK ?? 5);
+  }
+}</code></pre></div>
+            <p><code>SearchModule</code> 已 import <code>PipelineModule</code> 即可（需能注入 <code>RagService</code>）。</p>
           </li>
           <li>
-            <h4>自测</h4>
+            <h4>自测（端到端怎么用）</h4>
+            <ol>
+              <li><code>.env</code> 设 <code>EMBEDDING_MODE=mock</code>、<code>EMBEDDING_DIMENSION=64</code></li>
+              <li>上传一篇含「知识库」等字样的 <code>.md</code>，再 <code>PUT /documents/:id/publish</code></li>
+              <li>终端应先后看到：Search 已投递 / RAG 已投递 → <code>[RAG] BY_DOC_IDS</code> → <code>RAG 索引完成</code></li>
+              <li>再调语义搜：</li>
+            </ol>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-bash"># EMBEDDING_MODE=mock
-# 上传含「知识库」字样的 md → publish → semantic 查询</code></pre></div>
+              <pre><code class="lang-bash">curl -s -X POST http://localhost:3000/search/semantic \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"知识库是什么","topK":5}'</code></pre></div>
+            <p>返回应是 chunk 列表（含 <code>document_id</code>、<code>content</code>、<code>score</code>）。mock 向量下「语义」较弱，但同文查询通常能命中；换真实 Embedding 效果会好很多。</p>
           </li>
         </ol>
       </section>
