@@ -1,13 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { GraphBuildService } from './graph-build.service';
+import { Module } from '@nestjs/common';
+import { PipelineModule } from './pipeline.module';
+import { GraphController } from './graph.controller';
 
-// graph.controller.ts
-@Controller('graph')
-export class GraphController {
-  constructor(private readonly graph: GraphBuildService) {}
-
-  @Get('search')
-  search(@Query('keyword') keyword: string, @Query('limit') limit?: string) {
-    return this.graph.searchGraph(keyword, limit ? Number(limit) : 50);
-  }
-}
+@Module({
+  imports: [PipelineModule],
+  controllers: [GraphController],
+})
+export class GraphModule {}

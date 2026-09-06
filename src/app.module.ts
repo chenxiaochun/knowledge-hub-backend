@@ -11,6 +11,7 @@ import { DocumentModule } from './document/document.module';
 import { StorageModule } from './storage/storage.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SearchModule } from './search/search.module';
+import { GraphModule } from './pipeline/graph.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { SearchModule } from './search/search.module';
     DocumentModule,
     StorageModule,
     SearchModule,
+    GraphModule,
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
