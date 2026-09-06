@@ -7,8 +7,11 @@ import {
   RAG_REINDEX_EXCHANGE,
   RAG_RK_BY_IDS,
   RAG_RK_DELETE,
+  KG_BUILD_EXCHANGE,
+  KG_RK_BY_DOC_IDS,
+  KG_RK_DELETE_BY_DOC_IDS,
 } from './mq.constant';
-import { ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
+import { KgBuildMessage, ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
 import { RabbitMQService } from './rabbitmq.service';
 
 @Injectable()
@@ -19,7 +22,11 @@ export class DocumentPipelinePublisher {
 
   /** 发布后：全文检索索引 + RAG 向量重建 */
   async afterPublish(documentId: string) {
-    await Promise.all([this.triggerSearchIndex(documentId), this.triggerRagReindex(documentId)]);
+    await Promise.all([
+      this.triggerSearchIndex(documentId),
+      this.triggerRagReindex(documentId),
+      this.triggerKgBuild(documentId),
+    ]);
   }
 
   /** 删除/下架后：清理搜索索引与向量块 */
@@ -27,6 +34,7 @@ export class DocumentPipelinePublisher {
     await Promise.all([
       this.triggerSearchDelete(documentId),
       this.triggerRagDelete(documentId),
+      this.triggerKgDelete(documentId),
     ]);
   }
 
@@ -75,6 +83,30 @@ export class DocumentPipelinePublisher {
     const ok = await this.rabbit.publish(RAG_REINDEX_EXCHANGE, RAG_RK_DELETE, message);
     this.logger.log(
       `RAG 删除${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
+    );
+  }
+
+  private async triggerKgBuild(documentId: string) {
+    const message: KgBuildMessage = {
+      taskId: randomUUID(),
+      type: 'BY_DOC_IDS',
+      documentIds: [documentId],
+    };
+    const ok = await this.rabbit.publish(KG_BUILD_EXCHANGE, KG_RK_BY_DOC_IDS, message);
+    this.logger.log(
+      `KG 构建${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
+    );
+  }
+
+  private async triggerKgDelete(documentId: string) {
+    const message: KgBuildMessage = {
+      taskId: randomUUID(),
+      type: 'DELETE_BY_DOC_IDS',
+      documentIds: [documentId],
+    };
+    const ok = await this.rabbit.publish(KG_BUILD_EXCHANGE, KG_RK_DELETE_BY_DOC_IDS, message);
+    this.logger.log(
+      `KG 删除${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
     );
   }
 }

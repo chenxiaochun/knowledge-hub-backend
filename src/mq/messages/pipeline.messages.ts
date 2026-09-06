@@ -16,3 +16,9 @@ export interface ReindexMessage {
   type: 'BY_DOC_IDS' | 'DELETE_BY_DOC_IDS';
   documentIds: string[];
 }
+
+export interface KgBuildMessage {
+  taskId: string;
+  type: 'BY_DOC_IDS' | 'DELETE_BY_DOC_IDS';
+  documentIds: string[];
+}

@@ -8,6 +8,7 @@ import {
 } from '../document/schemas/document-content.schema';
 import { ChunkingService } from './chunking.service';
 import { EmbeddingService } from './embedding.service';
+import { ExtractionService } from './extraction.service';
 import { RagService } from './rag.service';
 import { SearchIndexService } from './search-index.service';
 import { VectorIndexService } from './vector-index.service';
@@ -15,7 +16,9 @@ import { VectorIndexService } from './vector-index.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentEntity]),
-    MongooseModule.forFeature([{ name: DocumentContent.name, schema: DocumentContentSchema }]),
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
   ],
   providers: [
     SearchIndexService,
@@ -23,7 +26,15 @@ import { VectorIndexService } from './vector-index.service';
     EmbeddingService,
     VectorIndexService,
     RagService,
+    ExtractionService,
   ],
-  exports: [SearchIndexService, ChunkingService, EmbeddingService, VectorIndexService, RagService],
+  exports: [
+    SearchIndexService,
+    ChunkingService,
+    EmbeddingService,
+    VectorIndexService,
+    RagService,
+    ExtractionService,
+  ],
 })
 export class PipelineModule {}
