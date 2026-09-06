@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { SEARCH_INDEX_EXCHANGE, SEARCH_RK_DELETE, SEARCH_RK_INDEX } from './mq.constant';
-import { SearchIndexMessage } from './messages/pipeline.messages';
+import {
+  SEARCH_INDEX_EXCHANGE,
+  SEARCH_RK_INDEX,
+  RAG_REINDEX_EXCHANGE,
+  RAG_RK_BY_IDS,
+} from './mq.constant';
+import { ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
 import { RabbitMQService } from './rabbitmq.service';
 
 @Injectable()
@@ -25,11 +30,26 @@ export class DocumentPipelinePublisher {
 
   // 删除后删除索引, 文档删除后需要删除索引
   async afterUnpublish(documentId: string) {
-    const message: SearchIndexMessage = {
+    await Promise.all([this.triggerSearchIndex(documentId), this.triggerRagReindex(documentId)]);
+  }
+
+  private async triggerSearchIndex(documentId: string) {
+    const messages: SearchIndexMessage = {
       taskId: randomUUID(),
-      type: 'DELETE',
+      type: 'INDEX',
       documentId,
     };
-    await this.rabbit.publish(SEARCH_INDEX_EXCHANGE, SEARCH_RK_DELETE, message);
+    await this.rabbit.publish(SEARCH_INDEX_EXCHANGE, SEARCH_RK_INDEX, messages);
+    this.logger.log(`Search 索引已投递：documentId=${documentId}, taskId=${messages.taskId}`);
+  }
+
+  private async triggerRagReindex(documentId: string) {
+    const message: ReindexMessage = {
+      taskId: randomUUID(),
+      type: 'BY_DOC_IDS',
+      documentIds: [documentId],
+    };
+    await this.rabbit.publish(RAG_REINDEX_EXCHANGE, RAG_RK_BY_IDS, message);
+    this.logger.log(`RAG 重索引已投递：documentId=${documentId}, taskId=${message.taskId}`);
   }
 }

@@ -7,3 +7,12 @@ export const SEARCH_INDEX_EXCHANGE = 'search.index.exchange';
 export const SEARCH_INDEX_QUEUE = 'kh.search.index.queue';
 export const SEARCH_RK_INDEX = 'search.index.document';
 export const SEARCH_RK_DELETE = 'search.index.delete';
+
+// RAG_REINDEX_EXCHANGE: RAG重索引交换机
+// RAG_REINDEX_QUEUE: RAG重索引队列
+// RAG_RK_BY_IDS: RAG重索引文档路由键
+// RAG_RK_DELETE: RAG重索引删除路由键
+export const RAG_REINDEX_EXCHANGE = 'rag.reindex.exchange';
+export const RAG_REINDEX_QUEUE = 'kh.rag.reindex.queue';
+export const RAG_RK_BY_IDS = 'rag.reindex.by_ids';
+export const RAG_RK_DELETE = 'rag.reindex.delete';
