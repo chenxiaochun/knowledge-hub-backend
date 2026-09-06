@@ -153,7 +153,8 @@ DocumentChunk-[:MENTIONS]-&gt;(KnowledgeEntity)
           <thead><tr><th>路径</th><th>动作</th></tr></thead>
           <tbody>
             <tr><td><code>src/mq/mq.constants.ts</code></td><td>追加 KG 常量</td></tr>
-            <tr><td><code>src/pipeline/extraction.service.ts</code></td><td>新建（mock / LLM）</td></tr>
+            <tr><td><code>src/pipeline/kg-extraction.schema.ts</code></td><td>新建（zod + system prompt）</td></tr>
+            <tr><td><code>src/pipeline/extraction.service.ts</code></td><td>新建（mock / llm）</td></tr>
             <tr><td><code>src/pipeline/graph-build.service.ts</code></td><td>新建</td></tr>
             <tr><td><code>src/graph/graph.controller.ts</code> 等</td><td>查询 API</td></tr>
             <tr><td>Publisher / Consumer</td><td>投递与处理 KG 消息</td></tr>
@@ -166,14 +167,22 @@ DocumentChunk-[:MENTIONS]-&gt;(KnowledgeEntity)
           <li>
             <h4>依赖与环境</h4>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-bash">pnpm add neo4j-driver
+              <pre><code class="lang-bash">pnpm add neo4j-driver @langchain/openai @langchain/core zod
 
 NEO4J_ENABLED=true
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=12345678
-KG_EXTRACT_MODE=mock
-# KG_EXTRACT_MODE=llm 时再配 OPENAI_API_KEY / OPENAI_BASE_URL / MODEL_NAME</code></pre></div>
+
+# mock：无 Key；llm：ChatOpenAI.withStructuredOutput
+KG_EXTRACT_MODE=llm
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+MODEL_NAME=qwen-plus
+# 也可用 LLM_API_KEY / DASHSCOPE_API_KEY、LLM_BASE_URL、LLM_MODEL
+KG_MAX_ENTITIES=12
+KG_MAX_RELATIONS=15
+KG_LLM_TIMEOUT_MS=60000</code></pre></div>
           </li>
           <li>
             <h4>MQ 常量</h4>
@@ -184,57 +193,355 @@ export const KG_RK_BUILD_BY_IDS = 'kg.graph.build.by_ids';
 export const KG_RK_DELETE = 'kg.graph.delete';</code></pre></div>
           </li>
           <li>
-            <h4>ExtractionService（mock 完整）</h4>
+            <h4>ExtractionService（mock + LLM 完整）</h4>
+            <div class="callout-info">
+              <strong>怎么用</strong>：
+              <code>GraphBuildService</code> 对每个 chunk 调
+              <code>extraction.extract(content, heading, documentTitle)</code>。
+              <code>KG_EXTRACT_MODE=llm</code> 且配置了 Key 时走
+              <code>ChatOpenAI.withStructuredOutput(kgExtractionResultSchema)</code>；
+              失败或未配 Key 自动回退 mock。
+            </div>
+            <p class="file-path">src/pipeline/kg-extraction.schema.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/**
+ * 通用知识图谱抽取 Schema（练习版，对齐 origin）
+ * 供 ChatOpenAI.withStructuredOutput 使用。
+ */
+import { z } from 'zod';
+
+/** 核心 + 扩展实体类型 */
+export const KG_ENTITY_TYPES = [
+  'PERSON',
+  'ORGANIZATION',
+  'CONCEPT',
+  'DOCUMENT',
+  'PROCESS',
+  'PRODUCT',
+  'LOCATION',
+  'TIME',
+  'POLICY',
+  'RESOURCE',
+] as const;
+
+export type KgEntityType = (typeof KG_ENTITY_TYPES)[number];
+
+/** 实体间语义关系（Neo4j 边属性 relation；边类型仍为 RELATED_TO） */
+export const KG_RELATION_TYPES = [
+  'HAS_PART',
+  'BELONGS_TO',
+  'RELATED_TO',
+  'DEFINES',
+  'REQUIRES',
+  'USES',
+  'RESPONSIBLE_FOR',
+  'PARTICIPATES_IN',
+  'LOCATED_IN',
+  'OCCURS_AT',
+  'CAUSES',
+  'CONFLICTS_WITH',
+] as const;
+
+export type KgRelationType = (typeof KG_RELATION_TYPES)[number];
+
+const ENTITY_TYPE_SET = new Set&lt;string&gt;(KG_ENTITY_TYPES);
+const RELATION_TYPE_SET = new Set&lt;string&gt;(KG_RELATION_TYPES);
+
+/** 将 LLM 返回的类型规范到枚举，未知值走兜底 */
+export function normalizeEntityType(
+  raw: string | undefined | null,
+): KgEntityType {
+  const upper = (raw ?? '').trim().toUpperCase();
+  if (ENTITY_TYPE_SET.has(upper)) return upper as KgEntityType;
+  return 'CONCEPT';
+}
+
+export function normalizeRelationType(
+  raw: string | undefined | null,
+): KgRelationType {
+  const upper = (raw ?? '').trim().toUpperCase();
+  if (RELATION_TYPE_SET.has(upper)) return upper as KgRelationType;
+  return 'RELATED_TO';
+}
+
+/** LLM 结构化输出：实体 */
+export const kgExtractedEntitySchema = z.object({
+  name: z.string().describe('文中原文实体名'),
+  // string 而非 enum：模型常返回中文类型，交给 normalizeEntityType 归类
+  type: z.string().describe('实体类型').optional(),
+  description: z.string().describe('简短描述，可空').optional(),
+  aliases: z.array(z.string()).describe('别名').optional(),
+});
+
+/** LLM 结构化输出：关系 */
+export const kgExtractedRelationSchema = z.object({
+  source: z.string().describe('起点实体 name，必须是已抽取实体'),
+  target: z.string().describe('终点实体 name，必须是已抽取实体'),
+  relation: z.string().describe('关系类型，字段名必须是 relation').optional(),
+  type: z
+    .string()
+    .describe('兼容：模型误把关系类型写成 type 时读取')
+    .optional(),
+  weight: z.number().min(0).max(1).describe('置信度 0-1').optional(),
+});
+
+/** LLM 结构化输出：单个 chunk 的抽取结果 */
+export const kgExtractionResultSchema = z
+  .object({
+    entities: z.array(kgExtractedEntitySchema).describe('实体列表'),
+    relations: z.array(kgExtractedRelationSchema).describe('关系列表'),
+  })
+  .describe('从文档片段抽取的知识实体与关系');
+
+export type KgExtractionLlmOutput = z.infer&lt;typeof kgExtractionResultSchema&gt;;
+
+/** 构建 LLM system prompt */
+export function buildExtractionSystemPrompt(
+  maxEntities: number,
+  maxRelations: number,
+): string {
+  return `你是知识图谱构建专家。请严格从文档片段中抽取知识实体和关系。
+
+## 抽取规则
+1. 只抽取文中明确提到的、有实际意义的实体，不要臆测
+2. 不要抽取过于泛化的词（如「系统」「功能」「数据」「问题」）
+3. 实体名使用文中原文；别名放入 aliases
+4. 关系必须有文中依据（同句或相邻句），且 source/target 必须是已抽取实体的 name
+5. 每个片段最多 ${maxEntities} 个实体、${maxRelations} 个关系
+6. 无法归类时用实体类型 CONCEPT、关系类型 RELATED_TO
+
+## 实体类型
+- PERSON: 人物、角色（如 张三、审核员）
+- ORGANIZATION: 组织、部门（如 研发中心、财务部）
+- CONCEPT: 术语、概念（如 分布式事务、试用期）
+- DOCUMENT: 文档、规范（如 《员工手册》）
+- PROCESS: 流程、活动（如 入职流程、发布流程）
+- PRODUCT: 产品、系统（如 知识库、CRM、Redis）
+- LOCATION: 地点（如 北京、会议室 A）
+- TIME: 时间、周期（如 2026-Q1、每周一）
+- POLICY: 政策、制度条款
+- RESOURCE: 文件、工具、设备（如 Docker、培训课件）
+
+## 关系类型
+- HAS_PART: 组成、包含
+- BELONGS_TO: 归属
+- RELATED_TO: 泛关联（兜底）
+- DEFINES: 定义、解释
+- REQUIRES: 前置条件、依赖
+- USES: 使用
+- RESPONSIBLE_FOR: 负责
+- PARTICIPATES_IN: 参与
+- LOCATED_IN: 位于
+- OCCURS_AT: 发生于（时间）
+- CAUSES: 导致、因果
+- CONFLICTS_WITH: 冲突、例外
+
+只返回 JSON，不要 markdown 或其它说明。关系对象的字段名是 relation（不要写成 type）。示例：
+{"entities":[{"name":"财务部","type":"ORGANIZATION","description":"","aliases":[]}],"relations":[{"source":"财务部","target":"差旅报销","relation":"RESPONSIBLE_FOR","weight":0.8}]}`;
+}</code></pre></div>
             <p class="file-path">src/pipeline/extraction.service.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BaseLanguageModelInput } from '@langchain/core/language_models/base';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { Runnable } from '@langchain/core/runnables';
+import { ChatOpenAI } from '@langchain/openai';
+import {
+  buildExtractionSystemPrompt,
+  kgExtractionResultSchema,
+  KgExtractionLlmOutput,
+  normalizeEntityType,
+  normalizeRelationType,
+} from './kg-extraction.schema';
 
+/** source -[relation]-&gt; target（对齐 origin） */
 export interface ExtractionResult {
-  entities: { name: string; type: string }[];
-  relations: { from: string; to: string; type: string }[];
+  entities: {
+    name: string;
+    type: string;
+    description?: string;
+    aliases?: string[];
+  }[];
+  relations: {
+    source: string;
+    target: string;
+    relation: string;
+    weight?: number;
+  }[];
 }
 
 @Injectable()
 export class ExtractionService {
   private readonly logger = new Logger(ExtractionService.name);
   private readonly mode: string;
+  private readonly maxEntities: number;
+  private readonly maxRelations: number;
+  private readonly structuredLlm?: Runnable&lt;
+    BaseLanguageModelInput,
+    KgExtractionLlmOutput
+  &gt;;
 
   constructor(config: ConfigService) {
-    this.mode = config.get('KG_EXTRACT_MODE', 'mock');
+    this.mode = (config.get&lt;string&gt;('KG_EXTRACT_MODE', 'mock') || 'mock')
+      .trim()
+      .toLowerCase();
+    this.maxEntities = Number(config.get('KG_MAX_ENTITIES', 12));
+    this.maxRelations = Number(config.get('KG_MAX_RELATIONS', 15));
+
+    if (this.mode !== 'llm') {
+      this.logger.log('KG 抽取模式：mock');
+      return;
+    }
+
+    const apiKey =
+      config.get&lt;string&gt;('OPENAI_API_KEY') ||
+      config.get&lt;string&gt;('LLM_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY');
+
+    if (!apiKey) {
+      this.logger.warn('KG_EXTRACT_MODE=llm 但无 API Key，回退 mock');
+      return;
+    }
+
+    const baseUrl =
+      config.get&lt;string&gt;('OPENAI_BASE_URL') ||
+      config.get&lt;string&gt;('LLM_BASE_URL') ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const model =
+      config.get&lt;string&gt;('MODEL_NAME') ||
+      config.get&lt;string&gt;('LLM_MODEL') ||
+      'qwen-plus';
+    const timeout = Number(config.get('KG_LLM_TIMEOUT_MS', 60000));
+
+    const llm = new ChatOpenAI({
+      apiKey,
+      model,
+      temperature: 0.1,
+      timeout: Number.isFinite(timeout) &amp;&amp; timeout &gt; 0 ? timeout : 60000,
+      maxRetries: 0,
+      useResponsesApi: false, // DashScope 用 Chat Completions
+      configuration: { baseURL: baseUrl },
+    });
+
+    this.structuredLlm = llm.withStructuredOutput(kgExtractionResultSchema, {
+      name: 'extract_knowledge_graph',
+    });
+    this.logger.log(`KG 抽取模式：llm model=${model}`);
   }
 
-  async extract(content: string, _heading?: string): Promise&lt;ExtractionResult&gt; {
-    if (this.mode === 'llm') {
-      // 可选：对照 origin extraction.service.ts 接 ChatOpenAI.withStructuredOutput
-      this.logger.warn('llm 模式未在练习课展开，回退 mock');
+  async extract(
+    content: string,
+    heading?: string | null,
+    documentTitle = '',
+  ): Promise&lt;ExtractionResult&gt; {
+    if (!content?.trim()) return { entities: [], relations: [] };
+
+    if (this.mode === 'llm' &amp;&amp; this.structuredLlm) {
+      try {
+        return await this.extractByLlm(content, heading, documentTitle);
+      } catch (e) {
+        this.logger.error(
+          `LLM 抽取失败，回退 mock：${e instanceof Error ? e.message : e}`,
+        );
+        return this.mockExtract(content);
+      }
     }
     return this.mockExtract(content);
   }
 
-  /** 抽出「连续中文词 / 大写英文词」当实体，相邻实体连 RELATED_TO */
+  private async extractByLlm(
+    content: string,
+    heading: string | null | undefined,
+    documentTitle: string,
+  ): Promise&lt;ExtractionResult&gt; {
+    if (!this.structuredLlm) throw new Error('structuredLlm 未初始化');
+
+    const system = buildExtractionSystemPrompt(
+      this.maxEntities,
+      this.maxRelations,
+    );
+    const user = `文档标题: ${documentTitle}\n章节: ${heading ?? '无'}\n\n内容:\n${content.slice(0, 4000)}`;
+
+    const started = Date.now();
+    const parsed = await this.structuredLlm.invoke([
+      new SystemMessage(system),
+      new HumanMessage(user),
+    ]);
+    this.logger.log(
+      `KG LLM 抽取完成：elapsed=${Date.now() - started}ms, entities=${parsed.entities?.length ?? 0}`,
+    );
+    return this.toExtractionResult(parsed);
+  }
+
+  private toExtractionResult(parsed: KgExtractionLlmOutput): ExtractionResult {
+    const entityNames = new Set&lt;string&gt;();
+    const entities: ExtractionResult['entities'] = [];
+    for (const e of (parsed.entities ?? []).slice(0, this.maxEntities)) {
+      const name = (e.name ?? '').trim();
+      if (!name) continue;
+      entityNames.add(name);
+      entities.push({
+        name,
+        type: normalizeEntityType(e.type),
+        description: (e.description ?? '').trim(),
+        aliases: (e.aliases ?? []).map((a) =&gt; String(a).trim()).filter(Boolean),
+      });
+    }
+
+    const relations: ExtractionResult['relations'] = [];
+    for (const r of (parsed.relations ?? []).slice(0, this.maxRelations)) {
+      const source = (r.source ?? '').trim();
+      const target = (r.target ?? '').trim();
+      if (
+        !source ||
+        !target ||
+        !entityNames.has(source) ||
+        !entityNames.has(target)
+      ) {
+        continue;
+      }
+      relations.push({
+        source,
+        target,
+        relation: normalizeRelationType(r.relation ?? r.type),
+        weight: typeof r.weight === 'number' ? r.weight : 0.5,
+      });
+    }
+    return { entities, relations };
+  }
+
   private mockExtract(content: string): ExtractionResult {
     const names = new Set&lt;string&gt;();
     for (const m of content.matchAll(/[\u4e00-\u9fff]{2,8}/g)) {
       names.add(m[0]);
-      if (names.size &gt;= 12) break;
+      if (names.size &gt;= this.maxEntities) break;
     }
     for (const m of content.matchAll(/\b[A-Z][a-zA-Z]{2,}\b/g)) {
       names.add(m[0]);
-      if (names.size &gt;= 16) break;
+      if (names.size &gt;= this.maxEntities) break;
     }
-    const entities = [...names].map((name) =&gt; ({ name, type: 'Concept' }));
+    const entities = [...names].map((name) =&gt; ({ name, type: 'CONCEPT' }));
     const relations: ExtractionResult['relations'] = [];
-    for (let i = 0; i &lt; entities.length - 1 &amp;&amp; relations.length &lt; 15; i++) {
+    for (
+      let i = 0;
+      i &lt; entities.length - 1 &amp;&amp; relations.length &lt; this.maxRelations;
+      i++
+    ) {
       relations.push({
-        from: entities[i].name,
-        to: entities[i + 1].name,
-        type: 'RELATED_TO',
+        source: entities[i].name,
+        target: entities[i + 1].name,
+        relation: 'RELATED_TO',
+        weight: 0.5,
       });
     }
     return { entities, relations };
   }
 }</code></pre></div>
+            <p>
+              记得在 <code>PipelineModule</code> 的 providers/exports 里加上
+              <code>ExtractionService</code>。
+            </p>
           </li>
           <li>
             <h4>GraphBuildService（完整要点）</h4>
@@ -330,6 +637,8 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         );
         const { entities, relations } = await this.extraction.extract(
           ch.content,
+          null,
+          doc.title,
         );
         for (const e of entities) {
           await session.run(
@@ -346,7 +655,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
              MATCH (b:KnowledgeEntity {name: $to})
              MERGE (a)-[rel:RELATED_TO]-&gt;(b)
              SET rel.type = $type`,
-            { from: r.from, to: r.to, type: r.type },
+            { from: r.source, to: r.target, type: r.relation },
           );
         }
       }
@@ -412,7 +721,7 @@ curl -s 'http://localhost:3000/graph/search?keyword=知识' \
         <table>
           <thead><tr><th>origin</th><th>本课</th></tr></thead>
           <tbody>
-            <tr><td>LLM structured output 抽实体</td><td>默认 mock 规则；llm 可后续对齐</td></tr>
+            <tr><td>LLM structured output 抽实体</td><td>已接 ChatOpenAI.withStructuredOutput；默认也可 mock</td></tr>
             <tr><td>更完整的图查询 / 清理 Cypher</td><td>最小可演示子集</td></tr>
             <tr><td>APOC 插件</td><td>不依赖</td></tr>
           </tbody>
