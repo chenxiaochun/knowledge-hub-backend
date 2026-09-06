@@ -16,8 +16,8 @@ export class ChunkingService {
   private readonly overlap: number | undefined = undefined;
 
   constructor(private readonly configService: ConfigService) {
-    this.chunkSize = this.configService.get('RAG_CHUNK_CHARS') || 800;
-    this.overlap = this.configService.get('RAG_CHUNK_OVERLAP_CHARS') || 100;
+    this.chunkSize = Number(this.configService.get('RAG_CHUNK_CHARS', 800));
+    this.overlap = Number(this.configService.get('RAG_CHUNK_OVERLAP_CHARS', 100));
   }
 
   chunk(params: { content: string; documentId: string; documentTitle: string }): DocumentChunk[] {
