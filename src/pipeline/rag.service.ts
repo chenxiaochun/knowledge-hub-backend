@@ -35,6 +35,7 @@ export class RagService {
   async reindexByIds(documentIds: string[]) {
     for (const id of documentIds) {
       try {
+        await this.reindexOne(id);
       } catch (error) {
         this.logger.error(`Error reindexing document ${id}: ${error}`);
       }
@@ -44,6 +45,7 @@ export class RagService {
   async deleteByDocIds(documentIds: string[]) {
     for (const id of documentIds) {
       try {
+        await this.vectorIndex.deleteByDocId(id);
       } catch (error) {
         this.logger.error(`Error deleting document ${id}: ${error}`);
       }
@@ -57,10 +59,9 @@ export class RagService {
       return;
     }
 
-    const contentDoc = await this.contentModel
-      .findOne({ where: { documentId, deleted: false } })
-      .lean();
-    const content = contentDoc?.content.trim() ?? '';
+    // Mongoose 用普通 filter，不是 TypeORM 的 { where: ... }
+    const contentDoc = await this.contentModel.findOne({ documentId, deleted: false }).lean();
+    const content = contentDoc?.content?.trim() ?? '';
     if (!content) {
       this.logger.error(`Content for document ${documentId} is empty`);
       return;

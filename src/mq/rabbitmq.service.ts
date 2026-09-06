@@ -67,14 +67,21 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
             }
             try {
               await handler(msg);
-              // 确认消息
-              channel.ack(msg);
+              // 处理成功：确认并出队
+              try {
+                channel.ack(msg);
+              } catch (ackErr) {
+                this.logger.error(`ack 失败（channel 可能已关闭）: ${ackErr}`);
+              }
             } catch (error) {
               this.logger.error(`处理消息失败: ${error}`);
-              // 拒绝消息, 不重试
-              channel.nack(msg, false, false);
-            } finally {
-              channel.ack(msg);
+              try {
+                // 拒绝且不重回队列，避免毒消息死循环
+                channel.nack(msg, false, false);
+              } catch (nackErr) {
+                // channel 已断时 nack 也会抛，只记日志，避免二次打挂进程
+                this.logger.error(`nack 失败（channel 可能已关闭）: ${nackErr}`);
+              }
             }
           });
         }
