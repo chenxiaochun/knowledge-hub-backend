@@ -7,9 +7,9 @@ import {
   RAG_REINDEX_EXCHANGE,
   RAG_RK_BY_IDS,
   RAG_RK_DELETE,
-  KG_BUILD_EXCHANGE,
-  KG_RK_BY_DOC_IDS,
-  KG_RK_DELETE_BY_DOC_IDS,
+  KG_GRAPH_EXCHANGE,
+  KG_RK_BUILD_BY_IDS,
+  KG_RK_DELETE,
 } from './mq.constant';
 import { KgBuildMessage, ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
 import { RabbitMQService } from './rabbitmq.service';
@@ -92,7 +92,7 @@ export class DocumentPipelinePublisher {
       type: 'BY_DOC_IDS',
       documentIds: [documentId],
     };
-    const ok = await this.rabbit.publish(KG_BUILD_EXCHANGE, KG_RK_BY_DOC_IDS, message);
+    const ok = await this.rabbit.publish(KG_GRAPH_EXCHANGE, KG_RK_BUILD_BY_IDS, message);
     this.logger.log(
       `KG 构建${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
     );
@@ -104,7 +104,7 @@ export class DocumentPipelinePublisher {
       type: 'DELETE_BY_DOC_IDS',
       documentIds: [documentId],
     };
-    const ok = await this.rabbit.publish(KG_BUILD_EXCHANGE, KG_RK_DELETE_BY_DOC_IDS, message);
+    const ok = await this.rabbit.publish(KG_GRAPH_EXCHANGE, KG_RK_DELETE, message);
     this.logger.log(
       `KG 删除${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
     );

@@ -1,6 +1,15 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
 import neo4j, { Driver } from 'neo4j-driver';
+import { Model } from 'mongoose';
+import { Repository } from 'typeorm';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentDocument,
+} from '../document/schemas/document-content.schema';
 import { ChunkingService } from './chunking.service';
 import { ExtractionService } from './extraction.service';
 
@@ -13,6 +22,10 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly chunking: ChunkingService,
     private readonly extraction: ExtractionService,
+    @InjectRepository(DocumentEntity)
+    private readonly docRepo: Repository<DocumentEntity>,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model<DocumentContentDocument>,
   ) {}
 
   async onModuleInit() {
@@ -39,6 +52,42 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     await this.driver?.close();
   }
 
+  /** 供 MQ Consumer：按文档 ID 读库后构建图谱 */
+  async buildByDocIds(documentIds: string[]) {
+    for (const id of documentIds) {
+      try {
+        await this.buildByDocId(id);
+      } catch (error) {
+        this.logger.error(`KG 构建失败 documentId=${id}: ${error}`);
+      }
+    }
+  }
+
+  async deleteByDocIds(documentIds: string[]) {
+    for (const id of documentIds) {
+      try {
+        await this.deleteForDocument(id);
+      } catch (error) {
+        this.logger.error(`KG 删除失败 documentId=${id}: ${error}`);
+      }
+    }
+  }
+
+  async buildByDocId(documentId: string) {
+    const doc = await this.docRepo.findOne({ where: { id: documentId, deleted: false } });
+    if (!doc) {
+      this.logger.warn(`文档不存在，跳过 KG：documentId=${documentId}`);
+      return;
+    }
+    const contentDoc = await this.contentModel.findOne({ documentId, deleted: false }).lean();
+    const content = contentDoc?.content?.trim() ?? '';
+    if (!content) {
+      this.logger.warn(`正文为空，跳过 KG：documentId=${documentId}`);
+      return;
+    }
+    await this.buildForDocument({ id: doc.id, title: doc.title, content });
+  }
+
   async deleteForDocument(documentId: string) {
     if (!this.driver) return;
     const session = this.driver.session();
@@ -56,7 +105,10 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
   }
 
   async buildForDocument(doc: { id: string; title: string; content: string }) {
-    if (!this.driver) return;
+    if (!this.driver) {
+      this.logger.warn(`Neo4j 未连接，跳过 KG 构建：documentId=${doc.id}`);
+      return;
+    }
     await this.deleteForDocument(doc.id);
     const session = this.driver.session();
     try {

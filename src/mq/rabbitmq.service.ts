@@ -11,6 +11,10 @@ import {
   RAG_REINDEX_QUEUE,
   RAG_RK_BY_IDS,
   RAG_RK_DELETE,
+  KG_GRAPH_EXCHANGE,
+  KG_GRAPH_QUEUE,
+  KG_RK_BUILD_BY_IDS,
+  KG_RK_DELETE,
 } from './mq.constant';
 
 export type MessageHandler = (msg: ConsumeMessage) => Promise<void> | void;
@@ -49,16 +53,20 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         // 创建交换器, 持久化
         await channel.assertExchange(SEARCH_INDEX_EXCHANGE, 'topic', { durable: true });
         await channel.assertExchange(RAG_REINDEX_EXCHANGE, 'topic', { durable: true });
+        await channel.assertExchange(KG_GRAPH_EXCHANGE, 'topic', { durable: true });
 
         // 创建队列, 持久化
         await channel.assertQueue(SEARCH_INDEX_QUEUE, { durable: true });
         await channel.assertQueue(RAG_REINDEX_QUEUE, { durable: true });
+        await channel.assertQueue(KG_GRAPH_QUEUE, { durable: true });
 
         // 绑定队列到交换器
         await channel.bindQueue(SEARCH_INDEX_QUEUE, SEARCH_INDEX_EXCHANGE, SEARCH_RK_INDEX);
         await channel.bindQueue(SEARCH_INDEX_QUEUE, SEARCH_INDEX_EXCHANGE, SEARCH_RK_DELETE);
         await channel.bindQueue(RAG_REINDEX_QUEUE, RAG_REINDEX_EXCHANGE, RAG_RK_BY_IDS);
         await channel.bindQueue(RAG_REINDEX_QUEUE, RAG_REINDEX_EXCHANGE, RAG_RK_DELETE);
+        await channel.bindQueue(KG_GRAPH_QUEUE, KG_GRAPH_EXCHANGE, KG_RK_BUILD_BY_IDS);
+        await channel.bindQueue(KG_GRAPH_QUEUE, KG_GRAPH_EXCHANGE, KG_RK_DELETE);
 
         for (const [queue, handler] of this.handlers) {
           await channel.consume(queue, async (msg) => {

@@ -66,9 +66,10 @@ export class ExtractionService {
       },
     });
 
+    // withStructuredOutput 对含 transform 的 Zod schema 会把 aliases 推断成 string | string[]
     this.structuredLlm = llm.withStructuredOutput(kgExtractionResultSchema, {
       name: 'extract_knowledge_graph',
-    });
+    }) as Runnable<BaseLanguageModelInput, KgExtractionLlmOutput>;
 
     this.logger.log('ExtractionService initialized successfully');
   }
@@ -137,7 +138,9 @@ export class ExtractionService {
         name,
         type: normalizeEntityType(e.type),
         description: e.description?.trim(),
-        aliases: (e.aliases ?? []).map((a) => String(a).trim()).filter(Boolean), // 兼容 number 类型, 字符串类型转换
+        aliases: (Array.isArray(e.aliases) ? e.aliases : e.aliases ? [String(e.aliases)] : [])
+          .map((a) => String(a).trim())
+          .filter(Boolean),
       });
     }
 
@@ -150,7 +153,7 @@ export class ExtractionService {
       relations.push({
         source,
         target,
-        relation: normalizeRelationType(r.relation),
+        relation: normalizeRelationType(r.relation ?? r.type),
       });
     }
 

@@ -65,7 +65,22 @@ export const kgExtractedEntitySchema = z.object({
   // string 而非 enum：模型常返回中文类型或额外字段，交给 normalizeEntityType 归类
   type: z.string().describe('实体类型').optional(),
   description: z.string().describe('简短描述，可空').optional(),
-  aliases: z.array(z.string()).describe('别名').optional(),
+  // 模型常把 aliases 写成字符串；统一 transform 成 string[]
+  aliases: z
+    .union([z.array(z.string()), z.string()])
+    .transform((value): string[] => {
+      if (Array.isArray(value)) return value;
+      const t = value.trim();
+      if (!t) return [];
+      return /[,，、;；]/.test(t)
+        ? t
+            .split(/[,，、;；]/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : [t];
+    })
+    .optional()
+    .describe('别名'),
 });
 
 /** LLM 结构化输出：关系 */
@@ -89,7 +104,8 @@ export const kgExtractionResultSchema = z
   })
   .describe('从文档片段抽取的知识实体与关系');
 
-export type KgExtractionLlmOutput = z.infer<typeof kgExtractionResultSchema>;
+/** 使用 output：含 transform 后 aliases 为 string[] */
+export type KgExtractionLlmOutput = z.output<typeof kgExtractionResultSchema>;
 
 /** 构建 LLM system prompt */
 export function buildExtractionSystemPrompt(
