@@ -22,21 +22,20 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly chunking: ChunkingService,
     private readonly extraction: ExtractionService,
+
     @InjectRepository(DocumentEntity)
     private readonly docRepo: Repository<DocumentEntity>,
+
     @InjectModel(DocumentContent.name)
     private readonly contentModel: Model<DocumentContentDocument>,
   ) {}
 
   async onModuleInit() {
     if (this.config.get('NEO4J_ENABLED', 'true') === 'false') return;
-    const uri = this.config.get('NEO4J_URI', 'bolt://localhost:7687');
+    const uri = this.config.get('NEO4J_URI');
     this.driver = neo4j.driver(
       uri,
-      neo4j.auth.basic(
-        this.config.get('NEO4J_USER', 'neo4j'),
-        this.config.get('NEO4J_PASSWORD', '12345678'),
-      ),
+      neo4j.auth.basic(this.config.get('NEO4J_USER')!, this.config.get('NEO4J_PASSWORD')!),
     );
     try {
       await this.driver.verifyConnectivity();

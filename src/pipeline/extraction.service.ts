@@ -102,6 +102,7 @@ export class ExtractionService {
     };
   }
 
+  /** 通过 LLM 抽取知识图谱 */
   async extractByLlm(
     content: string,
     heading: string | null,
@@ -126,10 +127,12 @@ export class ExtractionService {
     return this.toExtractionResult(parsed);
   }
 
+  /** 将 LLM 抽取的知识图谱结果转换为 ExtractionResult */
   async toExtractionResult(parsed: KgExtractionLlmOutput): Promise<ExtractionResult> {
     const entityNames = new Set<string>();
     const entities: ExtractionResult['entities'] = [];
 
+    // 抽取实体, 最多抽取 this.maxEntities 个
     for (const e of (parsed.entities ?? []).slice(0, this.maxEntities)) {
       const name = e.name.trim();
       if (!name) continue;
@@ -138,6 +141,8 @@ export class ExtractionService {
         name,
         type: normalizeEntityType(e.type),
         description: e.description?.trim(),
+        // 抽取别名, 最多抽取 this.maxAliases 个, 如果别名是数组, 则取第一个, 如果别名是字符串, 则直接取
+        // 别名的意义是: 同一个实体可能有多个名称, 例如 "财务部" 和 "财务部门" 是同一个实体, 但是它们的别名不同
         aliases: (Array.isArray(e.aliases) ? e.aliases : e.aliases ? [String(e.aliases)] : [])
           .map((a) => String(a).trim())
           .filter(Boolean),
