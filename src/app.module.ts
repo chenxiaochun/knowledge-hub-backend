@@ -1,16 +1,17 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UserModule } from './user/user.module';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { UserEntity } from './user/entities/user.entity';
-import { DocumentEntity } from './document/entities/document.entity';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
-import { StorageModule } from './storage/storage.module';
-import { MongooseModule } from '@nestjs/mongoose';
+import { DocumentEntity } from './document/entities/document.entity';
 import { SearchModule } from './search/search.module';
+import { StorageModule } from './storage/storage.module';
+import { UserEntity } from './user/entities/user.entity';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
