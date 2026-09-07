@@ -117,43 +117,112 @@
       <section id="goal">
         <h2>一句话目标</h2>
         <p>
-          补齐与 origin 的「周边能力」：<strong>Team</strong> 简易 CRUD，
-          以及<strong>邮件激活 / 重置密码</strong>的接线方式；最后用清单对照
-          练习版还简化了什么，方便你决定要不要继续对齐。
+          补齐周边能力：<strong>Team CRUD</strong>（含树形列表），以及
+          <strong>邮箱激活</strong>最小闭环（注册发链接 → 点开激活）。
+          重置密码给完整练习版实现（内存存验证码 + Logger/SMTP 发信）。
+          最后对照清单看练习版相对 origin 还差什么。
         </p>
         <div class="callout-tip">
-          <strong>自测</strong>：能创建/分页团队；
-          能说清邮件链路涉及哪些类（即使本地用 Ethereal / 日志代替真发信）。
+          <strong>自测通过</strong>：
+          ① <code>POST /teams</code> 创建团队，<code>GET /teams/page</code> 能列出；
+          ② <code>GET /teams/tree</code> 返回树；
+          ③ <code>REQUIRE_EMAIL_VERIFICATION=true</code> 时注册后日志/邮件里有激活链接，
+          <code>GET /auth/verify-email?token=…</code> 返回成功。
         </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 1–2 课 User + Auth 已通。本课邮件默认用
+          <strong>Logger 打印链接</strong>（无需 SMTP）；可选接 MailerModule。
+          激活 token 用<strong>内存 Map</strong>（进程重启丢失），对齐 origin 时可换成 Redis。
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">TOKEN=$(curl -s -X POST http://localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .accessToken)
+
+# Team
+curl -s -X POST http://localhost:3000/teams \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"teamName":"研发中心","teamCode":"RD"}'
+
+curl -s 'http://localhost:3000/teams/page?page=1&amp;pageSize=10' \
+  -H "Authorization: Bearer $TOKEN"
+
+curl -s http://localhost:3000/teams/tree
+
+# 邮件激活（REQUIRE_EMAIL_VERIFICATION=true）
+curl -s -X POST http://localhost:3000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"carol","password":"secret12","email":"carol@example.com"}'
+# 看 Nest 日志里的激活链接，复制 token：
+curl -s 'http://localhost:3000/auth/verify-email?token=&lt;token&gt;'</code></pre></div>
       </section>
+
       <section id="concept">
         <h2>概念</h2>
         <table>
-          <thead><tr><th>模块</th><th>origin 路径</th><th>练习建议</th></tr></thead>
+          <thead><tr><th>能力</th><th>本课做法</th><th>origin</th></tr></thead>
           <tbody>
-            <tr><td>Team</td><td><code>src/team/</code></td><td>单表 CRUD + tree 可选</td></tr>
-            <tr><td>邮件</td><td><code>auth/email*.ts</code></td><td>MailerModule + 激活 token 表或 Redis</td></tr>
-            <tr><td>权限码</td><td><code>@RequirePermission</code></td><td>可继续只用 Roles，或补 PermissionsGuard</td></tr>
+            <tr><td>Team</td><td>单表 <code>kh_team</code> CRUD + tree</td><td>另有 <code>kh_team_member</code> 成员表</td></tr>
+            <tr><td>发信</td><td><code>EmailService</code>：Logger 或 Mailer</td><td><code>@nestjs-modules/mailer</code></td></tr>
+            <tr><td>激活 token</td><td>进程内 Map + TTL</td><td>Redis</td></tr>
+            <tr><td>重置密码</td><td>内存验证码 + 接口</td><td>Redis + 完整 DTO</td></tr>
           </tbody>
         </table>
+        <div class="flow">注册（需验证邮箱）
+  → UserService.register(emailVerified=0)
+  → EmailActivationService.createToken(userId)
+  → EmailService.sendActivationEmail（日志或 SMTP）
+  → 用户打开 GET /auth/verify-email?token=
+  → consumeToken → emailVerified=1</div>
       </section>
+
       <section id="files">
         <h2>本课文件清单</h2>
         <table>
           <thead><tr><th>路径</th><th>动作</th></tr></thead>
           <tbody>
             <tr><td><code>src/team/entities/team.entity.ts</code></td><td>新建</td></tr>
-            <tr><td><code>src/team/team.service.ts</code> 等</td><td>新建简易 CRUD</td></tr>
-            <tr><td><code>src/auth/email.service.ts</code>（可选）</td><td>发信抽象</td></tr>
-            <tr><td>对照清单（本节）</td><td>收尾自检</td></tr>
+            <tr><td><code>src/team/dto/team.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/team/team.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/team/team.controller.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/team/team.module.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/email.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/email-activation.service.ts</code></td><td>新建（内存）</td></tr>
+            <tr><td><code>src/auth/password-reset.service.ts</code></td><td>新建（内存）</td></tr>
+            <tr><td><code>src/user/entities/user.entity.ts</code></td><td>补 <code>emailVerified</code>（若没有）</td></tr>
+            <tr><td><code>src/user/user.service.ts</code> / <code>auth.service.ts</code> / <code>auth.controller.ts</code></td><td>接线激活与重置</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>注册 TeamModule、Entity</td></tr>
+            <tr><td><code>.env</code></td><td>邮件 / 激活开关</td></tr>
           </tbody>
         </table>
       </section>
+
       <section id="steps">
         <h2>逐步实现</h2>
         <ol class="step-list">
           <li>
-            <h4>Team Entity + CRUD（完整精简）</h4>
+            <h4>环境变量</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># .env 追加
+REQUIRE_EMAIL_VERIFICATION=false
+APP_PUBLIC_URL=http://localhost:3000
+# 发信：log=只打日志；smtp=走 nodemailer（需 MAIL_*）
+MAIL_TRANSPORT=log
+MAIL_HOST=localhost
+MAIL_PORT=1025
+MAIL_USER=
+MAIL_PASS=
+MAIL_FROM="Knowledge Hub &lt;noreply@example.com&gt;"
+MAIL_SECURE=false</code></pre></div>
+            <p>可选依赖（仅 smtp 模式需要）：</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add @nestjs-modules/mailer nodemailer
+pnpm add -D @types/nodemailer</code></pre></div>
+          </li>
+
+          <li>
+            <h4>Team Entity（对齐 origin 字段名）</h4>
             <p class="file-path">src/team/entities/team.entity.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">import {
@@ -170,19 +239,28 @@ export class TeamEntity {
   @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
   id: string;
 
-  @Column({ type: 'varchar', length: 100 })
-  name: string;
+  @Column({ name: 'team_name', type: 'varchar', length: 100 })
+  teamName: string;
+
+  @Column({ name: 'team_code', type: 'varchar', length: 50, nullable: true })
+  teamCode?: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  description?: string | null;
 
   @Column({
     name: 'parent_id',
     type: 'bigint',
-    nullable: true,
+    default: '0',
     transformer: bigintTransformer,
   })
-  parentId?: string | null;
+  parentId: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  remark?: string | null;
+  @Column({ type: 'int', default: 0 })
+  sort: number;
+
+  @Column({ type: 'smallint', default: 1 })
+  status: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -193,32 +271,644 @@ export class TeamEntity {
   @Column({ type: 'boolean', default: false })
   deleted: boolean;
 }</code></pre></div>
-            <p>Service：create / update / softDelete / page（ILIKE name）；Controller：<code>@Roles(RoleCode.ADMIN)</code> + <code>/teams</code>。<code>AppModule</code> entities 注册 <code>TeamEntity</code>。</p>
           </li>
-          <li>
-            <h4>邮件能力怎么对齐（可先读后做）</h4>
-            <p>origin 链路：</p>
-            <div class="flow">register(requireEmailVerification)
-  → EmailActivationService.createToken
-  → EmailService.sendActivationEmail
-  → GET /auth/verify-email?token=
-  → 用户 emailVerified=1
 
-重置密码：
-  send-code → Redis/存储验证码 → reset</div>
-            <p>练习版最小实现：</p>
-            <ul>
-              <li><code>pnpm add @nestjs-modules/mailer nodemailer</code></li>
-              <li><code>MAIL_*</code> 指向 Mailhog / Ethereal；开发环境也可 <code>EmailService</code> 只 <code>Logger.log</code> 打印链接</li>
-              <li>激活 token 可先放 Postgres 一张小表，或 Redis（第 2 课曾留空）</li>
-            </ul>
+          <li>
+            <h4>Team DTO（完整）</h4>
+            <p class="file-path">src/team/dto/team.dto.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+
+export class CreateTeamDto {
+  @IsString()
+  teamName: string;
+
+  @IsOptional()
+  @IsString()
+  teamCode?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  parentId?: string;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  sort?: number;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  status?: number;
+}
+
+export class UpdateTeamDto {
+  @IsOptional()
+  @IsString()
+  teamName?: string;
+
+  @IsOptional()
+  @IsString()
+  teamCode?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  parentId?: string;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  sort?: number;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  status?: number;
+}
+
+export class QueryTeamDto {
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  status?: number;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() =&gt; Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number = 20;
+}</code></pre></div>
+          </li>
+
+          <li>
+            <h4>TeamService（完整）</h4>
+            <p class="file-path">src/team/team.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { CreateTeamDto, QueryTeamDto, UpdateTeamDto } from './dto/team.dto';
+import { TeamEntity } from './entities/team.entity';
+
+@Injectable()
+export class TeamService {
+  constructor(
+    @InjectRepository(TeamEntity)
+    private readonly teamRepo: Repository&lt;TeamEntity&gt;,
+  ) {}
+
+  private async findByIdOrThrow(id: string) {
+    const team = await this.teamRepo.findOne({
+      where: { id, deleted: false },
+    });
+    if (!team) throw new NotFoundException('团队不存在');
+    return team;
+  }
+
+  async create(dto: CreateTeamDto) {
+    const team = this.teamRepo.create({
+      id: nextSnowflakeId(),
+      teamName: dto.teamName,
+      teamCode: dto.teamCode ?? null,
+      description: dto.description ?? null,
+      parentId: dto.parentId ?? '0',
+      sort: dto.sort ?? 0,
+      status: dto.status ?? 1,
+      deleted: false,
+    });
+    return this.teamRepo.save(team);
+  }
+
+  async update(id: string, dto: UpdateTeamDto) {
+    const team = await this.findByIdOrThrow(id);
+    if (dto.teamName !== undefined) team.teamName = dto.teamName;
+    if (dto.teamCode !== undefined) team.teamCode = dto.teamCode;
+    if (dto.description !== undefined) team.description = dto.description;
+    if (dto.parentId !== undefined) {
+      if (dto.parentId === id) {
+        throw new BadRequestException('父团队不能是自己');
+      }
+      team.parentId = dto.parentId;
+    }
+    if (dto.sort !== undefined) team.sort = dto.sort;
+    if (dto.status !== undefined) team.status = dto.status;
+    return this.teamRepo.save(team);
+  }
+
+  async delete(id: string) {
+    const team = await this.findByIdOrThrow(id);
+    const childCount = await this.teamRepo.count({
+      where: { parentId: id, deleted: false },
+    });
+    if (childCount &gt; 0) {
+      throw new BadRequestException('存在子团队，无法删除');
+    }
+    team.deleted = true;
+    await this.teamRepo.save(team);
+    return { message: '删除成功' };
+  }
+
+  async getDetail(id: string) {
+    return this.findByIdOrThrow(id);
+  }
+
+  async page(query: QueryTeamDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const qb = this.teamRepo
+      .createQueryBuilder('t')
+      .where('t.deleted = false');
+    if (query.keyword?.trim()) {
+      qb.andWhere(
+        '(t.team_name ILIKE :kw OR t.team_code ILIKE :kw)',
+        { kw: `%${query.keyword.trim()}%` },
+      );
+    }
+    if (query.status !== undefined) {
+      qb.andWhere('t.status = :status', { status: query.status });
+    }
+    qb.orderBy('t.sort', 'ASC')
+      .addOrderBy('t.created_at', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+    const [items, total] = await qb.getManyAndCount();
+    return { items, total, page, pageSize };
+  }
+
+  async getTree(rootOnly = false) {
+    const teams = await this.teamRepo.find({
+      where: { deleted: false, status: 1 },
+      order: { sort: 'ASC', createdAt: 'ASC' },
+    });
+    const build = (parentId: string): unknown[] =&gt;
+      teams
+        .filter((t) =&gt; t.parentId === parentId)
+        .map((t) =&gt; ({
+          ...t,
+          children: rootOnly ? [] : build(t.id),
+        }));
+    const roots = teams.filter((t) =&gt; !t.parentId || t.parentId === '0');
+    return rootOnly
+      ? roots
+      : roots.map((t) =&gt; ({ ...t, children: build(t.id) }));
+  }
+}</code></pre></div>
+          </li>
+
+          <li>
+            <h4>Team Controller / Module</h4>
+            <p class="file-path">src/team/team.controller.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RoleCode } from '../common/constants/roles';
+import { CreateTeamDto, QueryTeamDto, UpdateTeamDto } from './dto/team.dto';
+import { TeamService } from './team.service';
+
+@Controller('teams')
+export class TeamController {
+  constructor(private readonly teamService: TeamService) {}
+
+  @Post()
+  @Roles(RoleCode.ADMIN)
+  create(@Body() dto: CreateTeamDto) {
+    return this.teamService.create(dto);
+  }
+
+  @Put(':id')
+  @Roles(RoleCode.ADMIN)
+  update(@Param('id') id: string, @Body() dto: UpdateTeamDto) {
+    return this.teamService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(RoleCode.ADMIN)
+  delete(@Param('id') id: string) {
+    return this.teamService.delete(id);
+  }
+
+  @Get('page')
+  @Roles(RoleCode.ADMIN)
+  page(@Query() query: QueryTeamDto) {
+    return this.teamService.page(query);
+  }
+
+  @Public()
+  @Get('tree')
+  getTree(@Query('rootOnly') rootOnly?: string) {
+    return this.teamService.getTree(rootOnly === 'true');
+  }
+
+  @Get(':id')
+  @Roles(RoleCode.ADMIN)
+  getDetail(@Param('id') id: string) {
+    return this.teamService.getDetail(id);
+  }
+}</code></pre></div>
+            <div class="callout-warning">
+              <strong>路由顺序</strong>：<code>page</code> / <code>tree</code> 必须写在 <code>:id</code> 前面。
+            </div>
+            <p class="file-path">src/team/team.module.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { TeamEntity } from './entities/team.entity';
+import { TeamController } from './team.controller';
+import { TeamService } from './team.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([TeamEntity])],
+  controllers: [TeamController],
+  providers: [TeamService],
+  exports: [TeamService],
+})
+export class TeamModule {}</code></pre></div>
+            <p><code>AppModule</code>：<code>imports</code> 加 <code>TeamModule</code>；TypeORM <code>entities</code> 加 <code>TeamEntity</code>。</p>
+          </li>
+
+          <li>
+            <h4>User 补 emailVerified</h4>
+            <p>若 Entity 还没有该字段，追加：</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 0 未验证 1 已验证 */
+@Column({ name: 'email_verified', type: 'smallint', default: 1 })
+emailVerified: number;</code></pre></div>
+          </li>
+
+          <li>
+            <h4>EmailService（完整：log / smtp）</h4>
+            <p class="file-path">src/auth/email.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MailerService } from '@nestjs-modules/mailer';
+
+@Injectable()
+export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
+  private readonly transport: string;
+  private readonly publicUrl: string;
+  private readonly from: string;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly mailer?: MailerService,
+  ) {
+    this.transport = (
+      this.config.get&lt;string&gt;('MAIL_TRANSPORT', 'log') || 'log'
+    ).toLowerCase();
+    this.publicUrl = this.config.get&lt;string&gt;(
+      'APP_PUBLIC_URL',
+      'http://localhost:3000',
+    );
+    this.from = this.config.get&lt;string&gt;(
+      'MAIL_FROM',
+      'Knowledge Hub &lt;noreply@example.com&gt;',
+    );
+  }
+
+  async sendActivationEmail(
+    email: string,
+    username: string,
+    token: string,
+  ): Promise&lt;void&gt; {
+    const link = `${this.publicUrl}/auth/verify-email?token=${token}`;
+    const subject = '激活您的知识库账户';
+    const text = `您好 ${username}，请点击链接激活（24h 内有效）：\n${link}`;
+    const html = `&lt;p&gt;您好 &lt;strong&gt;${username}&lt;/strong&gt;，&lt;/p&gt;
+&lt;p&gt;&lt;a href="${link}"&gt;${link}&lt;/a&gt;&lt;/p&gt;`;
+    await this.dispatch(email, subject, text, html);
+  }
+
+  async sendResetCodeEmail(
+    email: string,
+    username: string,
+    code: string,
+  ): Promise&lt;void&gt; {
+    const subject = '密码重置验证码';
+    const text = `您好 ${username}，验证码：${code}，10 分钟内有效。`;
+    const html = `&lt;p&gt;验证码：&lt;b style="font-size:24px"&gt;${code}&lt;/b&gt;&lt;/p&gt;`;
+    await this.dispatch(email, subject, text, html);
+  }
+
+  private async dispatch(
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+  ) {
+    if (this.transport === 'smtp' &amp;&amp; this.mailer) {
+      await this.mailer.sendMail({ to, from: this.from, subject, text, html });
+      return;
+    }
+    this.logger.log(`[mail:log] to=${to} subject=${subject}\n${text}`);
+  }
+}</code></pre></div>
             <div class="callout-info">
-              不必一次抄全 origin。先保证「能发出去 / 能点开激活」一条路径即可。
+              <code>MAIL_TRANSPORT=log</code> 时不必装 Mailer；若要用 smtp，在
+              <code>AuthModule</code> / <code>AppModule</code> 按 origin 配置
+              <code>MailerModule.forRootAsync</code>，并把 <code>EmailService</code> 注入
+              <code>MailerService</code>（去掉 Optional）。
             </div>
           </li>
+
+          <li>
+            <h4>激活 Token（内存完整实现）</h4>
+            <p class="file-path">src/auth/email-activation.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+
+const TTL_MS = 24 * 3600 * 1000;
+
+@Injectable()
+export class EmailActivationService {
+  /** token → { userId, expireAt } */
+  private readonly byToken = new Map&lt;
+    string,
+    { userId: string; expireAt: number }
+  &gt;();
+  /** userId → token（同一用户只保留一个） */
+  private readonly byUser = new Map&lt;string, string&gt;();
+
+  async createToken(userId: string): Promise&lt;string&gt; {
+    const old = this.byUser.get(userId);
+    if (old) {
+      this.byToken.delete(old);
+      this.byUser.delete(userId);
+    }
+    const token = randomBytes(32).toString('hex');
+    const expireAt = Date.now() + TTL_MS;
+    this.byToken.set(token, { userId, expireAt });
+    this.byUser.set(userId, token);
+    return token;
+  }
+
+  async consumeToken(token: string): Promise&lt;string | null&gt; {
+    const row = this.byToken.get(token);
+    if (!row) return null;
+    this.byToken.delete(token);
+    this.byUser.delete(row.userId);
+    if (Date.now() &gt; row.expireAt) return null;
+    return row.userId;
+  }
+
+  async deleteByToken(token: string): Promise&lt;void&gt; {
+    const row = this.byToken.get(token);
+    this.byToken.delete(token);
+    if (row) this.byUser.delete(row.userId);
+  }
+}</code></pre></div>
+          </li>
+
+          <li>
+            <h4>密码重置验证码（内存完整实现）</h4>
+            <p class="file-path">src/auth/password-reset.service.ts</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable } from '@nestjs/common';
+
+export const RESET_CODE_TTL_MS = 10 * 60 * 1000;
+export const RESET_CODE_COOLDOWN_MS = 60 * 1000;
+
+@Injectable()
+export class PasswordResetService {
+  private readonly store = new Map&lt;
+    string,
+    { code: string; expireAt: number; setAt: number }
+  &gt;();
+
+  private key(email: string) {
+    return email.trim().toLowerCase();
+  }
+
+  async set(email: string, code: string): Promise&lt;void&gt; {
+    const k = this.key(email);
+    this.store.set(k, {
+      code,
+      expireAt: Date.now() + RESET_CODE_TTL_MS,
+      setAt: Date.now(),
+    });
+  }
+
+  async getTtlMs(email: string): Promise&lt;number&gt; {
+    const row = this.store.get(this.key(email));
+    if (!row) return -2;
+    return Math.max(0, row.expireAt - Date.now());
+  }
+
+  /** 距上次发送不足冷却则返回剩余 ms，否则 0 */
+  async cooldownLeftMs(email: string): Promise&lt;number&gt; {
+    const row = this.store.get(this.key(email));
+    if (!row) return 0;
+    const left = RESET_CODE_COOLDOWN_MS - (Date.now() - row.setAt);
+    return left &gt; 0 ? left : 0;
+  }
+
+  async verify(email: string, code: string): Promise&lt;boolean&gt; {
+    const row = this.store.get(this.key(email));
+    if (!row || Date.now() &gt; row.expireAt) return false;
+    return row.code === code;
+  }
+
+  async delete(email: string): Promise&lt;void&gt; {
+    this.store.delete(this.key(email));
+  }
+}</code></pre></div>
+          </li>
+
+          <li>
+            <h4>接线 Auth：注册发激活信 / verify / 重置密码</h4>
+            <p>在 <code>AuthModule</code> providers 加入：
+              <code>EmailService</code>、<code>EmailActivationService</code>、<code>PasswordResetService</code>。</p>
+            <p><code>UserService.register</code> 增加参数与字段（片段）：</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async register(dto: {
+  username: string;
+  password: string;
+  email?: string;
+  realName?: string;
+  requireEmailVerification?: boolean;
+}): Promise&lt;{
+  userId: string;
+  message: string;
+  emailVerificationRequired?: boolean;
+}&gt; {
+  // ...查重、create...
+  const needVerify = !!dto.requireEmailVerification &amp;&amp; !!dto.email;
+  const user = this.userRepo.create({
+    // ...
+    emailVerified: needVerify ? 0 : 1,
+    roleCodes: [RoleCode.USER],
+  });
+  const saved = await this.userRepo.save(user);
+  return {
+    userId: saved.id,
+    message: needVerify ? '注册成功，请查收激活邮件' : '注册成功',
+    emailVerificationRequired: needVerify,
+  };
+}
+
+async markEmailVerified(userId: string) {
+  const user = await this.findByIdOrThrow(userId);
+  user.emailVerified = 1;
+  await this.userRepo.save(user);
+}
+
+async resetPasswordByEmail(email: string, newPassword: string) {
+  const user = await this.userRepo.findOne({
+    where: { email, deleted: false },
+  });
+  if (!user) throw new NotFoundException('用户不存在');
+  user.password = await hash(newPassword, 10);
+  await this.userRepo.save(user);
+}</code></pre></div>
+            <p>登录时建议拦截未激活（片段）：</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// validateCredentials 里，在密码校验通过后：
+if (user.emailVerified === 0) {
+  throw new UnauthorizedException('请先激活邮箱');
+}</code></pre></div>
+            <p class="file-path">AuthService 追加方法（完整）</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// 构造函数注入 EmailService / EmailActivationService / PasswordResetService
+
+private requireEmailVerification(): boolean {
+  return (
+    this.config.get&lt;string&gt;('REQUIRE_EMAIL_VERIFICATION', 'false') === 'true'
+  );
+}
+
+async register(dto: RegisterDto) {
+  const result = await this.userService.register({
+    ...dto,
+    requireEmailVerification: this.requireEmailVerification(),
+  });
+  if (result.emailVerificationRequired &amp;&amp; dto.email) {
+    const token = await this.emailActivation.createToken(result.userId);
+    try {
+      await this.emailService.sendActivationEmail(
+        dto.email,
+        dto.username,
+        token,
+      );
+    } catch {
+      await this.emailActivation.deleteByToken(token);
+      throw new BadRequestException('激活邮件发送失败，请稍后再试');
+    }
+  }
+  return result;
+}
+
+async verifyEmail(token: string) {
+  const userId = await this.emailActivation.consumeToken(token);
+  if (!userId) {
+    throw new BadRequestException('激活链接无效或已过期');
+  }
+  await this.userService.markEmailVerified(userId);
+  return { message: '邮箱激活成功' };
+}
+
+async sendResetCode(dto: { email: string }) {
+  const left = await this.passwordReset.cooldownLeftMs(dto.email);
+  if (left &gt; 0) {
+    throw new BadRequestException(
+      `发送过于频繁，请 ${Math.ceil(left / 1000)} 秒后再试`,
+    );
+  }
+  const user = await this.userService.findByEmail?.(dto.email);
+  // 若没有 findByEmail，用 repo 查；用户不存在也返回成功文案，避免枚举邮箱
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  await this.passwordReset.set(dto.email, code);
+  if (user) {
+    await this.emailService.sendResetCodeEmail(
+      dto.email,
+      user.username,
+      code,
+    );
+  }
+  return { message: '若邮箱已注册，验证码已发送' };
+}
+
+async resetPasswordByEmail(dto: {
+  email: string;
+  code: string;
+  newPassword: string;
+}) {
+  const ok = await this.passwordReset.verify(dto.email, dto.code);
+  if (!ok) throw new BadRequestException('验证码错误或已过期');
+  await this.userService.resetPasswordByEmail(dto.email, dto.newPassword);
+  await this.passwordReset.delete(dto.email);
+  return { message: '密码已重置' };
+}</code></pre></div>
+            <p>给 <code>UserService</code> 补 <code>findByEmail</code>（完整小方法）：</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async findByEmail(email: string): Promise&lt;UserEntity | null&gt; {
+  return this.userRepo.findOne({
+    where: { email, deleted: false },
+  });
+}</code></pre></div>
+            <p class="file-path">auth.controller.ts 追加路由</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Public()
+@Get('verify-email')
+verifyEmail(@Query('token') token: string) {
+  return this.authService.verifyEmail(token);
+}
+
+@Public()
+@Post('password/reset/send-code')
+sendResetCode(@Body() dto: { email: string }) {
+  return this.authService.sendResetCode(dto);
+}
+
+@Public()
+@Post('password/reset')
+resetPassword(
+  @Body() dto: { email: string; code: string; newPassword: string },
+) {
+  return this.authService.resetPasswordByEmail(dto);
+}</code></pre></div>
+            <p>建议为后两个 Body 建正式 DTO（<code>@IsEmail</code>、<code>@MinLength(6)</code>），练习可先内联后补。</p>
+          </li>
+
           <li>
             <h4>发布管线收尾核对</h4>
-            <p>此时 <code>afterPublish</code> 理想状态（对齐 origin 形状）：</p>
+            <p><code>DocumentPipelinePublisher.afterPublish</code> 应对齐三条并行投递：</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">await Promise.all([
   this.triggerRagReindex(documentId),
@@ -226,37 +916,61 @@ export class TeamEntity {
   this.triggerKgBuild(documentId),
 ]);</code></pre></div>
           </li>
+
+          <li>
+            <h4>自测</h4>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 1) Team CRUD（admin token）
+# 2) REQUIRE_EMAIL_VERIFICATION=true 重启后注册 carol，从日志复制 token 激活
+# 3) 未激活账号登录应 401「请先激活邮箱」
+# 4) POST /auth/password/reset/send-code → 日志验证码 → reset</code></pre></div>
+          </li>
+
           <li>
             <h4>练习版 vs origin 总清单</h4>
             <table>
               <thead><tr><th>能力</th><th>练习课大致做到</th><th>origin 还有</th></tr></thead>
               <tbody>
-                <tr><td>User / Auth</td><td>JWT + role_codes 列</td><td>多表 RBAC、权限码 Guard</td></tr>
-                <tr><td>Document 同步</td><td>txt/md + 本地盘</td><td>多格式 parser、RustFS</td></tr>
+                <tr><td>User / Auth</td><td>JWT + role_codes + 邮件激活</td><td>多表 RBAC、权限码 Guard</td></tr>
+                <tr><td>Document</td><td>txt/md + 本地盘</td><td>多格式 parser、RustFS</td></tr>
                 <tr><td>审核</td><td>免审 / 状态机</td><td>kh_document_review 全流程</td></tr>
-                <tr><td>Search</td><td>标准分词</td><td>IK、更多过滤</td></tr>
-                <tr><td>RAG</td><td>滑窗 + mock 向量</td><td>LangChain 切分、线上 Embedding</td></tr>
-                <tr><td>KG</td><td>mock 抽取</td><td>LLM structured + 完整 Cypher</td></tr>
-                <tr><td>Team / Mail</td><td>本课精简</td><td>成员关系、完整邮件模板</td></tr>
+                <tr><td>Search / RAG / KG</td><td>第 5–7 课练习版</td><td>IK、LangChain 切分、完整 Cypher</td></tr>
+                <tr><td>Team</td><td>单表 CRUD + tree</td><td>team_member、leader 等</td></tr>
+                <tr><td>Mail / Token</td><td>Logger + 内存 Map</td><td>Mailer + Redis</td></tr>
               </tbody>
             </table>
           </li>
         </ol>
       </section>
+
       <section id="diff">
         <h2>与 origin 差异</h2>
-        <p>本课是<strong>收尾对齐课</strong>：刻意保留简化，让你带着清单去读 origin，而不是假装已经 1:1。</p>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>TeamMember 成员管理</td><td>不做（可课后对照 <code>team.service</code> addMembers）</td></tr>
+            <tr><td>激活 / 重置码存 Redis</td><td>进程内存（重启丢失）</td></tr>
+            <tr><td>MailerModule 必配</td><td>默认 log；smtp 可选</td></tr>
+            <tr><td>完整 HTML 邮件模板</td><td>精简文本/HTML</td></tr>
+          </tbody>
+        </table>
       </section>
+
       <section id="errors">
-        <h2>常见报错 / 学习建议</h2>
-        <ul>
-          <li>卡在邮件：先 Logger 打印激活链接，再换真实 SMTP。</li>
-          <li>卡在权限：先 Roles，再补 Permission 表与 Guard。</li>
-          <li>对照阅读顺序建议：<code>auth.module</code> → <code>document-review</code> → <code>pipeline.orchestrator</code> → <code>graph-build</code>。</li>
-        </ul>
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>tree/page 404 或被当成 id</td><td>路由声明顺序</td></tr>
+            <tr><td>激活一直无效</td><td>token 是否过期；是否重启过进程（内存清空）</td></tr>
+            <tr><td>smtp 发信失败</td><td>先改 <code>MAIL_TRANSPORT=log</code> 验证业务；再查 MAIL_HOST/端口</td></tr>
+            <tr><td>注册未发信</td><td><code>REQUIRE_EMAIL_VERIFICATION</code> 是否 true；是否传了 email</td></tr>
+            <tr><td>MailerService 注入失败</td><td>log 模式用 <code>@Optional()</code>；或配置 MailerModule</td></tr>
+          </tbody>
+        </table>
         <div class="callout-tip">
-          课程主体到此结束。可回 <a href="./index.html">目录</a> 或
-          <a href="./authoring.html">编写备忘</a> 按需加深某一课。
+          课程主体到此结束。回 <a href="./index.html">目录</a> 复习，或按清单对照 origin 加深。
+          编写约定见 <a href="./authoring.html">authoring.html</a>。
         </div>
       </section>
 
