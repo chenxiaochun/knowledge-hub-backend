@@ -12,13 +12,16 @@ import {
   Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RoleCode } from 'src/common/constant/roles';
+
 import type { AuthUser } from '../auth/auth-user.interface';
+
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { DocumentService } from './document.service';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
-import { Roles } from 'src/auth/decorators/roles.decorator';
-import { RoleCode } from 'src/common/constant/roles';
 
 @Controller('document')
 export class DocumentController {
