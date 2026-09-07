@@ -1,5 +1,3 @@
-import { PermissionEntity } from 'src/user/entities/permission.entity';
-
 /** JWT 校验后注入到 Controller 的当前用户 */
 export interface AuthUser {
   userId: string;
@@ -8,5 +6,5 @@ export interface AuthUser {
   email?: string | null;
   avatar?: string | null;
   roles: string[];
-  permissions: PermissionEntity[];
+  permissions: string[];
 }

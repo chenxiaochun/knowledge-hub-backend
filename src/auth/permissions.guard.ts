@@ -32,7 +32,7 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const owned = new Set(user.permissions ?? []);
-    if (!required.some((p) => owned.has(p))) {
+    if (!required.some((p) => owned.has(p.permissionCode))) {
       throw new ForbiddenException('权限不足');
     }
 

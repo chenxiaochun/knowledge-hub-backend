@@ -15,11 +15,13 @@ import { UserVO } from './vo/user.vo';
 import { UserEntity } from './entities/user.entity';
 import type { AuthUser } from '../auth/auth-user.interface';
 import { RoleCode } from 'src/common/constant/roles';
+import { RbacService } from './rbac.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
+    private readonly rbacService: RbacService,
   ) {}
 
   /** 规范化角色列表（simple-array 空串可能变成 ['']） */
@@ -59,14 +61,20 @@ export class UserService {
     };
   }
 
-  toAuthUser(user: UserEntity): AuthUser {
+  async toAuthUser(user: UserEntity): Promise<AuthUser> {
+    const { roles, permissions } = await this.rbacService.loadRolesAndPermissions(user.id);
+    // 迁移期：若还没有任何 user_role，可回退读 role_codes（可选）
+    const fallbackRoles =
+      roles.length > 0 ? roles : (user.roleCodes ?? '').map((s) => s.trim()).filter(Boolean);
+
     return {
       userId: user.id,
       username: user.username,
       realName: user.realName,
       email: user.email,
       avatar: user.avatar,
-      roles: this.normalizeRoles(user.roleCodes),
+      roles: this.normalizeRoles(fallbackRoles),
+      permissions,
     };
   }
 

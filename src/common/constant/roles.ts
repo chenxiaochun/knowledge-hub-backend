@@ -5,4 +5,10 @@ export const RoleCode = {
   USER: 'ROLE_USER',
 } as const;
 
+export const RoleName = {
+  [RoleCode.ADMIN]: '管理员',
+  [RoleCode.REVIEWER]: '审核员',
+  [RoleCode.USER]: '用户',
+};
+
 export type RoleCodeValue = (typeof RoleCode)[keyof typeof RoleCode];
