@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 11 · Redis / Team member</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 11 · Redis / Team member <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./08-team-mail-align.html">第 8 课</a> · 对照 origin <code>src/redis/</code>
+    </p>
+  </header>
+  <div class="layout">
+
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p><strong>前置</strong>：<a href="./08-team-mail-align.html">第 8 课</a> Team CRUD + 内存激活/重置已通。</p>
+        <p><strong>本课</strong>：激活/重置码迁到 Redis；Team 增加 member 增删查。</p>
+        <div class="callout-info">
+          <strong>验收</strong>
+          <ol>
+            <li>注册发激活链 → <strong>重启 Nest</strong> → 仍能用同一 token 激活</li>
+            <li>重置码同样重启后有效（TTL 内）</li>
+            <li><code>POST /teams/:id/members</code> 添加后 <code>GET .../members</code> 可见；可 remove</li>
+          </ol>
+        </div>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">docker compose up -d redis   # 服务名以你 compose 为准
+# .env
+REDIS_HOST=localhost
+REDIS_PORT=6379</code></pre>
+            </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>课 8</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>进程内 Map</td><td>Redis SET + TTL</td></tr>
+            <tr><td>Team 单表</td><td>+ <code>kh_team_member</code></td></tr>
+          </tbody>
+        </table>
+        <div class="flow">createToken: token→userId , userId→token (互查，重发作废旧 token)
+consumeToken: GET + DEL 两边 key
+TeamMember: (teamId, userId, memberRole)</div>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/redis/redis.service.ts</code> / <code>redis.module.ts</code></td><td>新建</td></tr>
+            <tr><td>课 8 的 EmailActivation / PasswordReset</td><td>改调 Redis</td></tr>
+            <tr><td><code>src/team/entities/team-member.entity.ts</code></td><td>新建</td></tr>
+            <tr><td><code>team.service.ts</code> / controller</td><td>成员 API</td></tr>
+            <tr><td><code>package.json</code></td><td>加 <code>ioredis</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>依赖与环境</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add ioredis
+# .env
+REDIS_HOST=localhost
+REDIS_PORT=6379
+# REDIS_PASSWORD=
+REDIS_DB=0</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>RedisModule（完整）</h4>
+            <p class="file-path">src/redis/redis.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+@Injectable()
+export class RedisService implements OnModuleDestroy {
+  private readonly client: Redis;
+
+  constructor(private readonly config: ConfigService) {
+    const password = this.config.get&lt;string&gt;('REDIS_PASSWORD');
+    this.client = new Redis({
+      host: this.config.get&lt;string&gt;('REDIS_HOST', 'localhost'),
+      port: Number(this.config.get('REDIS_PORT', 6379)),
+      password: password || undefined,
+      db: Number(this.config.get('REDIS_DB', 0)),
+      maxRetriesPerRequest: 3,
+    });
+  }
+
+  get(key: string) {
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string, ttlSeconds?: number) {
+    if (ttlSeconds !== undefined) {
+      await this.client.set(key, value, 'EX', ttlSeconds);
+      return;
+    }
+    await this.client.set(key, value);
+  }
+
+  async del(key: string) {
+    await this.client.del(key);
+  }
+
+  async onModuleDestroy() {
+    await this.client.quit();
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/redis/redis.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Global, Module } from '@nestjs/common';
+import { RedisService } from './redis.service';
+
+@Global()
+@Module({
+  providers: [RedisService],
+  exports: [RedisService],
+})
+export class RedisModule {}</code></pre>
+            </div>
+            <p>AppModule <code>imports: [RedisModule, …]</code>。</p>
+          </li>
+          <li>
+            <h4>激活令牌改 Redis（完整替换课 8 内存版）</h4>
+            <p class="file-path">src/auth/email-activation.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { RedisService } from '../redis/redis.service';
+
+const TOKEN_PREFIX = 'email:activation:token:';
+const USER_PREFIX = 'email:activation:user:';
+export const ACTIVATION_TOKEN_TTL_SECONDS = 24 * 3600;
+
+@Injectable()
+export class EmailActivationService {
+  constructor(private readonly redis: RedisService) {}
+
+  private tokenKey(token: string) {
+    return `${TOKEN_PREFIX}${token}`;
+  }
+  private userKey(userId: string) {
+    return `${USER_PREFIX}${userId}`;
+  }
+
+  async createToken(userId: string): Promise&lt;string&gt; {
+    const existing = await this.redis.get(this.userKey(userId));
+    if (existing) await this.redis.del(this.tokenKey(existing));
+
+    const token = randomBytes(32).toString('hex');
+    await this.redis.set(
+      this.tokenKey(token),
+      userId,
+      ACTIVATION_TOKEN_TTL_SECONDS,
+    );
+    await this.redis.set(
+      this.userKey(userId),
+      token,
+      ACTIVATION_TOKEN_TTL_SECONDS,
+    );
+    return token;
+  }
+
+  async consumeToken(token: string): Promise&lt;string | null&gt; {
+    const userId = await this.redis.get(this.tokenKey(token));
+    if (!userId) return null;
+    await this.redis.del(this.tokenKey(token));
+    await this.redis.del(this.userKey(userId));
+    return userId;
+  }
+}</code></pre>
+            </div>
+            <p>密码重置验证码同理：key 如 <code>password:reset:code:&#123;userId&#125;</code>，<code>set(code, EX 600)</code>。</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// password-reset.service.ts 核心
+async sendCode(userId: string) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  await this.redis.set(`password:reset:code:${userId}`, code, 600);
+  // 发信 / log 打印 code
+  return { ok: true };
+}
+
+async reset(userId: string, code: string, newPassword: string) {
+  const saved = await this.redis.get(`password:reset:code:${userId}`);
+  if (!saved || saved !== code) throw new BadRequestException('验证码无效');
+  await this.redis.del(`password:reset:code:${userId}`);
+  // …更新密码哈希
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>TeamMember</h4>
+            <p class="file-path">src/team/entities/team-member.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_team_member')
+export class TeamMemberEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ name: 'team_id', type: 'bigint', transformer: bigintTransformer })
+  teamId: string;
+
+  @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
+  userId: string;
+
+  /** member | leader */
+  @Column({ name: 'member_role', type: 'varchar', length: 20, default: 'member' })
+  memberRole: string;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+}</code></pre>
+            </div>
+            <p class="file-path">TeamService 追加（完整方法）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async addMembers(teamId: string, userIds: string[], memberRole = 'member') {
+  await this.findTeamOrThrow(teamId); // 你已有的找团队方法
+  const rows = [];
+  for (const userId of userIds) {
+    const exists = await this.memberRepo.findOne({ where: { teamId, userId } });
+    if (exists) continue;
+    rows.push(
+      this.memberRepo.create({
+        id: nextSnowflakeId(),
+        teamId,
+        userId,
+        memberRole,
+      }),
+    );
+  }
+  if (rows.length) await this.memberRepo.save(rows);
+  return this.listMembers(teamId);
+}
+
+async removeMembers(teamId: string, userIds: string[]) {
+  await this.memberRepo.delete({
+    teamId,
+    userId: In(userIds),
+  });
+  return { ok: true };
+}
+
+async listMembers(teamId: string) {
+  return this.memberRepo.find({ where: { teamId } });
+}</code></pre>
+            </div>
+            <p>Controller：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Get(':id/members')
+listMembers(@Param('id') id: string) {
+  return this.teamService.listMembers(id);
+}
+
+@Post(':id/members')
+addMembers(
+  @Param('id') id: string,
+  @Body() body: { userIds: string[]; memberRole?: string },
+) {
+  return this.teamService.addMembers(id, body.userIds ?? [], body.memberRole);
+}
+
+@Delete(':id/members')
+removeMembers(
+  @Param('id') id: string,
+  @Body() body: { userIds: string[] },
+) {
+  return this.teamService.removeMembers(id, body.userIds ?? []);
+}</code></pre>
+            </div>
+            <p>Module <code>forFeature</code> 加上 <code>TeamMemberEntity</code>；AppModule entities 同步。</p>
+          </li>
+          <li>
+            <h4>自测</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># redis-cli GET email:activation:token:&lt;token&gt;
+# 重启 pnpm start:dev 后再 activate
+curl -s -X POST http://localhost:3000/teams/$TEAM_ID/members \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  -d '{"userIds":["'$USER_ID'"],"memberRole":"member"}'
+curl -s http://localhost:3000/teams/$TEAM_ID/members \
+  -H "Authorization: Bearer $ADMIN"</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么 token 与 userId 双向存？</h3>
+        <p>激活链用 token 查用户；重发时用 userId 找到旧 token 删掉，避免多条有效链。</p>
+        <h3>对照 origin</h3>
+        <ol>
+          <li><code>src/redis/redis.service.ts</code></li>
+          <li><code>src/auth/email-activation.service.ts</code>、<code>password-reset.service.ts</code></li>
+          <li><code>src/team/entities/team-member.entity.ts</code>、<code>team.service.ts</code> addMembers</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin 差异</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>重置码发送频率限制等</td><td>可先省略</td></tr>
+            <tr><td>Team 与权限码深度结合</td><td>成员 CRUD 即可</td></tr>
+            <tr><td>Mail 模板齐全</td><td>沿用课 8 log/smtp</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>Redis 连接失败</td><td>compose / 端口 / 密码</td></tr>
+            <tr><td>重启后 token 仍失效</td><td>是否还在用内存 Map；是否连错 Redis db</td></tr>
+            <tr><td>加成员重复</td><td>先 findOne 跳过；或加唯一索引</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          进阶第一批到此结束。回 <a href="./index.html">目录</a>。
+          若还要对齐 IK / LangChain / 完整 Cypher，可再开课 12+。
+        </div>
+      </section>
+    </main>
+
+  </div>
+<button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
+
+

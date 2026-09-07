@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 09 · 多表 RBAC 与权限码</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 09 · 多表 RBAC 与权限码 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./02-auth-rbac.html">第 2 课</a> · 对照 origin <code>src/auth/permissions.guard.ts</code>
+    </p>
+  </header>
+  <div class="layout">
+
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p><strong>前置</strong>：<a href="./02-auth-rbac.html">第 2 课</a> JWT + RolesGuard 已通。</p>
+        <p><strong>本课</strong>：把 <code>role_codes</code> 字符串列升级为多表 RBAC；接口可用 <code>@RequirePermission</code> 做权限码鉴权。</p>
+        <div class="callout-info">
+          <strong>验收</strong>（两个非 ADMIN 用户，同角色不同权限）：
+          <ol>
+            <li>种子角色 EDITOR + 权限 <code>system:user</code> / <code>document:list</code></li>
+            <li>用户 alice 只有 <code>document:list</code>；bob 有 <code>system:user</code></li>
+            <li>alice 调 <code>GET /users/page</code> → <strong>403</strong>；bob → <strong>200</strong></li>
+            <li>ADMIN 任意权限码接口 → 200（守卫短路）</li>
+          </ol>
+        </div>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 用 admin 登录后给用户绑角色/权限（见下文 API）
+# 再分别用 alice / bob 的 token：
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/users/page \
+  -H "Authorization: Bearer $ALICE_TOKEN"
+# 期望 403
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/users/page \
+  -H "Authorization: Bearer $BOB_TOKEN"
+# 期望 200</code></pre>
+            </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <table>
+          <thead><tr><th>课 2</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>用户行上 <code>role_codes</code> 文本</td><td><code>kh_user_role</code> 关联 <code>kh_role</code></td></tr>
+            <tr><td><code>@Roles('ROLE_ADMIN')</code></td><td>仍可保留；细粒度改用 <code>@RequirePermission('system:user')</code></td></tr>
+            <tr><td>AuthUser.roles[]</td><td>再加 <code>permissions[]</code>（登录时从角色聚合）</td></tr>
+          </tbody>
+        </table>
+        <div class="flow">User ──&lt; UserRole &gt;── Role ──&lt; RolePermission &gt;── Permission
+JWT 校验 → 查角色码 + 权限码 → AuthUser
+JwtAuthGuard → RolesGuard（可选）→ PermissionsGuard</div>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/common/constants/permissions.ts</code></td><td>新建（教学子集）</td></tr>
+            <tr><td><code>src/user/entities/role.entity.ts</code> 等 4 个实体</td><td>新建</td></tr>
+            <tr><td><code>src/auth/decorators/require-permission.decorator.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/auth/permissions.guard.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/user/rbac-seed.service.ts</code></td><td>新建种子</td></tr>
+            <tr><td><code>src/user/rbac.service.ts</code></td><td>新建：绑角色、查权限</td></tr>
+            <tr><td><code>src/auth/auth-user.interface.ts</code> / JWT Strategy / UserService</td><td>扩展 permissions</td></tr>
+            <tr><td><code>src/auth/auth.module.ts</code></td><td>注册 PermissionsGuard</td></tr>
+            <tr><td><code>src/user/user.controller.ts</code></td><td>部分接口改权限码</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>entities 数组追加</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>权限码常量（子集）</h4>
+            <p class="file-path">src/common/constants/permissions.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export const PermissionCode = {
+  systemUser: 'system:user',
+  documentList: 'document:list',
+  documentCreate: 'document:create',
+  documentReview: 'document:review',
+  search: 'search',
+} as const;
+
+export type PermissionCodeValue =
+  (typeof PermissionCode)[keyof typeof PermissionCode];</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>四个实体（完整可替换）</h4>
+            <p class="file-path">src/user/entities/role.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_role')
+export class RoleEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ name: 'role_name', type: 'varchar', length: 50 })
+  roleName: string;
+
+  @Column({ name: 'role_code', type: 'varchar', length: 50, unique: true })
+  roleCode: string;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  description?: string | null;
+
+  @Column({ type: 'smallint', default: 1 })
+  status: number;
+}</code></pre>
+            </div>
+            <p class="file-path">src/user/entities/permission.entity.ts（练习版砍掉菜单字段）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_permission')
+export class PermissionEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ name: 'permission_name', type: 'varchar', length: 50 })
+  permissionName: string;
+
+  @Column({ name: 'permission_code', type: 'varchar', length: 100, unique: true })
+  permissionCode: string;
+
+  /** 练习版固定 3=接口 */
+  @Column({ name: 'permission_type', type: 'smallint', default: 3 })
+  permissionType: number;
+
+  @Column({ type: 'smallint', default: 1 })
+  status: number;
+}</code></pre>
+            </div>
+            <p class="file-path">src/user/entities/user-role.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_user_role')
+export class UserRoleEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
+  userId: string;
+
+  @Column({ name: 'role_id', type: 'bigint', transformer: bigintTransformer })
+  roleId: string;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+}</code></pre>
+            </div>
+            <p class="file-path">src/user/entities/role-permission.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_role_permission')
+export class RolePermissionEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id: string;
+
+  @Column({ name: 'role_id', type: 'bigint', transformer: bigintTransformer })
+  roleId: string;
+
+  @Column({
+    name: 'permission_id',
+    type: 'bigint',
+    transformer: bigintTransformer,
+  })
+  permissionId: string;
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>装饰器 + PermissionsGuard</h4>
+            <p class="file-path">src/auth/decorators/require-permission.decorator.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { SetMetadata } from '@nestjs/common';
+
+export const PERMISSIONS_KEY = 'permissions';
+
+/** 拥有其中任一权限码即可；需配合 PermissionsGuard；ROLE_ADMIN 自动放行 */
+export const RequirePermission = (...permissions: string[]) =&gt;
+  SetMetadata(PERMISSIONS_KEY, permissions);</code></pre>
+            </div>
+            <p class="file-path">src/auth/permissions.guard.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthUser } from './auth-user.interface';
+import { PERMISSIONS_KEY } from './decorators/require-permission.decorator';
+import { RoleCode } from '../common/constants/roles';
+
+@Injectable()
+export class PermissionsGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const required = this.reflector.getAllAndOverride&lt;string[]&gt;(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (!required?.length) return true;
+
+    const request = context.switchToHttp().getRequest&lt;{ user?: AuthUser }&gt;();
+    const user = request.user;
+    if (!user) throw new ForbiddenException('权限不足');
+
+    if (user.roles.includes(RoleCode.ADMIN)) return true;
+
+    const owned = new Set(user.permissions ?? []);
+    if (!required.some((p) =&gt; owned.has(p))) {
+      throw new ForbiddenException('权限不足');
+    }
+    return true;
+  }
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>AuthUser 扩展</h4>
+            <p class="file-path">src/auth/auth-user.interface.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export interface AuthUser {
+  userId: string;
+  username: string;
+  realName?: string | null;
+  email?: string | null;
+  roles: string[];
+  permissions: string[];
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>RbacService：聚合权限 + 绑角色</h4>
+            <p class="file-path">src/user/rbac.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { RoleEntity } from './entities/role.entity';
+import { PermissionEntity } from './entities/permission.entity';
+import { UserRoleEntity } from './entities/user-role.entity';
+import { RolePermissionEntity } from './entities/role-permission.entity';
+import { UserEntity } from './entities/user.entity';
+
+@Injectable()
+export class RbacService {
+  constructor(
+    @InjectRepository(RoleEntity)
+    private readonly roleRepo: Repository&lt;RoleEntity&gt;,
+    @InjectRepository(PermissionEntity)
+    private readonly permRepo: Repository&lt;PermissionEntity&gt;,
+    @InjectRepository(UserRoleEntity)
+    private readonly userRoleRepo: Repository&lt;UserRoleEntity&gt;,
+    @InjectRepository(RolePermissionEntity)
+    private readonly rolePermRepo: Repository&lt;RolePermissionEntity&gt;,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository&lt;UserEntity&gt;,
+  ) {}
+
+  async listRoles() {
+    return this.roleRepo.find({ where: { status: 1 } });
+  }
+
+  async listPermissions() {
+    return this.permRepo.find({ where: { status: 1 } });
+  }
+
+  /** 用户的角色码 + 权限码（供 buildAuthUser） */
+  async loadRolesAndPermissions(userId: string): Promise&lt;{
+    roles: string[];
+    permissions: string[];
+  }&gt; {
+    const urs = await this.userRoleRepo.find({ where: { userId } });
+    if (!urs.length) return { roles: [], permissions: [] };
+
+    const roleIds = urs.map((u) =&gt; u.roleId);
+    const roles = await this.roleRepo.find({ where: { id: In(roleIds) } });
+    const roleCodes = roles.map((r) =&gt; r.roleCode);
+
+    const rps = await this.rolePermRepo.find({ where: { roleId: In(roleIds) } });
+    if (!rps.length) return { roles: roleCodes, permissions: [] };
+
+    const perms = await this.permRepo.find({
+      where: { id: In(rps.map((p) =&gt; p.permissionId)) },
+    });
+    return {
+      roles: roleCodes,
+      permissions: [...new Set(perms.map((p) =&gt; p.permissionCode))],
+    };
+  }
+
+  /** 覆盖式绑定：先删旧关联再插入 */
+  async setUserRoles(userId: string, roleCodes: string[]) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId, deleted: false },
+    });
+    if (!user) throw new NotFoundException('用户不存在');
+
+    const roles = await this.roleRepo.find({
+      where: { roleCode: In(roleCodes) },
+    });
+    if (roles.length !== roleCodes.length) {
+      throw new NotFoundException('存在未知 roleCode');
+    }
+
+    await this.userRoleRepo.delete({ userId });
+    const rows = roles.map((r) =&gt;
+      this.userRoleRepo.create({
+        id: nextSnowflakeId(),
+        userId,
+        roleId: r.id,
+      }),
+    );
+    await this.userRoleRepo.save(rows);
+    return this.loadRolesAndPermissions(userId);
+  }
+
+  async setRolePermissions(roleCode: string, permissionCodes: string[]) {
+    const role = await this.roleRepo.findOne({ where: { roleCode } });
+    if (!role) throw new NotFoundException('角色不存在');
+
+    const perms = await this.permRepo.find({
+      where: { permissionCode: In(permissionCodes) },
+    });
+    if (perms.length !== permissionCodes.length) {
+      throw new NotFoundException('存在未知 permissionCode');
+    }
+
+    await this.rolePermRepo.delete({ roleId: role.id });
+    const rows = perms.map((p) =&gt;
+      this.rolePermRepo.create({
+        id: nextSnowflakeId(),
+        roleId: role.id,
+        permissionId: p.id,
+      }),
+    );
+    await this.rolePermRepo.save(rows);
+    return { roleCode, permissionCodes };
+  }
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>启动种子</h4>
+            <p class="file-path">src/user/rbac-seed.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { RoleCode } from '../common/constants/roles';
+import { PermissionCode } from '../common/constants/permissions';
+import { RoleEntity } from './entities/role.entity';
+import { PermissionEntity } from './entities/permission.entity';
+import { RolePermissionEntity } from './entities/role-permission.entity';
+
+@Injectable()
+export class RbacSeedService implements OnModuleInit {
+  private readonly logger = new Logger(RbacSeedService.name);
+
+  constructor(
+    @InjectRepository(RoleEntity)
+    private readonly roleRepo: Repository&lt;RoleEntity&gt;,
+    @InjectRepository(PermissionEntity)
+    private readonly permRepo: Repository&lt;PermissionEntity&gt;,
+    @InjectRepository(RolePermissionEntity)
+    private readonly rolePermRepo: Repository&lt;RolePermissionEntity&gt;,
+  ) {}
+
+  async onModuleInit() {
+    await this.ensureRoles();
+    await this.ensurePermissions();
+    await this.ensureEditorDefaults();
+    this.logger.log('RBAC 种子已就绪');
+  }
+
+  private async ensureRoles() {
+    const defs = [
+      { code: RoleCode.ADMIN, name: '管理员' },
+      { code: RoleCode.EDITOR, name: '编辑' },
+      { code: RoleCode.VIEWER, name: '访客' },
+      { code: RoleCode.USER, name: '普通用户' },
+    ];
+    for (const d of defs) {
+      const exists = await this.roleRepo.findOne({ where: { roleCode: d.code } });
+      if (exists) continue;
+      await this.roleRepo.save(
+        this.roleRepo.create({
+          id: nextSnowflakeId(),
+          roleCode: d.code,
+          roleName: d.name,
+          status: 1,
+        }),
+      );
+    }
+  }
+
+  private async ensurePermissions() {
+    const defs = [
+      { code: PermissionCode.systemUser, name: '用户管理' },
+      { code: PermissionCode.documentList, name: '文档列表' },
+      { code: PermissionCode.documentCreate, name: '文档创建' },
+      { code: PermissionCode.documentReview, name: '文档审核' },
+      { code: PermissionCode.search, name: '搜索' },
+    ];
+    for (const d of defs) {
+      const exists = await this.permRepo.findOne({
+        where: { permissionCode: d.code },
+      });
+      if (exists) continue;
+      await this.permRepo.save(
+        this.permRepo.create({
+          id: nextSnowflakeId(),
+          permissionCode: d.code,
+          permissionName: d.name,
+          permissionType: 3,
+          status: 1,
+        }),
+      );
+    }
+  }
+
+  /** EDITOR 默认只有 document:list（验收时再给个别用户加 system:user） */
+  private async ensureEditorDefaults() {
+    const editor = await this.roleRepo.findOne({
+      where: { roleCode: RoleCode.EDITOR },
+    });
+    if (!editor) return;
+    const count = await this.rolePermRepo.count({ where: { roleId: editor.id } });
+    if (count &gt; 0) return;
+
+    const list = await this.permRepo.findOne({
+      where: { permissionCode: PermissionCode.documentList },
+    });
+    if (!list) return;
+    await this.rolePermRepo.save(
+      this.rolePermRepo.create({
+        id: nextSnowflakeId(),
+        roleId: editor.id,
+        permissionId: list.id,
+      }),
+    );
+  }
+}</code></pre>
+            </div>
+            <div class="callout-warning">
+              若课 2 的 <code>RoleCode</code> 没有 <code>EDITOR</code> / <code>VIEWER</code>，在
+              <code>roles.ts</code> 补上即可。
+            </div>
+          </li>
+          <li>
+            <h4>改 buildAuthUser：读多表，不再只信 role_codes</h4>
+            <p>在 <code>UserService.buildAuthUser</code>（或 AuthService 等价方法）里：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async buildAuthUser(user: UserEntity): Promise&lt;AuthUser&gt; {
+  const { roles, permissions } =
+    await this.rbacService.loadRolesAndPermissions(user.id);
+
+  // 迁移期：若还没有任何 user_role，可回退读 role_codes（可选）
+  const fallbackRoles =
+    roles.length &gt; 0
+      ? roles
+      : (user.roleCodes ?? '')
+          .split(',')
+          .map((s) =&gt; s.trim())
+          .filter(Boolean);
+
+  return {
+    userId: user.id,
+    username: user.username,
+    realName: user.realName,
+    email: user.email,
+    roles: fallbackRoles,
+    permissions,
+  };
+}</code></pre>
+            </div>
+            <p>注入 <code>RbacService</code>；JWT Strategy 继续调 <code>buildAuthUser</code>。</p>
+          </li>
+          <li>
+            <h4>UserModule / AuthModule / Controller</h4>
+            <p class="file-path">UserModule providers/exports 追加</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">imports: [
+  TypeOrmModule.forFeature([
+    UserEntity,
+    RoleEntity,
+    PermissionEntity,
+    UserRoleEntity,
+    RolePermissionEntity,
+  ]),
+],
+providers: [UserService, RbacService, RbacSeedService],
+exports: [UserService, RbacService],</code></pre>
+            </div>
+            <p class="file-path">auth.module.ts：全局 PermissionsGuard（在 Jwt、Roles 之后）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { APP_GUARD } from '@nestjs/core';
+import { PermissionsGuard } from './permissions.guard';
+
+// providers 中已有 JwtAuthGuard、RolesGuard 时追加：
+{ provide: APP_GUARD, useClass: PermissionsGuard },</code></pre>
+            </div>
+            <p class="file-path">绑定 API（UserController 或新建 RbacController）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PermissionCode } from '../common/constants/permissions';
+
+@Get('page')
+@RequirePermission(PermissionCode.systemUser)
+page(@Query() query: PageUsersDto) {
+  return this.userService.pageUsers(query);
+}
+
+// 管理接口：给用户设角色
+@Put(':id/roles')
+@RequirePermission(PermissionCode.systemUser)
+setRoles(
+  @Param('id') id: string,
+  @Body() body: { roleCodes: string[] },
+) {
+  return this.rbacService.setUserRoles(id, body.roleCodes ?? []);
+}
+
+// 给角色设权限码
+@Put('roles/:roleCode/permissions')
+@RequirePermission(PermissionCode.systemUser)
+setRolePerms(
+  @Param('roleCode') roleCode: string,
+  @Body() body: { permissionCodes: string[] },
+) {
+  return this.rbacService.setRolePermissions(
+    roleCode,
+    body.permissionCodes ?? [],
+  );
+}
+
+@Get('rbac/roles')
+@RequirePermission(PermissionCode.systemUser)
+listRoles() {
+  return this.rbacService.listRoles();
+}</code></pre>
+            </div>
+            <div class="callout-warning">
+              静态路径 <code>roles/:roleCode/...</code>、<code>rbac/roles</code> 必须写在
+              <code>:id</code> 路由<strong>之前</strong>，否则会被当成 id。
+            </div>
+          </li>
+          <li>
+            <h4>AppModule entities</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">entities: [
+  UserEntity,
+  RoleEntity,
+  PermissionEntity,
+  UserRoleEntity,
+  RolePermissionEntity,
+  // …DocumentEntity 等
+],</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>验收剧本</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 1) admin 登录拿 TOKEN
+# 2) 确保 EDITOR 角色权限：
+curl -s -X PUT http://localhost:3000/users/roles/ROLE_EDITOR/permissions \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  -d '{"permissionCodes":["document:list"]}'
+
+# 3) 另建角色或复用：给「有用户管理权」的编辑加 system:user
+#    简单做法：新建一个只测权限的角色 ROLE_EDITOR_USER，或临时：
+curl -s -X PUT http://localhost:3000/users/roles/ROLE_EDITOR/permissions \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  -d '{"permissionCodes":["document:list","system:user"]}'
+# 先给 bob 绑 ROLE_EDITOR，测 200；再改回只有 document:list，给 alice 绑同一角色测 403
+# 「同角色不同权限」更干净的做法：两个角色 ROLE_A / ROLE_B，权限不同，用户各绑一个。
+
+curl -s -X PUT http://localhost:3000/users/$ALICE_ID/roles \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  -d '{"roleCodes":["ROLE_EDITOR"]}'
+# EDITOR 仅 document:list 时 alice 访问 /users/page → 403</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么权限挂在角色上，而不是直接挂用户？</h3>
+        <p>角色是权限打包；改一处角色权限，所有成员立刻生效。origin 另有用户直接权限表，本课先不做，避免两套来源难排查。</p>
+        <h3>为什么 ADMIN 短路放行？</h3>
+        <p>与 origin <code>PermissionsGuard</code> 一致，避免给管理员维护几百条权限码。生产若要「超级管理员也审计」，再关掉短路。</p>
+        <h3>对照 origin</h3>
+        <ol>
+          <li><code>src/auth/permissions.guard.ts</code></li>
+          <li><code>src/user/entities/*role*</code> / <code>*permission*</code></li>
+          <li><code>src/user/role.service.ts</code>、<code>permission.service.ts</code></li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin 差异</h2>
+        <table>
+          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <tbody>
+            <tr><td>Permission 含菜单树字段</td><td>只留 code/name/type</td></tr>
+            <tr><td>用户直接权限表</td><td>不做</td></tr>
+            <tr><td>完整 Role/Permission CRUD</td><td>列表 + 绑角色/绑权限</td></tr>
+            <tr><td>全站接口改挂权限码</td><td>先改 User 分页等演示接口</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>有角色仍 403</td><td>角色是否绑了权限；重新登录刷新 JWT 内聚的 permissions（若 permissions 只在 Strategy 查库则不必重登）</td></tr>
+            <tr><td>permissions 总是 []</td><td>buildAuthUser 是否走 RbacService；user_role 是否写入</td></tr>
+            <tr><td>路由 404 / 被当成 id</td><td><code>rbac/roles</code> 声明顺序</td></tr>
+            <tr><td>ADMIN 也 403</td><td>roles 里是否真有 ROLE_ADMIN；Guard 是否注册</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          <strong>下一步</strong>：<a href="./10-document-review.html">进阶课 10 · 文档审核表</a>
+        </div>
+      </section>
+    </main>
+
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
+

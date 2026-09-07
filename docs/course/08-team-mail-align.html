@@ -932,12 +932,12 @@ resetPassword(
             <table>
               <thead><tr><th>能力</th><th>练习课大致做到</th><th>origin 还有</th></tr></thead>
               <tbody>
-                <tr><td>User / Auth</td><td>JWT + role_codes + 邮件激活</td><td>多表 RBAC、权限码 Guard</td></tr>
-                <tr><td>Document</td><td>txt/md + 本地盘</td><td>多格式 parser、RustFS</td></tr>
-                <tr><td>审核</td><td>免审 / 状态机</td><td>kh_document_review 全流程</td></tr>
-                <tr><td>Search / RAG / KG</td><td>第 5–7 课练习版</td><td>IK、LangChain 切分、完整 Cypher</td></tr>
-                <tr><td>Team</td><td>单表 CRUD + tree</td><td>team_member、leader 等</td></tr>
-                <tr><td>Mail / Token</td><td>Logger + 内存 Map</td><td>Mailer + Redis</td></tr>
+                <tr><td>User / Auth</td><td>JWT + role_codes + 邮件激活</td><td>多表 RBAC → <a href="./09-rbac-permissions.html">课 09</a></td></tr>
+                <tr><td>Document</td><td>txt/md + 本地盘</td><td>多格式 parser、RustFS（未单开进阶）</td></tr>
+                <tr><td>审核</td><td>免审 / 状态机</td><td>审核表 → <a href="./10-document-review.html">课 10</a></td></tr>
+                <tr><td>Search / RAG / KG</td><td>第 5–7 课练习版</td><td>IK、LangChain、完整 Cypher（可再开 12+）</td></tr>
+                <tr><td>Team</td><td>单表 CRUD + tree</td><td>member → <a href="./11-team-mail-redis.html">课 11</a></td></tr>
+                <tr><td>Mail / Token</td><td>Logger + 内存 Map</td><td>Redis → <a href="./11-team-mail-redis.html">课 11</a></td></tr>
               </tbody>
             </table>
           </li>
@@ -985,7 +985,10 @@ resetPassword(
           </tbody>
         </table>
         <div class="callout-tip">
-          课程主体到此结束。回 <a href="./index.html">目录</a> 复习，或按清单对照 origin 加深。
+          主课到此结束。回 <a href="./index.html">目录</a>；业务完整度见进阶
+          <a href="./09-rbac-permissions.html">09</a> /
+          <a href="./10-document-review.html">10</a> /
+          <a href="./11-team-mail-redis.html">11</a>（Redis + Team member）。
           编写约定见 <a href="./authoring.html">authoring.html</a>。
         </div>
       </section>
