@@ -112,6 +112,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -527,7 +528,43 @@ export class DocumentPipelineConsumer {
 }</code></pre>
             </div>
             <p><code>MqModule</code> 需要 <code>imports: [PipelineModule]</code>，才能注入 SearchIndexService。</p>
-            <p><code>AppModule</code> imports：<code>PipelineModule</code>、<code>SearchModule</code>（以及已有的 MqModule）。</p>
+            <p class="file-path">src/mq/mq.module.ts（本课完整替换）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { PipelineModule } from '../pipeline/pipeline.module';
+import { RabbitMqService } from './rabbitmq.service';
+import { DocumentPipelinePublisher } from './document-pipeline.publisher';
+import { DocumentPipelineConsumer } from './document-pipeline.consumer';
+
+@Module({
+  imports: [PipelineModule],
+  providers: [
+    RabbitMqService,
+    DocumentPipelinePublisher,
+    DocumentPipelineConsumer,
+  ],
+  exports: [RabbitMqService, DocumentPipelinePublisher],
+})
+export class MqModule {}</code></pre>
+            </div>
+            <p class="file-path">AppModule 追加 imports</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { PipelineModule } from './pipeline/pipeline.module';
+import { SearchModule } from './search/search.module';
+import { MqModule } from './mq/mq.module';
+
+// imports 数组中确保有：
+MqModule,
+PipelineModule,
+SearchModule,</code></pre>
+            </div>
+            <div class="callout-tip">
+              自测顺序：上传 → publish → 日志「搜索索引已写入」→
+              <code>POST /search</code> 带 keyword → 命中 title/content。
+              若搜不到：先查 ES <code>GET localhost:9200/kh_document/_search</code> 是否有文档。
+            </div>
           </li>
           <li>
             <h4>启动自测</h4>
@@ -541,6 +578,21 @@ pnpm start:dev
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么索引里同时放 title 和 content？</h3>
+        <p>全文检索用户常搜「标题关键词」或正文片段；一份 ES 文档聚合元数据+正文，避免搜标题还要二次查库。体积大时 origin 会做字段裁剪/单独附件索引——练习版先完整可读。</p>
+        <h3>为什么 Consumer 直接调 SearchIndexService，而不是 Orchestrator？</h3>
+        <p>本课只有 Search 一条管道。Orchestrator 的价值在「同一事件扇出 Search+RAG+KG」；你到第 6–7 课加队列时，再把 Consumer 改成调 Orchestrator 也不迟。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/pipeline/search-index.service.ts</code>（或同等命名）</li>
+          <li>ES mapping / IK analyzer 配置</li>
+          <li><code>src/search/</code> 查询 DTO 与权限码</li>
+          <li>PipelineOrchestrator：对比你 Consumer 里的 if INDEX / DELETE</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>

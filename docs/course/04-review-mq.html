@@ -112,6 +112,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -502,12 +503,86 @@ publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
             <p><code>DocumentModule</code> imports <code>MqModule</code>；<code>AppModule</code> 也 imports <code>MqModule</code>。</p>
           </li>
           <li>
-            <h4>（可选）极简审核</h4>
+            <h4>极简审核（完整可抄，不建 review 表）</h4>
             <p>
-              不建 review 表：<code>submit-review</code> → <code>PendingReview</code>；
-              <code>approve</code>（ADMIN/REVIEWER）→ 调用上面的 publish。
-              完整审核表对照 origin <code>document-review.service.ts</code>。
+              状态机：Draft → PendingReview → Published。
+              完整审核流水对照 origin <code>document-review.service.ts</code>；练习版把「审核记录」省略，只改 Document 状态。
             </p>
+            <p class="file-path">DocumentService 追加</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async submitReview(id: string) {
+  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+  if (!doc) throw new NotFoundException('文档不存在');
+  if (doc.status !== DocumentStatus.Draft) {
+    throw new BadRequestException('只有草稿可提交审核');
+  }
+  doc.status = DocumentStatus.PendingReview;
+  return this.docRepo.save(doc);
+}
+
+async approve(id: string, actor: AuthUser) {
+  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+  if (!doc) throw new NotFoundException('文档不存在');
+  if (doc.status !== DocumentStatus.PendingReview) {
+    throw new BadRequestException('只有待审文档可批准');
+  }
+  // 批准即发布 + 投递 MQ（复用 publish 逻辑）
+  return this.publish(id, actor);
+}
+
+async reject(id: string, reason?: string) {
+  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+  if (!doc) throw new NotFoundException('文档不存在');
+  if (doc.status !== DocumentStatus.PendingReview) {
+    throw new BadRequestException('只有待审文档可驳回');
+  }
+  doc.status = DocumentStatus.Draft;
+  // 练习版：reason 只打日志；origin 会写入 review 表
+  console.warn(`[reject] ${id} reason=${reason ?? ''}`);
+  return this.docRepo.save(doc);
+}</code></pre>
+            </div>
+            <p class="file-path">DocumentController 追加</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Put(':id/submit-review')
+@Roles(RoleCode.ADMIN, RoleCode.EDITOR)
+submitReview(@Param('id') id: string) {
+  return this.documentService.submitReview(id);
+}
+
+@Put(':id/approve')
+@Roles(RoleCode.ADMIN) // 有 REVIEWER 角色可再放开
+approve(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+  return this.documentService.approve(id, user);
+}
+
+@Put(':id/reject')
+@Roles(RoleCode.ADMIN)
+reject(@Param('id') id: string, @Body() body: { reason?: string }) {
+  return this.documentService.reject(id, body?.reason);
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              验收路径：上传草稿 → <code>submit-review</code> → <code>approve</code> → Consumer 日志出现 INDEX。
+              直接 <code>publish</code> 仍可用（跳过审核），与 origin「管理员直接发布」类似。
+            </div>
+          </li>
+
+          <li>
+            <h4>DocumentModule 接线（本课必改）</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// document.module.ts
+imports: [
+  TypeOrmModule.forFeature([DocumentEntity]),
+  MongooseModule.forFeature([{ name: DocumentContent.name, schema: DocumentContentSchema }]),
+  StorageModule,
+  MqModule, // ← 本课新增，才能注入 DocumentPipelinePublisher
+],</code></pre>
+            </div>
+            <p><code>AppModule</code> 也要 <code>imports: [MqModule]</code>（Consumer 作为 Application 级监听器，挂在 MqModule providers）。</p>
           </li>
           <li>
             <h4>启动自测</h4>
@@ -521,6 +596,24 @@ pnpm start:dev
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么发布用 MQ，而不是 Service 里直接调索引？</h3>
+        <ul>
+          <li><strong>解耦</strong>：Document 域只负责「状态变更 + 发事件」；Search/RAG/KG 各自订阅。</li>
+          <li><strong>失败隔离</strong>：索引挂了不应回滚「已发布」；消息可重试（练习版先打日志，第 5 课再消费成功）。</li>
+          <li><strong>扩展</strong>：origin 同一发布事件扇出多队列；本课先单队列把链路跑通。</li>
+        </ul>
+        <h3>为什么投递失败不回滚发布？</h3>
+        <p>与 origin 一致：用户可见状态以 DB 为准；管道用补偿/重投。练习版看到日志报错即可，不必事务包裹 MQ。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/mq/</code> — exchange / queue / publisher / consumer 命名</li>
+          <li><code>src/document/document.service.ts</code> 里 publish / afterPublish 调用点</li>
+          <li><code>src/document/document-review.service.ts</code> — 完整审核表与你本课极简版的差距</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>

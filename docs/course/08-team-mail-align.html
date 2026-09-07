@@ -109,6 +109,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
@@ -943,6 +944,21 @@ resetPassword(
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么激活码 / 重置码先放内存？</h3>
+        <p>目标是跑通「发信 → 持 token 调接口 → 改状态」；Redis 是同一接口的持久化实现。进程重启丢码是刻意权衡，催你理解「验证凭据要外置存储」。</p>
+        <h3>为什么 Team 先做单表 tree？</h3>
+        <p>组织树的核心是 <code>parentId</code> 递归；成员表、leader 是权限与协作的下一层。练习版先把 CRUD + tree 路由顺序踩扎实。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/team/</code> 含 member 的完整服务</li>
+          <li>邮件模块与 Redis token</li>
+          <li>回看课 2：把 role_codes 对照多表 RBAC / 权限码</li>
+          <li>用本课总清单逐项打开 origin 补齐</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>

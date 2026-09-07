@@ -111,6 +111,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -723,6 +724,25 @@ curl -s -X POST http://localhost:3000/users \
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么 Entity / VO / DTO 拆开？</h3>
+        <ul>
+          <li><strong>Entity</strong>：落库形状（含 <code>password</code>、<code>deleted</code>）。</li>
+          <li><strong>DTO</strong>：入参校验边界（Create/Update/PageQuery）。</li>
+          <li><strong>VO</strong>：出参给前端，永远不要带哈希密码；软删标记也不必暴露。</li>
+        </ul>
+        <h3>为什么 Service 内部多用 Entity，Controller 边界再转 VO？</h3>
+        <p>若 <code>findByIdOrThrow</code> 过早返回 VO，后续「改密码 / 软删」会丢字段或误把 VO 当 Entity 保存。练习踩过的坑：VO 上没有 <code>deleted</code> 却去设软删。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/user/entities/user.entity.ts</code></li>
+          <li><code>src/user/dto/</code> 与 VO</li>
+          <li><code>src/user/user.service.ts</code> 的 create / page / softDelete</li>
+          <li><code>src/common/</code> 雪花 ID、bigint transformer</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异（练习版故意简化）</h2>
         <table>

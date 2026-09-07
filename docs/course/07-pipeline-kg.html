@@ -109,6 +109,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
@@ -714,6 +715,20 @@ MATCH (n) RETURN n LIMIT 25
 curl -s 'http://localhost:3000/graph/search?keyword=知识' \
   -H "Authorization: Bearer $TOKEN"</code></pre></div>
           </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么图谱用 Neo4j，而不是 Postgres 自关联表？</h3>
+        <p>多跳「实体—关系—实体」查询在图库是一等公民；关系库也能做，但路径查询与可视化成本更高。练习版用最小 Cypher 演示「按文档建图 / 按关键词搜」。</p>
+        <h3>为什么抽取支持 mock 与 LLM 两套？</h3>
+        <p>与 RAG 同理：先保证「Consumer → 写图 → 查询」闭环；LLM structured output（zod schema）是可替换的抽取器。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li>KG / graph 相关 module 与 Cypher</li>
+          <li><code>extraction</code> / structured output schema</li>
+          <li>发布后触发 KG 的 MQ 与 Orchestrator 分支</li>
         </ol>
       </section>
       <section id="diff">

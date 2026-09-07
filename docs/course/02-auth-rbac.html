@@ -115,6 +115,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -1056,6 +1057,21 @@ async ensureAdmin() {
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么用全局 JwtAuthGuard + @Public，而不是每个接口手写？</h3>
+        <p>默认「要登录」比默认「公开」更安全：漏写守卫只会 401，不会默默裸奔。少数入口（login/register/health）显式 <code>@Public()</code>。</p>
+        <h3>为什么练习版用 role_codes 列，不用多表 RBAC？</h3>
+        <p>先建立「守卫读用户 → 比对角色 → 403」心智模型。origin 的 role/permission 表是同一 Guard 思想的数据层升级；课 8 对齐与权限码对照阅读即可。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/auth/guards/jwt-auth.guard.ts</code>、<code>roles.guard.ts</code></li>
+          <li><code>src/auth/auth.module.ts</code> 里 <code>APP_GUARD</code> 注册顺序</li>
+          <li><code>src/auth/strategies/jwt.strategy.ts</code> → <code>buildAuthUser</code></li>
+          <li>有余力再看 <code>@RequirePermission</code> 与 permission 表</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异（练习版故意简化）</h2>
         <table>

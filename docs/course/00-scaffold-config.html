@@ -109,6 +109,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
@@ -203,13 +204,45 @@ async function bootstrap() {
 bootstrap();</code></pre></div>
           </li>
           <li>
-            <h4>健康检查</h4>
-            <p class="file-path">src/app.controller.ts（追加方法）</p>
+            <h4>健康检查（完整 Controller）</h4>
+            <p class="file-path">src/app.controller.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">@Get('health')
-health() {
-  return { ok: true, ts: new Date().toISOString() };
+              <pre><code class="lang-ts">import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+
+  /** 给 compose / 前端探活用；本课不鉴权 */
+  @Get('health')
+  health() {
+    return { ok: true, ts: new Date().toISOString() };
+  }
 }</code></pre></div>
+          </li>
+          <li>
+            <h4>.env.example（可提交仓库）</h4>
+            <p class="file-path">.env.example</p>
+            <div class="code-block"><button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">PORT=3000
+NODE_ENV=development
+# 后续课会陆续用到（本课可先占位）
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_USERNAME=kh_user
+# DB_PASSWORD=kh_pass123
+# DB_DATABASE=knowledge_hub
+# JWT_SECRET=change-me
+# MONGO_URI=mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin
+# RABBITMQ_URL=amqp://guest:guest@localhost:5672
+# ELASTICSEARCH_NODE=http://localhost:9200</code></pre></div>
+            <p>本地复制为 <code>.env</code> 再填真实值；永远不要把 <code>.env</code> 提交进 git。</p>
           </li>
           <li>
             <h4>目录约定（后续课统一）</h4>
@@ -219,7 +252,24 @@ health() {
   auth/ user/ document/ mq/ pipeline/ search/ …
   main.ts
   app.module.ts</code></pre></div>
+            <p>对照 origin：打开 origin 的 <code>src/</code>，会看到同名目录早已齐全；练习仓是「按课长出来」的同一棵树。</p>
           </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么一上来就 ConfigModule + ValidationPipe？</h3>
+        <ul>
+          <li><code>ConfigModule.forRoot({ isGlobal: true })</code>：后面每一课加 DB/JWT/MQ 时，只需 <code>ConfigService.get</code>，不必改注入范围。</li>
+          <li><code>whitelist + forbidNonWhitelisted</code>：DTO 没声明的字段直接 400，避免「多传字段静默入库」。</li>
+          <li><code>transform: true</code>：query/param 字符串自动转成 DTO 类型（如 number）。</li>
+        </ul>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/main.ts</code> — 全局 Pipe、前缀、Swagger（练习版可暂无）</li>
+          <li><code>src/app.module.ts</code> — 一次性挂齐的 imports 地图（后面每课会拆开学）</li>
+          <li><code>docker-compose.yml</code> — 依赖服务端口与账号</li>
         </ol>
       </section>
       <section id="diff">

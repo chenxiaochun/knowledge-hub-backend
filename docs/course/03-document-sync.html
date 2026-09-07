@@ -115,6 +115,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -758,32 +759,114 @@ export class DocumentModule {}</code></pre>
           </li>
 
           <li>
-            <h4>接入 AppModule</h4>
-            <p>在现有 Config / TypeORM / Auth / User 基础上追加 Mongo 与 Document（示意）：</p>
+            <h4>接入 AppModule（完整可替换骨架）</h4>
+            <p class="file-path">src/app.module.ts（在已有 Auth/User/TypeORM 基础上扩到本课）</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">import { MongooseModule } from '@nestjs/mongoose';
+              <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MongooseModule } from '@nestjs/mongoose';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { UserEntity } from './user/entities/user.entity';
 import { DocumentEntity } from './document/entities/document.entity';
+import { UserModule } from './user/user.module';
+import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { StorageModule } from './storage/storage.module';
 
-// imports 中：
-StorageModule,
-MongooseModule.forRootAsync({
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) =&gt; ({
-    uri: config.get&lt;string&gt;(
-      'MONGO_URI',
-      'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
-    ),
-  }),
-}),
-// TypeORM entities 数组里加上 DocumentEntity
-DocumentModule,</code></pre>
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =&gt; ({
+        type: 'postgres',
+        host: config.get('DB_HOST', 'localhost'),
+        port: Number(config.get('DB_PORT', 5432)),
+        username: config.get('DB_USERNAME', 'kh_user'),
+        password: config.get('DB_PASSWORD', 'kh_pass123'),
+        database: config.get('DB_DATABASE', 'knowledge_hub'),
+        entities: [UserEntity, DocumentEntity],
+        synchronize: true,
+      }),
+    }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =&gt; ({
+        uri: config.get&lt;string&gt;(
+          'MONGO_URI',
+          'mongodb://mongo_user:mongo_pass123@localhost:27017/knowledge_hub?authSource=admin',
+        ),
+      }),
+    }),
+    StorageModule,
+    AuthModule,
+    UserModule,
+    DocumentModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}</code></pre>
             </div>
             <div class="callout-warning">
               Multer 默认把文件放内存（<code>file.buffer</code>）。本课依赖 buffer；
               若你改成 diskStorage，要同步改 Service 读法。
+            </div>
+          </li>
+
+          <li>
+            <h4>软删除与详情（补全 Service 方法）</h4>
+            <p>若你上一节 <code>DocumentService</code> 尚未写删/查，在同一文件追加：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async findById(id: string) {
+  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+  if (!doc) throw new NotFoundException('文档不存在');
+  return doc;
+}
+
+async getDetail(id: string) {
+  const meta = await this.findById(id);
+  const content = await this.contentModel.findOne({ documentId: id }).lean();
+  return {
+    ...meta,
+    content: content?.content ?? '',
+    contentType: content?.contentType ?? 'text',
+  };
+}
+
+async softDelete(id: string) {
+  const doc = await this.findById(id);
+  doc.deleted = true;
+  await this.docRepo.save(doc);
+  // 练习版：Mongo 正文可保留或一并删；这里一并删，避免脏数据
+  await this.contentModel.deleteOne({ documentId: id });
+  // 本地文件可选 unlink；失败只打日志
+  try {
+    await this.storage.remove(doc.objectKey);
+  } catch (e) {
+    this.logger?.warn?.(`删本地文件失败: ${doc.objectKey}`);
+  }
+  return { ok: true };
+}</code></pre>
+            </div>
+            <p>Controller 对应：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Get(':id')
+@Roles(RoleCode.ADMIN, RoleCode.EDITOR, RoleCode.VIEWER)
+detail(@Param('id') id: string) {
+  return this.documentService.getDetail(id);
+}
+
+@Delete(':id')
+@Roles(RoleCode.ADMIN)
+remove(@Param('id') id: string) {
+  return this.documentService.softDelete(id);
+}</code></pre>
             </div>
           </li>
 
@@ -801,6 +884,25 @@ ls uploads/documents/</code></pre>
         </ol>
       </section>
 
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么元数据在 Postgres、正文在 Mongo？</h3>
+        <ul>
+          <li><strong>列表/权限/状态机</strong>要事务、索引、外键感 → 关系库更合适。</li>
+          <li><strong>大段正文、将来富文本/多版本</strong> → 文档库读写更省事，不撑爆行宽。</li>
+          <li>两边用同一个 <code>documentId</code>（雪花）关联；删元数据时记得处理正文（本课 softDelete 已示例）。</li>
+        </ul>
+        <h3>为什么先本地 uploads，不接对象存储？</h3>
+        <p>本课目标是「双写 + 解析」，不是运维对象存储。本地落盘让你用 <code>ls uploads/</code> 立刻验收；origin 的 RustFS/S3 只是同一 <code>objectKey</code> 抽象的另一实现。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/document/entities/document.entity.ts</code> — 比练习版多哪些字段</li>
+          <li><code>src/document/schemas/document-content.schema.ts</code></li>
+          <li><code>src/document/document.service.ts</code> 的 upload / create 路径</li>
+          <li><code>src/storage/</code> — 对照练习版 LocalStorageService 的接口形状</li>
+        </ol>
+      </section>
       <section id="diff">
         <h2>与 origin 差异（练习版故意简化）</h2>
         <table>

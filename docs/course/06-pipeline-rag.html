@@ -109,6 +109,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
@@ -775,6 +776,21 @@ export class SearchController {
   -d '{"query":"知识库是什么","topK":5}'</code></pre></div>
             <p>返回应是 chunk 列表（含 <code>document_id</code>、<code>content</code>、<code>score</code>）。mock 向量下「语义」较弱，但同文查询通常能命中；换真实 Embedding 效果会好很多。</p>
           </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么默认 mock Embedding？</h3>
+        <p>向量检索链路（切块 → 写 <code>kh_chunk</code> → knn）与「模型好不好」无关。mock 让你无 Key 也能验收；换成真实 API 只改 Embedding 实现，不改 Consumer/索引结构。</p>
+        <h3>为什么 Search 与 RAG 分索引？</h3>
+        <p><code>kh_document</code> 面向关键词全文；<code>kh_chunk</code> 面向片段 + dense_vector。混在一个 index 会让 mapping/召回策略互相拖累。</p>
+        <h3>对照 origin 建议阅读顺序</h3>
+        <ol>
+          <li>分块与 Embedding 相关 service</li>
+          <li>chunk 索引 mapping（dims、knn）</li>
+          <li>语义检索 API 与权限</li>
+          <li>Orchestrator 如何同时触发 Search + RAG</li>
         </ol>
       </section>
       <section id="diff">
