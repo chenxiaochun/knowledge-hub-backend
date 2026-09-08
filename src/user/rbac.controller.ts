@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
+
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { PermissionCode } from '../common/constant/permissions';
-import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
 import { RbacService } from './rbac.service';
 import { UserService } from './user.service';
 
