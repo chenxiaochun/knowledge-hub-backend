@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
+import { DocumentReviewEntity } from './document/entities/document-review.entity';
 import { DocumentEntity } from './document/entities/document.entity';
 import { GraphModule } from './pipeline/graph.module';
 import { SearchModule } from './search/search.module';
@@ -17,7 +18,6 @@ import { RoleEntity } from './user/entities/role.entity';
 import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
-
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -37,6 +37,7 @@ import { UserModule } from './user/user.module';
           UserRoleEntity,
           RolePermissionEntity,
           DocumentEntity,
+          DocumentReviewEntity,
         ],
         synchronize: true,
       }),

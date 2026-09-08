@@ -1,8 +1,9 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+
+import { RoleCodeValue } from '../common/constant/roles';
 import { AuthUser } from './auth-user.interface';
 import { ROLES_KEY } from './decorators/roles.decorator';
-import { RoleCodeValue } from '../common/constant/roles';
 
 /**
  * 角色鉴权守卫（RBAC）。
@@ -21,6 +22,7 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+
     // 未声明 @Roles：不做角色限制，直接放行
     if (!requiredRoles?.length) {
       return true;

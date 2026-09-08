@@ -4,18 +4,21 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { compare, hash } from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
+
+import { compare, hash } from 'bcrypt';
+import { RoleCode } from 'src/common/constant/roles';
 import { Repository } from 'typeorm';
+
+import type { AuthUser } from '../auth/auth-user.interface';
+
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
-import { UserVO } from './vo/user.vo';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UserEntity } from './entities/user.entity';
-import type { AuthUser } from '../auth/auth-user.interface';
-import { RoleCode } from 'src/common/constant/roles';
 import { RbacService } from './rbac.service';
+import { UserVO } from './vo/user.vo';
 
 @Injectable()
 export class UserService {
