@@ -9,6 +9,7 @@ import { PermissionEntity } from './entities/permission.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
 import { UserRoleEntity } from './entities/user-role.entity';
 import { RbacController } from './rbac.controller';
+import { RbacSeedService } from './rbac-seed.service';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { RbacController } from './rbac.controller';
     ]),
   ],
   controllers: [UserController, RbacController],
-  providers: [UserService, RbacService],
+  providers: [UserService, RbacService, RbacSeedService],
   exports: [UserService, TypeOrmModule, RbacService],
 })
 export class UserModule {}

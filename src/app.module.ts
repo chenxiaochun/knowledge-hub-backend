@@ -11,6 +11,10 @@ import { DocumentEntity } from './document/entities/document.entity';
 import { GraphModule } from './pipeline/graph.module';
 import { SearchModule } from './search/search.module';
 import { StorageModule } from './storage/storage.module';
+import { PermissionEntity } from './user/entities/permission.entity';
+import { RolePermissionEntity } from './user/entities/role-permission.entity';
+import { RoleEntity } from './user/entities/role.entity';
+import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
 
@@ -26,7 +30,14 @@ import { UserModule } from './user/user.module';
         username: config.get('POSTGRES_USER'),
         password: config.get('POSTGRES_PASSWORD'),
         database: config.get('POSTGRES_DB'),
-        entities: [UserEntity, DocumentEntity],
+        entities: [
+          UserEntity,
+          RoleEntity,
+          PermissionEntity,
+          UserRoleEntity,
+          RolePermissionEntity,
+          DocumentEntity,
+        ],
         synchronize: true,
       }),
     }),

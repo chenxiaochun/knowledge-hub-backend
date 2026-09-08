@@ -34,6 +34,30 @@ export class RbacService {
     return this.permissionRepository.find({ where: { status: 1 } });
   }
 
+  async getRolePermissionCodes(roleCode: string) {
+    const role = await this.roleRepository.findOne({ where: { roleCode, status: 1 } });
+    if (!role) {
+      throw new NotFoundException('角色不存在');
+    }
+
+    const rps = await this.rolePermissionRepository.find({ where: { roleId: role.id } });
+    if (!rps.length) {
+      return { roleCode, permissionCodes: [] as string[] };
+    }
+
+    const perms = await this.permissionRepository.find({
+      where: {
+        id: In(rps.map((rp) => rp.permissionId)),
+        status: 1,
+      },
+    });
+
+    return {
+      roleCode,
+      permissionCodes: perms.map((p) => p.permissionCode),
+    };
+  }
+
   async loadRolesAndPermissions(
     userId: string,
   ): Promise<{ roles: string[]; permissions: string[] }> {
