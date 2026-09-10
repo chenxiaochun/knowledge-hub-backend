@@ -9,6 +9,8 @@ export class EmbeddingService {
   private readonly apiKey?: string | undefined = undefined;
   private readonly baseUrl: string | undefined = undefined;
   private readonly model: string | undefined = undefined;
+  /** 通义 / DashScope 兼容接口单次 input 上限为 10 */
+  private readonly maxBatchSize: number;
 
   constructor(config: ConfigService) {
     this.mode = config.get('EMBEDDING_MODE', 'mock');
@@ -16,10 +18,27 @@ export class EmbeddingService {
     this.apiKey = config.get('OPENAI_API_KEY') || undefined;
     this.baseUrl = config.get('OPENAI_BASE_URL');
     this.model = config.get('EMBEDDINGS_MODEL_NAME', 'text-embedding-v3');
+    this.maxBatchSize = Number(config.get('EMBEDDING_BATCH_SIZE', 10));
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (!texts.length) return [];
+
+    const all: number[][] = [];
+    for (let i = 0; i < texts.length; i += this.maxBatchSize) {
+      const slice = texts.slice(i, i + this.maxBatchSize);
+      const vectors = await this.embedOnce(slice);
+      all.push(...vectors);
+      if (i + this.maxBatchSize < texts.length) {
+        this.logger.debug(
+          `Embedding 分批 ${Math.floor(i / this.maxBatchSize) + 1}/${Math.ceil(texts.length / this.maxBatchSize)}`,
+        );
+      }
+    }
+    return all;
+  }
+
+  private async embedOnce(texts: string[]): Promise<number[][]> {
     const res = await fetch(`${this.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
@@ -34,7 +53,7 @@ export class EmbeddingService {
     const json = (await res.json()) as {
       data: { embedding: number[]; index: number }[];
     };
-    // API 返回的 data 可能乱序；用 index 对齐到入参 texts 的顺序，再只取出向量
+    // API 返回的 data 可能乱序；用 index 对齐到本批 texts 的顺序，再只取出向量
     return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
 }
