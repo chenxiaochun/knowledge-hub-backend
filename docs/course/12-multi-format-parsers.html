@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>第 12 课 · 多格式解析 + RustFS 上传</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>第 12 课 · 多格式解析 + RustFS 上传</h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> · 前置 <a href="./03-document-sync.html">第 3 课</a>
+      · 对照 origin 分支 <code>v2</code>（<code>document/parser/*</code>、<code>storage/rustfs.service.ts</code>）
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#migrate">从第 3 课迁过来</a></li>
+        <li><a href="#concept">概念</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          在第 3 课「上传 → 解析 → 双写」已通的前提下，一次性对齐 origin <strong>v2</strong>：
+          ① 多格式解析（<code>pdf</code>/<code>docx</code>/<code>xlsx</code>/<code>pptx</code>/<code>txt</code>/<code>md</code> → Markdown）；
+          ② 用 <code>RustfsService</code> 存原件（返回 <code>fileUrl</code>），PDF 内嵌图也进同一桶。
+        </p>
+        <div class="callout-tip">
+          <strong>自测通过</strong>：
+          ① 各格式各传一份样例，返回草稿且正文可读；
+          ② 不支持的扩展名 → 400；
+          ③ <code>docker compose up -d rustfs</code> 后，响应 <code>fileUrl</code> 非空且浏览器可下载；
+          ④ <code>RUSTFS_ENABLED=false</code> 时仍能解析入库，<code>fileUrl</code> 为 null；
+          ⑤（可选）带图 PDF 正文出现 <code>![](http://localhost:9000/...)</code>。
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 3 课链路已通。本课扩展解析层 + 把本地盘换成 RustFS，不重做审核/MQ。
+          样例可从 origin <code>test-files/</code> 复制。练习仓 compose 通常已有 <code>rustfs</code> 服务。
+        </div>
+        <h3>依赖安装</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">pnpm add mammoth turndown turndown-plugin-gfm exceljs jszip officeparser pdf-parse @aws-sdk/client-s3
+pnpm add -D @types/turndown</code></pre>
+        </div>
+        <h3>验收 curl（字段名必须是 file）</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 登录拿 TOKEN（若第 2 课已接 JWT）
+# export TOKEN=...
+
+# docx
+curl -s -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'file=@./test-files/sample.docx' \
+  -F 'tags=导入,docx' | jq '{documentId, title, fileUrl, fileExtension, contentLength, status}'
+
+# xlsx / pptx / pdf 同理换路径
+curl -s -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'file=@./test-files/sample.xlsx' | jq '{documentId, title, contentLength}'
+
+# 看解析正文
+DOC_ID=... # 上一步返回
+curl -s "http://localhost:3000/documents/${DOC_ID}" \
+  -H "Authorization: Bearer $TOKEN" | jq '{id, title, content: (.content[:500])}'</code></pre>
+        </div>
+      </section>
+
+
+      <section id="migrate">
+        <h2>从第 3 课迁过来（先看这张表）</h2>
+        <p>第 3 课已经能 <code>upload/parse</code> + 本地盘。本课是<strong>原地升级</strong>，不是另起炉灶：</p>
+        <table>
+          <thead><tr><th>第 3 课现状</th><th>本课改成</th></tr></thead>
+          <tbody>
+            <tr><td><code>FileParserService</code> 只支持 txt/md</td><td>pdf/docx/xlsx/pptx/txt/md 分发</td></tr>
+            <tr><td><code>LocalStorageService.saveDocument</code></td><td><code>RustfsService.uploadBytes</code>（可关）</td></tr>
+            <tr><td>返回相对路径或本地 URL</td><td>S3 风格 <code>fileUrl</code>；建议写入 Entity</td></tr>
+            <tr><td>fileSize limit 可能是 10MB</td><td>对齐 origin：50MB</td></tr>
+            <tr><td>手写 latin1→utf8 / extname</td><td>统一用 <code>markdown.util</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout-warning">
+          <strong>推荐动手顺序</strong>（必须按这个，否则会注入失败）：
+          起 RustFS → 写 <code>RustfsService</code> → 写各 parser → 换 <code>FileParserService</code> →
+          改 <code>DocumentService</code> / Controller / Module → 逐格式 curl。
+          下面「逐步实现」已按此顺序编排。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念</h2>
+        <div class="flow">multipart file.buffer
+  → decodeUploadFilename → getExtension
+  → FileParserService.parse
+       ├─ txt/md / docx / xlsx / pptx
+       └─ pdf（可选：图 → RustFS prefix=pdf-images → ![](url)）
+  → RustfsService.uploadBytes（prefix=documents）→ fileUrl
+  → create()：Postgres 元数据 + Mongo Markdown
+  → 响应 documentId + fileUrl</div>
+        <table>
+          <thead><tr><th>格式</th><th>核心库</th><th>产出特点</th></tr></thead>
+          <tbody>
+            <tr><td>txt / md</td><td>无</td><td>UTF-8 原样</td></tr>
+            <tr><td>docx</td><td>mammoth + turndown(+GFM)</td><td>标题层级、列表、表格</td></tr>
+            <tr><td>xlsx</td><td>exceljs（降级 officeparser）</td><td><code>## Sheet</code> + Markdown 表</td></tr>
+            <tr><td>pptx</td><td>jszip 自研 / officeparser</td><td><code>## 幻灯片 N</code> + 标题/正文/表</td></tr>
+            <tr><td>pdf</td><td>pdf-parse</td><td>按页文本；可选 <code>![](url)</code>；尽力抽表</td></tr>
+          </tbody>
+        </table>
+        <p>统一成 Markdown 的好处：后面检索、分块、图谱都只认一种正文形态，不用为每种 Office 格式单独建管线。</p>
+        <h3>两处上传（本课必须都接）</h3>
+        <table>
+          <thead><tr><th>场景</th><th>谁调用</th><th>prefix</th><th>失败策略</th></tr></thead>
+          <tbody>
+            <tr><td>原件</td><td>DocumentService</td><td><code>documents</code></td><td>启用时失败 → 400；未启用 → 跳过</td></tr>
+            <tr><td>PDF 内嵌图</td><td>FileParser → parsePdf</td><td><code>pdf-images</code></td><td>单张/整批失败 → 降级纯文本</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>docker-compose.yml</code> / <code>.env</code></td><td>核对 rustfs；追加 RUSTFS_*</td></tr>
+            <tr><td><code>src/storage/rustfs.service.ts</code></td><td>新建或核对到与 origin v2 一致（含 uploadBytes）</td></tr>
+            <tr><td><code>src/storage/storage.module.ts</code></td><td>导出 RustfsService（建议 @Global）</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>imports 含 StorageModule</td></tr>
+            <tr><td><code>src/document/parser/utils/markdown.util.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/parser/parsers/*.ts</code></td><td>新建 plain/docx/xlsx/pdf/pptx</td></tr>
+            <tr><td><code>src/document/parser/file-parser.service.ts</code></td><td>整文件替换为多分发 + RustFS</td></tr>
+            <tr><td><code>src/document/dto/upload-parse.dto.ts</code></td><td>核对/补齐可选表单字段</td></tr>
+            <tr><td><code>src/document/document.controller.ts</code></td><td>limit 50MB；multipart 字段 file</td></tr>
+            <tr><td><code>src/document/document.service.ts</code></td><td>LocalStorage → RustFS；写回 fileUrl</td></tr>
+            <tr><td><code>src/document/document.module.ts</code></td><td>providers 含 FileParserService</td></tr>
+            <tr><td><code>src/document/entities/document.entity.ts</code></td><td>有 fileUrl（及可选 fileExt）列</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>起 RustFS + 环境变量</h4>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-yaml">  # 文档：https://docs.rustfs.com/installation/docker/
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: knowledge_hub_rustfs
+    restart: unless-stopped
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Console
+    environment:
+      RUSTFS_VOLUMES: /data/rustfs0
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CORS_ALLOWED_ORIGINS: "*"
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/rustfs0:/data/rustfs0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+</code></pre>
+        </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d rustfs
+curl -sf http://localhost:9000/health &amp;&amp; echo OK
+# Console 可选：http://localhost:9001  rustfsadmin / rustfsadmin</code></pre>
+        </div>
+            <p class="file-path">.env 追加</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">RUSTFS_ENABLED=true
+RUSTFS_ENDPOINT=http://localhost:9000
+RUSTFS_PUBLIC_URL=http://localhost:9000
+RUSTFS_ACCESS_KEY=rustfsadmin
+RUSTFS_SECRET_KEY=rustfsadmin
+RUSTFS_BUCKET=knowledge-hub
+RUSTFS_REGION=us-east-1</code></pre>
+        </div>
+            <div class="callout-info">
+              <code>RUSTFS_PUBLIC_URL</code> 会拼进 <code>fileUrl</code>。前端不在本机时改成浏览器可达地址。
+              若练习仓已有半成品 <code>RustfsService</code> 但<strong>没有</code> <code>uploadBytes</code> / <code>isEnabled</code>，本步用下面完整文件覆盖。
+            </div>
+          </li>
+          <li>
+            <h4>RustfsService（完整，对齐 origin v2）</h4>
+            <p class="file-path">src/storage/rustfs.service.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import {
+  CreateBucketCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import { extname } from 'path';
+
+export interface UploadBytesOptions {
+  fileName: string;
+  contentType: string;
+  /** 对象 key 前缀，默认 documents */
+  prefix?: string;
+}
+
+/** RustFS 文件存储（S3 兼容） */
+@Injectable()
+export class RustfsService implements OnModuleInit {
+  private readonly logger = new Logger(RustfsService.name);
+  private client: S3Client | null = null;
+  private enabled = false;
+  private bucket = '';
+  private publicBaseUrl = '';
+
+  constructor(private readonly config: ConfigService) {}
+
+  onModuleInit() {
+    this.enabled =
+      this.config.get&lt;string&gt;('RUSTFS_ENABLED', 'true').toLowerCase() !==
+      'false';
+
+    if (!this.enabled) {
+      this.logger.warn('RustFS 已禁用（RUSTFS_ENABLED=false），文件上传将跳过');
+      return;
+    }
+
+    const endpoint = this.config.get&lt;string&gt;(
+      'RUSTFS_ENDPOINT',
+      'http://localhost:9000',
+    );
+    const accessKey = this.config.get&lt;string&gt;('RUSTFS_ACCESS_KEY', 'rustfsadmin');
+    const secretKey = this.config.get&lt;string&gt;(
+      'RUSTFS_SECRET_KEY',
+      'rustfsadmin',
+    );
+    const region = this.config.get&lt;string&gt;('RUSTFS_REGION', 'us-east-1');
+    this.bucket = this.config.get&lt;string&gt;('RUSTFS_BUCKET', 'knowledge-hub');
+    this.publicBaseUrl = (
+      this.config.get&lt;string&gt;('RUSTFS_PUBLIC_URL') || endpoint
+    ).replace(/\/$/, '');
+
+    this.client = new S3Client({
+      endpoint,
+      region,
+      credentials: {
+        accessKeyId: accessKey,
+        secretAccessKey: secretKey,
+      },
+      forcePathStyle: true,
+    });
+
+    this.logger.log(
+      `RustFS 已配置: endpoint=${endpoint}, bucket=${this.bucket}, public=${this.publicBaseUrl}`,
+    );
+
+    void this.ensureBucket().catch((err) =&gt; {
+      this.logger.warn(
+        `RustFS 初始化 bucket 失败（首次上传时会重试）: ${err instanceof Error ? err.message : err}`,
+      );
+    });
+  }
+
+  isEnabled(): boolean {
+    return this.enabled &amp;&amp; this.client != null;
+  }
+
+  /** 上传字节，返回可访问 URL：{publicBase}/{bucket}/{key} */
+  async uploadBytes(
+    bytes: Buffer | Uint8Array,
+    options: UploadBytesOptions,
+  ): Promise&lt;string&gt; {
+    if (!this.isEnabled() || !this.client) {
+      throw new ServiceUnavailableException(
+        'RustFS 未启用或未配置，无法上传文件',
+      );
+    }
+
+    await this.ensureBucket();
+
+    const prefix = (options.prefix ?? 'documents').replace(/^\/+|\/+$/g, '');
+    const ext = extname(options.fileName) || guessExt(options.contentType);
+    const safeBase = sanitizeBaseName(options.fileName);
+    const key = `${prefix}/${formatDatePath()}/${safeBase}-${randomUUID()}${ext}`;
+    const body = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: options.contentType,
+        ContentLength: body.length,
+      }),
+    );
+
+    const url = `${this.publicBaseUrl}/${this.bucket}/${key}`;
+    this.logger.log(
+      `RustFS 上传成功: key=${key}, size=${body.length}, url=${url}`,
+    );
+    return url;
+  }
+
+  private async ensureBucket(): Promise&lt;void&gt; {
+    if (!this.client) return;
+
+    try {
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return;
+    } catch {
+      // bucket 不存在则创建
+    }
+
+    try {
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      this.logger.log(`RustFS bucket 已创建: ${this.bucket}`);
+    } catch (err) {
+      // 并发创建时可能已存在
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/BucketAlreadyOwnedByYou|BucketAlreadyExists|already exists/i.test(message)) {
+        throw err;
+      }
+    }
+  }
+}
+
+function formatDatePath(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}/${m}/${day}`;
+}
+
+function sanitizeBaseName(fileName: string): string {
+  const base = fileName.replace(/\.[^.]+$/, '') || 'file';
+  return base
+    .replace(/[^\w\u4e00-\u9fff.-]+/g, '_')
+    .slice(0, 64);
+}
+
+function guessExt(contentType: string): string {
+  switch (contentType) {
+    case 'image/png':
+      return '.png';
+    case 'image/jpeg':
+      return '.jpg';
+    case 'image/webp':
+      return '.webp';
+    case 'application/pdf':
+      return '.pdf';
+    default:
+      return '';
+  }
+}
+</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>StorageModule + AppModule</h4>
+            <p class="file-path">src/storage/storage.module.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Global, Module } from '@nestjs/common';
+import { RustfsService } from './rustfs.service';
+
+@Global()
+@Module({
+  providers: [RustfsService],
+  exports: [RustfsService],
+})
+export class StorageModule {}
+</code></pre>
+        </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// app.module.ts imports 中确保有：
+StorageModule,
+DocumentModule,</code></pre>
+        </div>
+            <p>LocalStorage 文件可先留着对照，但上传路径本课改走 RustFS。</p>
+          </li>
+          <li>
+            <h4>工具函数</h4>
+            <p class="file-path">src/document/parser/utils/markdown.util.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/** 规范化 Markdown：统一换行，压缩连续空行，去首尾空白 */
+export function cleanMarkdown(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+/** 转义表格单元格中的 `|`，并把换行压成空格，避免破坏表结构 */
+export function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+}
+
+/**
+ * 二维数组 → Markdown 表格（首行作表头，第二行输出 `| --- |` 分隔）。
+ * 列数按所有行的最大列对齐，缺省单元格视为空串。
+ */
+export function toMarkdownTable(rows: string[][]): string {
+  if (!rows.length) return '';
+
+  const maxCols = rows.reduce((max, row) =&gt; Math.max(max, row.length), 0);
+  if (maxCols === 0) return '';
+
+  const lines: string[] = [];
+  for (let r = 0; r &lt; rows.length; r++) {
+    const cells: string[] = [];
+    for (let c = 0; c &lt; maxCols; c++) {
+      cells.push(escapeTableCell(rows[r][c] ?? ''));
+    }
+    lines.push(`| ${cells.join(' | ')} |`);
+    if (r === 0) {
+      lines.push(`| ${Array(maxCols).fill('---').join(' | ')} |`);
+    }
+  }
+  return `${lines.join('\n')}\n\n`;
+}
+
+/** 取文件扩展名（小写，不含点）；无扩展名时返回空串 */
+export function getExtension(filename?: string | null): string {
+  if (!filename || !filename.includes('.')) return '';
+  return filename.slice(filename.lastIndexOf('.') + 1).toLowerCase();
+}
+
+/**
+ * Multer/busboy 常把 multipart 文件名的 UTF-8 字节按 Latin-1 解码，
+ * 导致中文变成「ç³è®º…」。按 Latin-1 取回原始字节再按 UTF-8 还原。
+ */
+export function decodeUploadFilename(filename?: string | null): string {
+  if (!filename) return '';
+  try {
+    const decoded = Buffer.from(filename, 'latin1').toString('utf8');
+    // 解码失败会出现替换字符，此时保留原值
+    if (decoded.includes('\uFFFD')) return filename;
+    return decoded;
+  } catch {
+    return filename;
+  }
+}
+
+/** 去掉扩展名作为文档标题；空文件名时返回「未命名文档」 */
+export function titleFromFilename(filename?: string | null): string {
+  if (!filename) return '未命名文档';
+  const idx = filename.lastIndexOf('.');
+  return idx &gt; 0 ? filename.slice(0, idx) : filename;
+}
+</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>纯文本 / DOCX / XLSX</h4>
+            <p class="file-path">src/document/parser/parsers/plain-text.parser.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/**
+ * 将 TXT / MD 解析为文本。
+ *
+ * 不做结构转换：按 UTF-8 原样读出，后续由调用方直接当作 Markdown/纯文本使用。
+ */
+export function parsePlainText(buffer: Buffer): string {
+  return buffer.toString('utf8');
+}
+</code></pre>
+        </div>
+            <p class="file-path">src/document/parser/parsers/docx.parser.ts</p>
+            <div class="callout-info">
+              mammoth 转 HTML 时用 <code>styleMap</code> 同时映射英文 Heading 与中文「标题 N」，
+              避免中文版 Word 丢层级；再 turndown + GFM 出 Markdown。
+            </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import mammoth from 'mammoth';
+import TurndownService from 'turndown';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { gfm } = require('turndown-plugin-gfm') as {
+  gfm: (service: TurndownService) =&gt; void;
+};
+import { cleanMarkdown } from '../utils/markdown.util';
+
+/**
+ * 将 DOCX 解析为 Markdown。
+ *
+ * 整体流程：
+ * 1. mammoth 把 DOCX 转为 HTML（保留标题 / 列表 / 表格等结构）；
+ * 2. turndown(+GFM) 把 HTML 转为 Markdown；
+ * 3. cleanMarkdown 做换行与空白规范化。
+ *
+ * styleMap 同时覆盖英文与中文 Word 内置样式名，避免中文版 Word 标题丢失层级。
+ */
+export async function parseDocx(buffer: Buffer): Promise&lt;string&gt; {
+  const { value: html } = await mammoth.convertToHtml(
+    { buffer },
+    {
+      styleMap: [
+        // 英文样式
+        "p[style-name='Title'] =&gt; h1:fresh",
+        "p[style-name='Subtitle'] =&gt; h2:fresh",
+        "p[style-name='Heading 1'] =&gt; h1:fresh",
+        "p[style-name='Heading 2'] =&gt; h2:fresh",
+        "p[style-name='Heading 3'] =&gt; h3:fresh",
+        "p[style-name='Heading 4'] =&gt; h4:fresh",
+        // 中文 Word 内置「标题 N」
+        "p[style-name='标题 1'] =&gt; h1:fresh",
+        "p[style-name='标题 2'] =&gt; h2:fresh",
+        "p[style-name='标题 3'] =&gt; h3:fresh",
+        "p[style-name='标题 4'] =&gt; h4:fresh",
+      ],
+    },
+  );
+
+  const turndown = new TurndownService({
+    headingStyle: 'atx', // # 标题
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-',
+  });
+  // GFM：表格、删除线、任务列表等扩展语法
+  turndown.use(gfm);
+
+  return cleanMarkdown(turndown.turndown(html));
+}
+</code></pre>
+        </div>
+            <p class="file-path">src/document/parser/parsers/xlsx.parser.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import ExcelJS from 'exceljs';
+import { cleanMarkdown, toMarkdownTable } from '../utils/markdown.util';
+
+/**
+ * 将 XLSX 解析为 Markdown。
+ *
+ * 整体流程：
+ * 1. exceljs 加载工作簿；
+ * 2. 每个 Sheet → `## SheetName` + Markdown 表格（首行作表头）；
+ * 3. 单元格值经 cellToString 统一成字符串（公式取 result、富文本拼接等）；
+ * 4. 列数按整表最大列对齐后交给 toMarkdownTable。
+ *
+ * 空 Sheet 仍保留标题与空行，避免丢 sheet 名信息。
+ * 调用方（FileParserService）在 exceljs 失败时会降级 officeparser。
+ */
+export async function parseXlsx(buffer: Buffer): Promise&lt;string&gt; {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const parts: string[] = [];
+
+  workbook.eachSheet((sheet) =&gt; {
+    parts.push(`## ${sheet.name}\n`);
+
+    const rows: string[][] = [];
+    let maxCols = 0;
+
+    sheet.eachRow({ includeEmpty: false }, (row) =&gt; {
+      const values = row.values as Array&lt;ExcelJS.CellValue | undefined&gt;;
+      const cells: string[] = [];
+      // exceljs row.values 下标从 1 开始；actualCellCount 可能小于稀疏行的真实末列
+      const last = Math.max(row.actualCellCount, (values?.length ?? 1) - 1);
+      maxCols = Math.max(maxCols, last);
+      for (let c = 1; c &lt;= last; c++) {
+        cells.push(cellToString(row.getCell(c).value));
+      }
+      rows.push(cells);
+    });
+
+    if (maxCols === 0 || rows.length === 0) {
+      parts.push('\n');
+      return;
+    }
+
+    // 各行列数可能不等，右侧补空串再出表
+    const normalized = rows.map((r) =&gt; {
+      const copy = [...r];
+      while (copy.length &lt; maxCols) copy.push('');
+      return copy;
+    });
+
+    parts.push(toMarkdownTable(normalized));
+  });
+
+  return cleanMarkdown(parts.join('\n'));
+}
+
+/**
+ * 将 exceljs 单元格值转为展示用字符串。
+ *
+ * 兼容：原始类型、Date、公式（取 result）、超链接（取 text）、富文本、共享公式。
+ * 无法识别的对象退回 String(value)。
+ */
+function cellToString(value: ExcelJS.CellValue): string {
+  if (value == null) return '';
+
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : String(value);
+  }
+  if (typeof value === 'boolean') return String(value);
+  if (value instanceof Date) return value.toISOString();
+
+  if (typeof value === 'object') {
+    // 公式单元格：优先展示计算结果
+    if ('result' in value &amp;&amp; value.result != null) {
+      return cellToString(value.result as ExcelJS.CellValue);
+    }
+    // 超链接等：{ text, hyperlink }
+    if ('text' in value &amp;&amp; typeof value.text === 'string') {
+      return value.text;
+    }
+    // 富文本：拼接各 run
+    if ('richText' in value &amp;&amp; Array.isArray(value.richText)) {
+      return value.richText.map((t) =&gt; t.text).join('');
+    }
+    // 仅有公式、尚未/无法拿到 result
+    if ('sharedFormula' in value || 'formula' in value) {
+      const result = (value as { result?: ExcelJS.CellValue }).result;
+      return result != null ? cellToString(result) : '';
+    }
+  }
+
+  return String(value);
+}
+</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>PDF（对齐 origin v2）</h4>
+            <p class="file-path">src/document/parser/parsers/pdf.parser.ts</p>
+            <div class="callout-info">
+              <code>uploadImage</code> 可选：不传则只出文本。图片提取/单张上传失败都降级，不阻断整份文档。
+              <code>finally</code> 里必须 <code>parser.destroy()</code>。
+            </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Logger } from '@nestjs/common';
+import { PDFParse } from 'pdf-parse';
+import { cleanMarkdown, toMarkdownTable } from '../utils/markdown.util';
+
+const logger = new Logger('PdfParser');
+
+/**
+ * 图片上传回调：解析过程中抽出的图片字节，经此函数上传后返回可访问 URL。
+ * 由调用方注入（例如上传到对象存储），本模块不关心具体存储实现。
+ */
+export type ImageUploader = (
+  bytes: Buffer,
+  fileName: string,
+  contentType: string,
+) =&gt; Promise&lt;string&gt;;
+
+export interface ParsePdfOptions {
+  /**
+   * 若提供，则从 PDF 中提取图片、上传，并按页以 Markdown 图片语法写入结果。
+   * 未提供时仅输出文本（及可选的表格附录）。
+   */
+  uploadImage?: ImageUploader;
+  /**
+   * 跳过宽或高小于该像素阈值的图片（多为装饰图标/噪点），默认 50。
+   * 会同时传给 pdf-parse 的 imageThreshold，并在本地再过滤一次。
+   */
+  imageThreshold?: number;
+}
+
+/**
+ * 将 PDF 解析为 Markdown。
+ *
+ * 整体流程：
+ * 1. 按页提取文本；
+ * 2. 若提供 uploadImage，则按页提取图片 → 上传 → 记下 URL；
+ * 3. 按页拼装：先文本，再该页图片的 `![](url)`；
+ * 4. 尝试提取表格；若正文里尚无 Markdown 表格，则追加到文末「检测到的表格」章节；
+ * 5. 无论成败，在 finally 中销毁 parser，释放底层资源。
+ *
+ * 图片提取失败不会中断解析，会降级为仅文本；单张图片上传失败则跳过该张。
+ */
+export async function parsePdf(
+  buffer: Buffer,
+  options: ParsePdfOptions = {},
+): Promise&lt;string&gt; {
+  const parser = new PDFParse({ data: buffer });
+  const threshold = options.imageThreshold ?? 50;
+
+  try {
+    // ---------- 1. 文本：按页取出 ----------
+    const textResult = await parser.getText();
+    const pageTexts = textResult?.pages ?? [];
+    /** pageNumber → 该页已上传图片的 URL 列表（保持提取顺序） */
+    const pageImageUrls = new Map&lt;number, string[]&gt;();
+
+    // ---------- 2. 图片（可选）：提取 → 过滤小图 → 上传 ----------
+    if (options.uploadImage) {
+      try {
+        const imageResult = await parser.getImage({
+          imageThreshold: threshold,
+          // 只要原始字节，不要 data URL，便于直接上传
+          imageBuffer: true,
+          imageDataUrl: false,
+        });
+
+        for (const page of imageResult?.pages ?? []) {
+          const urls: string[] = [];
+          let imgIdx = 0;
+          for (const image of page.images ?? []) {
+            // 二次过滤：pdf-parse 已按阈值筛过，这里再挡一遍异常尺寸
+            if (
+              (image.width &gt; 0 &amp;&amp; image.width &lt; threshold) ||
+              (image.height &gt; 0 &amp;&amp; image.height &lt; threshold)
+            ) {
+              continue;
+            }
+            if (!image.data?.length) continue;
+
+            // 根据文件头嗅探 MIME，决定扩展名（webp 也按 png 扩展名上传，contentType 仍为真实类型）
+            const contentType = sniffImageContentType(image.data);
+            const ext = contentType === 'image/jpeg' ? 'jpg' : 'png';
+            const fileName = `pdf_img_p${page.pageNumber}_${imgIdx++}.${ext}`;
+            try {
+              const url = await options.uploadImage(
+                Buffer.from(image.data),
+                fileName,
+                contentType,
+              );
+              urls.push(url);
+            } catch (err) {
+              // 单张失败不影响同页其他图片与整份文档
+              logger.warn(
+                `PDF 图片上传失败: page=${page.pageNumber}, name=${image.name}, err=${err instanceof Error ? err.message : err}`,
+              );
+            }
+          }
+          if (urls.length) {
+            pageImageUrls.set(page.pageNumber, urls);
+          }
+        }
+
+        if (pageImageUrls.size &gt; 0) {
+          logger.log(
+            `PDF 图片提取完成: ${[...pageImageUrls.values()].reduce((n, a) =&gt; n + a.length, 0)} 张`,
+          );
+        }
+      } catch (err) {
+        // 整批图片提取失败：降级为纯文本，不抛错
+        logger.warn(
+          `PDF 图片提取失败，继续仅文本: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    // ---------- 3. 按页拼装 Markdown ----------
+    // 有分页文本时：每页「文本 + 该页图片」，页与页之间空行分隔
+    // 无分页信息时：退回全文 text，图片统一追加在后
+    const parts: string[] = [];
+    if (pageTexts.length &gt; 0) {
+      for (const page of pageTexts) {
+        const text = (page.text ?? '').trim();
+        if (text) parts.push(text);
+
+        // page.num 与图片侧的 pageNumber 对应同一页码
+        const urls = pageImageUrls.get(page.num) ?? [];
+        for (const url of urls) {
+          parts.push(`![](${url})`);
+        }
+        // 该页有内容时末尾加空串，join 后形成段落间距
+        if (text || urls.length) parts.push('');
+      }
+    } else {
+      const fallback = (textResult?.text ?? '').trim();
+      if (fallback) parts.push(fallback);
+      for (const urls of pageImageUrls.values()) {
+        for (const url of urls) parts.push(`![](${url})`);
+      }
+    }
+
+    let markdown = cleanMarkdown(parts.join('\n\n'));
+
+    // ---------- 4. 表格（尽力而为）----------
+    // 仅当正文中尚未出现 Markdown 表头分隔行（| ---）时才追加，避免与正文重复
+    try {
+      const tableResult = await parser.getTable();
+      const pages = tableResult?.pages ?? [];
+      if (pages.length &gt; 0 &amp;&amp; !markdown.includes('| ---')) {
+        const tableParts: string[] = [];
+        let tableIdx = 0;
+        for (const page of pages) {
+          for (const table of page.tables ?? []) {
+            // pdf-parse 返回结构不固定，先归一成 string[][]
+            const rows = normalizePdfTable(table);
+            if (rows.length &gt; 0) {
+              tableIdx += 1;
+              tableParts.push(
+                `### 表格 ${tableIdx}\n\n${toMarkdownTable(rows)}`,
+              );
+            }
+          }
+        }
+        if (tableParts.length &gt; 0) {
+          markdown = cleanMarkdown(
+            `${markdown}\n\n## 检测到的表格\n\n${tableParts.join('\n')}`,
+          );
+        }
+      }
+    } catch {
+      // 表格提取失败不影响主结果
+    }
+
+    return markdown;
+  } finally {
+    // 释放 pdf-parse / wasm 等底层资源，避免泄漏
+    await parser.destroy();
+  }
+}
+
+/**
+ * 通过魔数（文件头字节）判断图片 MIME。
+ * 识别失败时默认 image/png，保证上传侧总能拿到一个 contentType。
+ */
+function sniffImageContentType(data: Uint8Array): string {
+  // JPEG: FF D8 FF
+  if (data.length &gt;= 3 &amp;&amp; data[0] === 0xff &amp;&amp; data[1] === 0xd8 &amp;&amp; data[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  // PNG: 89 50 4E 47（即 \x89PNG）
+  if (
+    data.length &gt;= 8 &amp;&amp;
+    data[0] === 0x89 &amp;&amp;
+    data[1] === 0x50 &amp;&amp;
+    data[2] === 0x4e &amp;&amp;
+    data[3] === 0x47
+  ) {
+    return 'image/png';
+  }
+  // WebP: 以 RIFF 开头（完整格式还含 WEBP，这里只做粗判）
+  if (
+    data.length &gt;= 4 &amp;&amp;
+    data[0] === 0x52 &amp;&amp;
+    data[1] === 0x49 &amp;&amp;
+    data[2] === 0x46 &amp;&amp;
+    data[3] === 0x46
+  ) {
+    return 'image/webp';
+  }
+  return 'image/png';
+}
+
+/**
+ * 将 pdf-parse getTable() 返回的多种可能结构，统一成二维字符串数组。
+ *
+ * 兼容形态：
+ * - string[][]：已是行列结构；
+ * - 嵌套数组：逐项递归再扁平合并；
+ * - { rows } / { data }：取字段后继续递归。
+ * 无法识别时返回空数组。
+ */
+function normalizePdfTable(raw: unknown): string[][] {
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return [];
+    // 首元素仍是数组 → 视为「行 → 单元格」
+    if (Array.isArray(raw[0])) {
+      return (raw as unknown[][]).map((row) =&gt;
+        row.map((cell) =&gt; String(cell ?? '').trim()),
+      );
+    }
+    // 否则当作「多个表/多块」拼接
+    const merged: string[][] = [];
+    for (const item of raw) {
+      merged.push(...normalizePdfTable(item));
+    }
+    return merged;
+  }
+
+  if (typeof raw === 'object' &amp;&amp; raw !== null) {
+    const obj = raw as { rows?: unknown; data?: unknown };
+    if (obj.rows) return normalizePdfTable(obj.rows);
+    if (obj.data) return normalizePdfTable(obj.data);
+  }
+
+  return [];
+}
+</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>PPTX（ZIP/XML 优先，失败降级）</h4>
+            <p class="file-path">src/document/parser/parsers/pptx.parser.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import JSZip from 'jszip';
+import { parseOffice } from 'officeparser';
+import { cleanMarkdown, toMarkdownTable } from '../utils/markdown.util';
+
+/**
+ * 将 PPTX 解析为 Markdown。
+ *
+ * 优先走自研 ZIP/XML 路径（按幻灯片输出 `## 幻灯片 N` + 标题/正文/表格）；
+ * 解压或提取失败时降级到 officeparser AST → md。
+ */
+export async function parsePptx(buffer: Buffer): Promise&lt;string&gt; {
+  try {
+    return await parsePptxWithZip(buffer);
+  } catch {
+    return parsePptxWithOfficeParser(buffer);
+  }
+}
+
+/** 降级路径：officeparser 统一转 Markdown */
+async function parsePptxWithOfficeParser(buffer: Buffer): Promise&lt;string&gt; {
+  const ast = await parseOffice(buffer, { fileType: 'pptx' });
+  const { value } = await ast.to('md');
+  return cleanMarkdown(value ?? '');
+}
+
+/**
+ * 自研路径：解压 PPTX（OOXML），按 slideN.xml 顺序提取。
+ *
+ * 单页结构：
+ * 1. `## 幻灯片 N`
+ * 2. 表格（Markdown table）
+ * 3. title / ctrTitle 占位符 → `### 标题`
+ * 4. 其余段落正文（已出现在标题中的文本跳过，避免重复）
+ *
+ * 提取表格后会从 XML 中剔除 `&lt;a:tbl&gt;`，防止单元格文字再出现在正文里。
+ */
+async function parsePptxWithZip(buffer: Buffer): Promise&lt;string&gt; {
+  const zip = await JSZip.loadAsync(buffer);
+  const slidePaths = Object.keys(zip.files)
+    .filter((p) =&gt; /^ppt\/slides\/slide\d+\.xml$/i.test(p))
+    .sort((a, b) =&gt; slideNumber(a) - slideNumber(b));
+
+  if (slidePaths.length === 0) {
+    throw new Error('未找到 PPTX slide');
+  }
+
+  const parts: string[] = [];
+
+  for (let i = 0; i &lt; slidePaths.length; i++) {
+    const xml = await zip.file(slidePaths[i])!.async('string');
+    parts.push(`## 幻灯片 ${i + 1}\n`);
+
+    const tables = extractTables(xml);
+    for (const table of tables) {
+      parts.push(toMarkdownTable(table));
+    }
+
+    // 去掉表格区域，避免单元格文本在正文中重复出现
+    const bodyXml = xml.replace(/&lt;a:tbl[\s\S]*?&lt;\/a:tbl&gt;/g, '');
+
+    const titleTexts = extractPlaceholderTexts(bodyXml, /ctrTitle|title/i);
+    const bodyParagraphs = extractParagraphTexts(bodyXml);
+
+    const used = new Set(titleTexts.map((t) =&gt; t.trim()).filter(Boolean));
+    for (const t of titleTexts) {
+      const text = t.trim();
+      if (text) parts.push(`### ${text}\n`);
+    }
+
+    const bodyLines: string[] = [];
+    for (const t of bodyParagraphs) {
+      const text = t.trim();
+      if (!text || used.has(text)) continue;
+      bodyLines.push(text);
+    }
+    if (bodyLines.length &gt; 0) {
+      parts.push(`${bodyLines.join('\n')}\n\n`);
+    }
+  }
+
+  const result = cleanMarkdown(parts.join('\n'));
+  if (!result) {
+    throw new Error('PPTX 提取结果为空');
+  }
+  return result;
+}
+
+/** 从路径 `ppt/slides/slide12.xml` 解析页码，供排序 */
+function slideNumber(path: string): number {
+  const m = path.match(/slide(\d+)\.xml$/i);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * 按段落提取文本：同一 `&lt;a:p&gt;` 内的多个 `&lt;a:t&gt;` run 合并，
+ * `&lt;a:br/&gt;` 转为换行。
+ */
+function extractParagraphTexts(xml: string): string[] {
+  const paragraphs: string[] = [];
+  const pBlocks = xml.match(/&lt;a:p[\s&gt;][\s\S]*?&lt;\/a:p&gt;/g) ?? [];
+  for (const p of pBlocks) {
+    const text = extractRunsText(p);
+    if (text.trim()) paragraphs.push(text);
+  }
+  return paragraphs;
+}
+
+/**
+ * 从指定占位符类型的 shape 中提取文本（按段落合并）。
+ * typePattern 通常匹配 title / ctrTitle。
+ */
+function extractPlaceholderTexts(xml: string, typePattern: RegExp): string[] {
+  const texts: string[] = [];
+  // 按 shape 切开，再看 `&lt;p:ph type="..."&gt;`
+  const shapes = xml.split(/&lt;p:sp[\s&gt;]/).slice(1);
+  for (const shape of shapes) {
+    const ph = shape.match(/&lt;p:ph[^&gt;]*\btype="([^"]+)"/i);
+    if (!ph || !typePattern.test(ph[1])) continue;
+    const paras = extractParagraphTexts(shape);
+    const joined = paras.join('\n').trim();
+    if (joined) texts.push(joined);
+  }
+  return texts;
+}
+
+/** 从 slide XML 中提取所有 `&lt;a:tbl&gt;`，归一为 string[][][]（多表 → 行 → 单元格） */
+function extractTables(xml: string): string[][][] {
+  const tables: string[][][] = [];
+  const tableBlocks = xml.match(/&lt;a:tbl[\s\S]*?&lt;\/a:tbl&gt;/g) ?? [];
+
+  for (const block of tableBlocks) {
+    const rows: string[][] = [];
+    const trBlocks = block.match(/&lt;a:tr[\s\S]*?&lt;\/a:tr&gt;/g) ?? [];
+    for (const tr of trBlocks) {
+      const cells: string[] = [];
+      const tcBlocks = tr.match(/&lt;a:tc[\s\S]*?&lt;\/a:tc&gt;/g) ?? [];
+      for (const tc of tcBlocks) {
+        // 单元格内多段落用空格拼成一格
+        const cellParas = extractParagraphTexts(tc);
+        cells.push(cellParas.join(' ').trim());
+      }
+      if (cells.length) rows.push(cells);
+    }
+    if (rows.length) tables.push(rows);
+  }
+
+  return tables;
+}
+
+/** 收集块内文本 run，并把显式换行 `&lt;a:br/&gt;` 转为 `\n` */
+function extractRunsText(xml: string): string {
+  let result = '';
+  const re = /&lt;a:br\s*\/&gt;|&lt;a:t(?:\s[^&gt;]*)?&gt;([\s\S]*?)&lt;\/a:t&gt;/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    if (m[0].startsWith('&lt;a:br')) {
+      result += '\n';
+    } else {
+      result += decodeXml(m[1]);
+    }
+  }
+  return result;
+}
+
+/** OOXML 文本实体反转义 */
+function decodeXml(text: string): string {
+  return text
+    .replace(/&amp;lt;/g, '&lt;')
+    .replace(/&amp;gt;/g, '&gt;')
+    .replace(/&amp;amp;/g, '&amp;')
+    .replace(/&amp;quot;/g, '"')
+    .replace(/&amp;apos;/g, "'");
+}
+</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>替换 FileParserService（分发器，对齐 origin：RustFS）</h4>
+            <p class="file-path">src/document/parser/file-parser.service.ts</p>
+            <div class="callout-info">
+              PDF 仅在 <code>rustfs.isEnabled()</code> 时注入 <code>uploadImage</code>；
+              未启用则只出文本，不阻断解析。
+            </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { RustfsService } from '../../storage/rustfs.service';
+import { parseDocx } from './parsers/docx.parser';
+import { parsePdf } from './parsers/pdf.parser';
+import { parsePlainText } from './parsers/plain-text.parser';
+import { parsePptx } from './parsers/pptx.parser';
+import { parseXlsx } from './parsers/xlsx.parser';
+import { getExtension } from './utils/markdown.util';
+
+const SUPPORTED_EXTENSIONS = new Set([
+  'pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md',
+]);
+
+export interface ParseInput {
+  originalname: string;
+  buffer: Buffer;
+  size?: number;
+}
+
+/** 对齐 origin v2：按扩展名分发；PDF 图走 RustFS（未启用则纯文本） */
+@Injectable()
+export class FileParserService {
+  private readonly logger = new Logger(FileParserService.name);
+
+  constructor(private readonly rustfs: RustfsService) {}
+
+  isSupported(extension: string): boolean {
+    return SUPPORTED_EXTENSIONS.has(extension?.toLowerCase());
+  }
+
+  supportedList(): string {
+    return [...SUPPORTED_EXTENSIONS].join(', ');
+  }
+
+  async parse(file: ParseInput): Promise&lt;string&gt; {
+    const extension = getExtension(file.originalname);
+    if (!this.isSupported(extension)) {
+      throw new BadRequestException(
+        `不支持的文件格式: ${extension || '(无扩展名)'}，支持的格式: ${this.supportedList()}`,
+      );
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException('文件内容为空，无法解析');
+    }
+
+    const start = Date.now();
+    let result: string;
+
+    switch (extension) {
+      case 'docx':
+        result = await parseDocx(file.buffer);
+        break;
+      case 'pdf':
+        result = await parsePdf(file.buffer, {
+          uploadImage: this.rustfs.isEnabled()
+            ? (bytes, fileName, contentType) =&gt;
+                this.rustfs.uploadBytes(bytes, {
+                  fileName,
+                  contentType,
+                  prefix: 'pdf-images',
+                })
+            : undefined,
+        });
+        break;
+      case 'pptx':
+        result = await parsePptx(file.buffer);
+        break;
+      case 'xlsx':
+        result = await this.parseXlsxWithFallback(file.buffer);
+        break;
+      case 'txt':
+      case 'md':
+        result = parsePlainText(file.buffer);
+        break;
+      default:
+        throw new BadRequestException(`不支持的文件格式: ${extension}`);
+    }
+
+    this.logger.log(
+      `文件解析完成: name=${file.originalname}, format=${extension}, chars=${result.length}, elapsed=${Date.now() - start}ms`,
+    );
+    if (!result?.trim()) {
+      throw new BadRequestException('文件解析结果为空，请确认文件包含可提取的文本内容');
+    }
+    return result;
+  }
+
+  private async parseXlsxWithFallback(buffer: Buffer): Promise&lt;string&gt; {
+    try {
+      return await parseXlsx(buffer);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`XLSX(exceljs) 失败，降级 officeparser: ${message}`);
+      const { parseOffice } = await import('officeparser');
+      const ast = await parseOffice(buffer, { fileType: 'xlsx' });
+      const { value } = await ast.to('md');
+      return value ?? '';
+    }
+  }
+}</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>UploadParseDto</h4>
+            <p class="file-path">src/document/dto/upload-parse.dto.ts</p>
+            <p>multipart 除 <code>file</code> 外的可选字段。练习版可先 tags/remark；要对齐 origin 再补 categoryId 等。</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Transform } from 'class-transformer';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
+
+/** 上传解析接口的可选表单字段（对齐 origin v2，可按需删减） */
+export class UploadParseDto {
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  teamId?: string;
+
+  @IsOptional()
+  @IsString()
+  authorId?: string;
+
+  @IsOptional()
+  @IsString()
+  tags?: string;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+
+  @IsOptional()
+  @IsString()
+  createBy?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =&gt; {
+    if (value === true || value === 'true' || value === '1') return true;
+    if (value === false || value === 'false' || value === '0') return false;
+    return value;
+  })
+  @IsBoolean()
+  isPublic?: boolean;
+}</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>Controller：50MB + 字段名 file</h4>
+            <p class="file-path">src/document/document.controller.ts（upload 相关）</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">@Post('upload/parse')
+@UseInterceptors(
+  FileInterceptor('file', {
+    limits: { fileSize: 50 * 1024 * 1024 }, // origin v2：50MB
+  }),
+)
+uploadAndParse(
+  @UploadedFile() file: Express.Multer.File,
+  @Body() meta: UploadParseDto,
+  @CurrentUser() user: AuthUser, // 若第 2 课已接登录
+) {
+  if (!file) {
+    throw new BadRequestException('请上传文件（form-data 字段名: file）');
+  }
+  return this.documentService.uploadAndCreateDocument(file, meta, user);
+}</code></pre>
+        </div>
+            <div class="callout-warning">
+              Multer 默认 memoryStorage 才会有 <code>file.buffer</code>。
+              若改成 diskStorage，必须自己读盘，否则解析拿到空 buffer。
+            </div>
+          </li>
+          <li>
+            <h4>Entity：持久化 fileUrl</h4>
+            <p>
+              origin v2 的上传接口把 <code>fileUrl</code> 放在<strong>响应</strong>里，元数据表未必有列。
+              练习仓若已有 <code>fileUrl</code> / <code>fileExt</code>，创建草稿时请一并写入（方便详情页「下载原件」）。
+            </p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// document.entity.ts 示例字段（名称以你库表为准）
+@Column({ name: 'file_url', type: 'varchar', nullable: true })
+fileUrl?: string | null;
+
+@Column({ name: 'file_ext', type: 'varchar', length: 16, nullable: true })
+fileExt?: string | null;
+
+// uploadAndCreateDocument 里 save 时：
+fileUrl,
+fileExt: extension,</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>DocumentModule 接线</h4>
+            <p class="file-path">src/document/document.module.ts</p>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">@Module({
+  imports: [
+    TypeOrmModule.forFeature([DocumentEntity /* ... */]),
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
+    // 若 StorageModule 不是 @Global()，这里还要 imports: [StorageModule]
+  ],
+  controllers: [DocumentController],
+  providers: [DocumentService, FileParserService /* ... */],
+  exports: [DocumentService, FileParserService],
+})
+export class DocumentModule {}</code></pre>
+        </div>
+          </li>
+          <li>
+            <h4>DocumentService：解析 + 原件上传 RustFS</h4>
+            <p class="file-path">src/document/document.service.ts</p>
+            <div class="callout-warning">
+              <strong>对照第 3 课改法</strong>：
+              ① 构造函数删掉 <code>LocalStorageService</code>，注入 <code>RustfsService</code>；
+              ② 删掉 <code>this.storage.saveDocument(...)</code>，换成下面的 <code>uploadBytes</code>；
+              ③ <code>save</code> Entity 时写入 <code>fileUrl</code>（及 <code>fileExt</code>，若有列）；
+              ④ origin 语义：启用失败 → 400；未启用 → warn + <code>fileUrl=null</code> 仍建草稿。
+            </div>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import {
+  decodeUploadFilename,
+  getExtension,
+  titleFromFilename,
+} from './parser/utils/markdown.util';
+
+// 构造函数注入：private readonly rustfs: RustfsService  （替换 LocalStorageService）
+
+async uploadAndCreateDocument(
+  file: Express.Multer.File,
+  meta: UploadParseDto = {},
+) {
+  if (!file?.buffer?.length) {
+    throw new BadRequestException('文件不能为空');
+  }
+
+  const originalFilename = decodeUploadFilename(file.originalname);
+  const extension = getExtension(originalFilename);
+  if (!this.fileParserService.isSupported(extension)) {
+    throw new BadRequestException(
+      `不支持的文件格式: ${extension}，支持的格式: ${this.fileParserService.supportedList()}`,
+    );
+  }
+
+  const parsedContent = await this.fileParserService.parse({
+    originalname: originalFilename,
+    buffer: file.buffer,
+    size: file.size,
+  });
+
+  let fileUrl: string | null = null;
+  if (this.rustfs.isEnabled()) {
+    try {
+      fileUrl = await this.rustfs.uploadBytes(file.buffer, {
+        fileName: originalFilename,
+        contentType: file.mimetype || 'application/octet-stream',
+        prefix: 'documents',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`原文件上传 RustFS 失败：${message}`);
+      throw new BadRequestException(`原文件上传失败: ${message}`);
+    }
+  } else {
+    this.logger.warn('RustFS 未启用，跳过原文件上传');
+  }
+
+  const title = titleFromFilename(originalFilename);
+  const created = await this.create({
+    title,
+    content: parsedContent,
+    categoryId: meta.categoryId,
+    teamId: meta.teamId,
+    authorId: meta.authorId,
+    tags: meta.tags,
+    remark: meta.remark,
+    createBy: meta.createBy,
+    isPublic: meta.isPublic,
+    status: DocumentStatus.Draft,
+  });
+
+  return {
+    documentId: created.id,
+    title,
+    fileUrl,
+    fileSize: file.size,
+    fileExtension: extension,
+    contentLength: parsedContent.length,
+    contentPreview: parsedContent.slice(0, Math.min(200, parsedContent.length)),
+    status: DocumentStatus.Draft,
+  };
+}</code></pre>
+        </div>
+            <div class="callout-tip">
+              Controller 仍是 <code>FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } })</code>，
+              字段名必须是 <code>file</code>。
+            </div>
+          </li>
+          <li>
+            <h4>自测清单（按格式打勾）</h4>
+            <table>
+              <thead><tr><th>样例</th><th>期望</th></tr></thead>
+              <tbody>
+                <tr><td>txt / md</td><td>正文几乎原样；fileUrl 非空（RustFS 开启时）</td></tr>
+                <tr><td>docx</td><td>有 # 标题 / 列表；中文「标题 N」不丢层级</td></tr>
+                <tr><td>xlsx</td><td><code>## SheetName</code> + Markdown 表</td></tr>
+                <tr><td>pptx</td><td><code>## 幻灯片 N</code></td></tr>
+                <tr><td>pdf</td><td>有文本；带图时正文含 <code>![](http://localhost:9000/.../pdf-images/...)</code></td></tr>
+                <tr><td>.exe / 无扩展名</td><td>400，message 含支持列表</td></tr>
+                <tr><td>RUSTFS_ENABLED=false</td><td>仍有 documentId；fileUrl 为 null</td></tr>
+              </tbody>
+            </table>
+            <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 从 origin 拷样例
+# mkdir -p test-files &amp;&amp; cp ../knowledge-hub-backend-origin/test-files/* ./test-files/ 2&gt;/dev/null || true
+
+docker compose up -d rustfs postgres mongodb
+pnpm start:dev
+
+curl -s -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'file=@./test-files/sample.docx' \
+  -F 'tags=课12' | jq '{documentId, title, fileUrl, fileExtension, contentLength}'
+
+# Console http://localhost:9001 → bucket knowledge-hub → documents/日期/
+# GET 详情看 content 前 500 字</code></pre>
+        </div>
+          </li>
+        </ol>
+      </section>
+
+
+      <section id="design">
+        <h2>设计决策（为什么这样写）</h2>
+        <h3>为什么一律转成 Markdown？</h3>
+        <p>知识库下游只认一种正文形态。原件进 RustFS（<code>fileUrl</code>），可检索正文是 Mongo 里的 Markdown。</p>
+        <h3>为什么原件和正文分开放？</h3>
+        <ul>
+          <li><strong>原件</strong>（pdf/docx…）→ 对象存储，可回下载</li>
+          <li><strong>Markdown</strong> → Mongo，供展示/检索/分块</li>
+          <li><strong>元数据</strong> → Postgres</li>
+        </ul>
+        <h3>为什么 StorageModule 建议 Global？</h3>
+        <p>DocumentService 与 FileParserService 都要注入同一套存储。Global 避免每个业务 Module 重复 import；若不用 Global，记得 DocumentModule <code>imports: [StorageModule]</code>。</p>
+        <h3>为什么 XLSX / PPTX 要降级路径？</h3>
+        <p>真实文件常有异常样式、加密残留、旧格式边角。主路径（exceljs / 自研 ZIP）结构化更好；<code>officeparser</code> 兜底保证「至少能抽出字」。</p>
+        <h3>为什么 PDF 图片失败不抛错？</h3>
+        <p>很多扫描件/装饰图会触发提取失败；正文文本仍有价值。单张上传失败跳过，整批失败降级纯文本——保证上传接口可用性。</p>
+        <h3>对照 origin v2 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/document/parser/file-parser.service.ts</code> — 分发与 XLSX 降级</li>
+          <li><code>parsers/docx.parser.ts</code> → <code>xlsx</code> → <code>pptx</code> → <code>pdf</code></li>
+          <li><code>utils/markdown.util.ts</code> — 尤其 <code>decodeUploadFilename</code></li>
+          <li><code>src/storage/rustfs.service.ts</code> + <code>storage.module.ts</code></li>
+          <li><code>document.service.ts</code> 的 <code>uploadAndCreateDocument</code></li>
+          <li><code>docker-compose.yml</code> 的 <code>rustfs</code> + <code>.env.example</code></li>
+          <li>仓库根目录 <code>curl.md</code> / <code>curl2.md</code></li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin v2 / 第 3 课差异</h2>
+        <table>
+          <thead><tr><th>对比</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>第 3 课</td><td>txt/md + LocalStorage，本课在其上升级</td></tr>
+            <tr><td>origin v2 parser / RustFS</td><td>本课代码基本照抄；完整可运行</td></tr>
+            <tr><td>origin 响应 fileUrl</td><td>练习版建议再写入 Entity.fileUrl，方便详情下载</td></tr>
+            <tr><td>origin 无 DeleteObject</td><td>本课同样先不实现删桶对象</td></tr>
+            <tr><td>JWT</td><td>origin v2 上传可不登录；你若已上第 2 课继续带 Bearer</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>不支持的文件格式</td><td>扩展名是否在集合内；中文名乱码导致扩展名错 → 查 <code>decodeUploadFilename</code></td></tr>
+            <tr><td>解析结果为空</td><td>扫描版 PDF 无文字层；空 ppt；加密文档</td></tr>
+            <tr><td>mammoth / exceljs 报错</td><td>依赖是否安装；文件是否损坏；看日志后是否已降级</td></tr>
+            <tr><td>pdf-parse / destroy</td><td>确认 <code>finally</code> 调用了 <code>parser.destroy()</code></td></tr>
+            <tr><td>PPTX 只有极少文字</td><td>大量内容在图片里；或自研路径失败已降级，看日志</td></tr>
+            <tr><td>内存飙升 / 超时</td><td>大 PPTX/PDF；先用小样例；必要时降 fileSize limit</td></tr>
+            <tr><td>file.buffer 为空</td><td>Multer 须 memoryStorage（默认）；不要只用 diskStorage 却不读盘</td></tr>
+            <tr><td>health / 连不上 9000</td><td><code>docker compose ps</code>；看 rustfs 日志</td></tr>
+            <tr><td>RustFS 未启用或未配置</td><td><code>RUSTFS_ENABLED</code> 与密钥是否和 compose 一致</td></tr>
+            <tr><td>原文件上传失败 400</td><td>桶、密钥、卷权限；Nest / rustfs 日志</td></tr>
+            <tr><td>fileUrl 浏览器打不开</td><td><code>RUSTFS_PUBLIC_URL</code> 是否对前端可达</td></tr>
+            <tr><td>注入不到 RustfsService</td><td>StorageModule 是否 Global / 被 DocumentModule import</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          <strong>过关后</strong>：多格式解析 + 对象存储已对齐 origin v2。回到主线
+          <a href="./04-review-mq.html">第 4 课</a>（审核 + MQ），或其它进阶课。
+          <a href="./index.html">课程目录</a>
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var codeEl = block.querySelector('pre code');
+        if (!btn || !codeEl) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(codeEl.innerText).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var links = Array.prototype.slice.call(document.querySelectorAll('#nav a'));
+      var sections = links
+        .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+        .filter(Boolean);
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var current = sections[0];
+        sections.forEach(function (sec) {
+          if (sec.offsetTop <= y) current = sec;
+        });
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        document.getElementById('back-to-top').classList.toggle('is-visible', window.scrollY > 400);
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+      document.getElementById('back-to-top').addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    })();
+  </script>
+</body>
+</html>

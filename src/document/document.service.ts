@@ -1,21 +1,26 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Model, Types } from 'mongoose';
 import { Repository } from 'typeorm';
+
 import type { AuthUser } from '../auth/auth-user.interface';
+
 import { nextSnowflakeId } from '../common/snowflake-id';
-import { LocalStorageService } from '../storage/local-storage.service';
+import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
+import { RustfsService } from '../storage/rustfs.service';
 import { DocumentStatus } from './document-status';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { FileParserService } from './parser/file-parser.service';
-import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
 import { DocumentContent, DocumentContentDocument } from './schemas/document-content.schema';
 
 @Injectable()
 export class DocumentService {
+  private readonly logger = new Logger(DocumentService.name);
+
   constructor(
     @InjectRepository(DocumentEntity) private readonly docRepo: Repository<DocumentEntity>,
 
@@ -30,7 +35,7 @@ export class DocumentService {
 
     /** 正文在 Mongo，用 InjectModel；FileParser / Storage 是普通 Provider，直接注入即可 */
     private readonly fileParser: FileParserService,
-    private readonly storage: LocalStorageService,
+    private readonly storage: RustfsService,
     private readonly pipelinePublisher: DocumentPipelinePublisher,
   ) {}
 
@@ -39,28 +44,37 @@ export class DocumentService {
       throw new BadRequestException('文件内容不能为空');
     }
 
-    /** 为什么需要将 originalname 转换为 utf8？
-     * 1. 避免文件名中的特殊字符导致文件无法访问
-     */
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    const ext = this.fileParser.getExtension(originalName);
-    const markdown = await this.fileParser.parse({
-      originalname: originalName,
+    const originalFileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const ext = this.fileParser.getExtension(originalFileName);
+    const fileContent = await this.fileParser.parse({
+      originalname: originalFileName,
       buffer: file.buffer,
+      size: file.size,
     });
 
-    const fileUrl = await this.storage.saveDocument(file.buffer, originalName);
+    let fileUrl: string | null = null;
+    try {
+      fileUrl = await this.storage.uploadBytes(file.buffer, {
+        fileName: originalFileName,
+        contentType: file.mimetype || 'application/octet-stream',
+        prefix: 'documents',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`原文件上传 RustFS 失败：${message}`);
+      throw new BadRequestException(`原文件上传失败: ${message}`);
+    }
 
     const documentId = nextSnowflakeId();
     const contentId = new Types.ObjectId();
-    const title = originalName.replace(/\.[^.]+$/, '') || `文档-${documentId.slice(-6)}`;
-    const summary = markdown.slice(0, 200);
+    const title = originalFileName.replace(/\.[^.]+$/, '') || `文档-${documentId.slice(-6)}`;
+    const summary = fileContent.slice(0, 200);
 
     await this.contentModel.create({
       _id: contentId,
       documentId,
-      content: markdown,
-      contentLength: markdown.length,
+      content: fileContent,
+      contentLength: fileContent.length,
       contentSummary: summary,
       deleted: false,
     });
@@ -73,7 +87,7 @@ export class DocumentService {
       fileUrl,
       fileExt: ext,
       status: DocumentStatus.Draft,
-      wordCount: markdown.length,
+      wordCount: fileContent.length,
       tags: meta.tags ?? null,
       deleted: false,
     });
@@ -85,7 +99,7 @@ export class DocumentService {
       fileUrl,
       fileSize: file.size,
       fileExtension: ext,
-      contentLength: markdown.length,
+      contentLength: fileContent.length,
       contentPreview: summary,
       status: DocumentStatus.Draft,
     };
@@ -167,5 +181,27 @@ export class DocumentService {
     await this.contentModel.updateOne({ documentId: id }, { $set: { deleted: true } });
 
     return { id, deleted: true };
+  }
+
+  /**
+   * 统计正文字数（中英混合）
+   * - 中日韩汉字：每个字符计 1 字
+   * - 英文等拉丁文本：按空白分词，每个单词计 1 字
+   */
+  private countWords(content: string): number {
+    const trimmed = content.trim();
+    if (!trimmed) return 0;
+
+    // 匹配所有 CJK 统一汉字（U+4E00–U+9FFF），每个汉字算 1
+    const cjk = (trimmed.match(/[\u4e00-\u9fff]/g) ?? []).length;
+
+    // 去掉汉字后，剩余按空白切分为英文单词再计数
+    const latin = trimmed
+      .replace(/[\u4e00-\u9fff]/g, ' ') // 汉字替换为空格，避免与英文粘连
+      .trim()
+      .split(/\s+/) // 按连续空白分词
+      .filter(Boolean).length; // 去掉空串
+
+    return cjk + latin;
   }
 }

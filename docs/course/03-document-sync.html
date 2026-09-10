@@ -480,7 +480,9 @@ export class FileParserService {
 }</code></pre>
             </div>
             <div class="callout-info">
-              origin 还有 pdf / docx / xlsx / pptx 等 parser。本课先把「解析 → 入库」链路跑通；格式可之后对照 origin 逐个加。
+              本课先只做 txt / md，把「解析 → 入库」跑通。
+              pdf / docx / xlsx / pptx 以及 RustFS 原件上传，对齐 origin <code>v2</code>，见进阶课
+              <a href="./12-multi-format-parsers.html">第 12 课 · 多格式解析 + RustFS</a>。
             </div>
           </li>
 
@@ -894,7 +896,8 @@ ls uploads/documents/</code></pre>
           <li>两边用同一个 <code>documentId</code>（雪花）关联；删元数据时记得处理正文（本课 softDelete 已示例）。</li>
         </ul>
         <h3>为什么先本地 uploads，不接对象存储？</h3>
-        <p>本课目标是「双写 + 解析」，不是运维对象存储。本地落盘让你用 <code>ls uploads/</code> 立刻验收；origin 的 RustFS/S3 只是同一 <code>objectKey</code> 抽象的另一实现。</p>
+        <p>本课目标是「双写 + 解析」，不是运维对象存储。本地落盘让你用 <code>ls uploads/</code> 立刻验收。要对齐 origin v2 的 RustFS + 多格式解析，见进阶
+          <a href="./12-multi-format-parsers.html">第 12 课</a>。</p>
         <h3>对照 origin 建议阅读顺序</h3>
         <ol>
           <li><code>src/document/entities/document.entity.ts</code> — 比练习版多哪些字段</li>
@@ -908,8 +911,8 @@ ls uploads/documents/</code></pre>
         <table>
           <thead><tr><th>origin</th><th>本课</th></tr></thead>
           <tbody>
-            <tr><td>RustFS / S3 对象存储</td><td>本地 <code>uploads/</code></td></tr>
-            <tr><td>pdf/docx/xlsx/pptx 等多 parser</td><td>仅 txt / md</td></tr>
+            <tr><td>RustFS / S3 对象存储</td><td>本地 <code>uploads/</code>（对象存储 + 多格式见 <a href="./12-multi-format-parsers.html">第 12 课</a>）</td></tr>
+            <tr><td>pdf/docx/xlsx/pptx 等多 parser</td><td>仅 txt / md（多格式见 <a href="./12-multi-format-parsers.html">第 12 课</a>）</td></tr>
             <tr><td>完整元数据字段 + 计数器</td><td>精简 Entity</td></tr>
             <tr><td><code>@RequirePermission</code> 细粒度权限</td><td>仅需登录（全局 JWT）；权限码以后再加</td></tr>
             <tr><td>发布 / 审核 / MQ 索引</td><td>第 4 课及之后</td></tr>
@@ -962,6 +965,8 @@ ls uploads/documents/</code></pre>
         <div class="callout-tip">
           <strong>过关后</strong>：回到 <a href="./index.html">课程目录</a>。
           下一课：草稿 → 审核/发布 → 往 RabbitMQ 丢消息（异步流水线入口）。
+          若要先对齐 pdf/docx/xlsx/pptx 与 RustFS，可插学
+          <a href="./12-multi-format-parsers.html">第 12 课 · 多格式解析 + RustFS</a>。
         </div>
       </section>
     </main>

@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
+
 import { LocalStorageService } from './local-storage.service';
+import { RustfsService } from './rustfs.service';
 
 /** 为什么要全局注入？
  * 1. 方便在其他模块中使用
@@ -9,7 +11,7 @@ import { LocalStorageService } from './local-storage.service';
  */
 @Global()
 @Module({
-  providers: [LocalStorageService],
-  exports: [LocalStorageService],
+  providers: [LocalStorageService, RustfsService],
+  exports: [LocalStorageService, RustfsService],
 })
 export class StorageModule {}
