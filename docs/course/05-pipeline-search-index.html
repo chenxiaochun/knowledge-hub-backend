@@ -113,6 +113,8 @@
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
         <li><a href="#design">设计决策</a></li>
+        <li><a href="#deep-query">深度：查询与高亮</a></li>
+        <li><a href="#frontend">前端对接</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
@@ -129,8 +131,9 @@
         <div class="callout-tip">
           <strong>自测通过</strong>：
           ① 发布后稍等，ES 有该文档；
-          ② <code>POST /search</code> 用标题关键词能搜到；
-          ③ 归档/删除投递 DELETE 后搜不到（若你实现了 archive）。
+          ② <code>POST /search</code> 用标题/正文关键词能搜到；
+          ③ 响应里有 <code>highlight</code>（命中片段带 <code>&lt;em&gt;</code>），且<strong>不回</strong>整篇 <code>content</code>；
+          ④ 归档/删除投递 DELETE 后搜不到（若你实现了 archive）。
         </div>
         <div class="callout-warning">
           <strong>前置</strong>：第 4 课发布→消费日志已通。本课新起 <strong>Elasticsearch</strong>。
@@ -167,7 +170,7 @@ curl -s http://localhost:9200 | head</code></pre>
 curl -s -X POST http://localhost:3000/search \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"keyword":"Hello","page":1,"pageSize":10}'
+  -d '{"keyword":"Hello","page":1,"pageSize":10}' | jq '{total, items: [.items[] | {id, title, score, highlight}]}'
 
 # 直接看 ES
 curl -s 'http://localhost:9200/kh_document/_search?q=Hello&pretty' | head -40</code></pre>
@@ -585,22 +588,85 @@ pnpm start:dev
         <p>全文检索用户常搜「标题关键词」或正文片段；一份 ES 文档聚合元数据+正文，避免搜标题还要二次查库。体积大时 origin 会做字段裁剪/单独附件索引——练习版先完整可读。</p>
         <h3>为什么 Consumer 直接调 SearchIndexService，而不是 Orchestrator？</h3>
         <p>本课只有 Search 一条管道。Orchestrator 的价值在「同一事件扇出 Search+RAG+KG」；你到第 6–7 课加队列时，再把 Consumer 改成调 Orchestrator 也不迟。</p>
+        <h3>为什么 ES 不可用时跳过写入、查询返回空分页？</h3>
+        <p>发布主链路（Postgres / Mongo / MQ ack）不应被搜引拖死。练习版与 origin 一致：连不上 ES 时打 warn、不抛 500；搜不到时前端看到空列表，再去查 ES 健康状态。</p>
         <h3>对照 origin 建议阅读顺序</h3>
         <ol>
-          <li><code>src/pipeline/search-index.service.ts</code>（或同等命名）</li>
-          <li>ES mapping / IK analyzer 配置</li>
-          <li><code>src/search/</code> 查询 DTO 与权限码</li>
+          <li><code>src/pipeline/search-index.service.ts</code>（写入 + <code>searchDocuments</code>）</li>
+          <li>ES mapping / IK：写入 <code>ik_max_word</code>、检索 <code>ik_smart</code></li>
+          <li><code>src/search/</code> 查询 DTO 与 <code>@RequirePermission(search)</code></li>
           <li>PipelineOrchestrator：对比你 Consumer 里的 if INDEX / DELETE</li>
         </ol>
       </section>
+
+      <section id="deep-query">
+        <h2>深度：查询与高亮（对齐 origin v10）</h2>
+        <p>本课步骤里的代码已经带了加权检索与 highlight。下面按「为什么」拆开，方便你对照 origin 加深，而不是只抄能跑。</p>
+
+        <h3>字段加权 <code>multi_match</code></h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">multi_match: {
+  query: keyword,
+  fields: ['title^3', 'summary^2', 'content'], // 标题命中权重大于摘要，大于正文
+}</code></pre>
+        </div>
+        <p>同样命中「灰度」：出现在标题的文档应排在只在正文出现的前面。权重是经验值，可按产品再调。</p>
+
+        <h3><code>_source</code> 排除全文</h3>
+        <p><code>_source: { excludes: ['content'] }</code>：列表接口<strong>不回传整篇正文</strong>，但 <code>content</code> 仍参与匹配与高亮。响应体积小，也避免前端误把全文当列表摘要。</p>
+
+        <h3>Highlight 参数</h3>
+        <table>
+          <thead><tr><th>字段</th><th>本课 / origin 常见写法</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>title</code></td><td><code>number_of_fragments: 0</code></td><td>整段标题高亮，不切片</td></tr>
+            <tr><td><code>content</code></td><td><code>fragment_size: 160</code>，最多 3 段</td><td>给前端当「摘要条」</td></tr>
+            <tr><td><code>summary</code></td><td>origin 常加 1 段</td><td>练习版可省略；要对齐再补</td></tr>
+          </tbody>
+        </table>
+        <p>默认标签是 <code>&lt;em&gt;…&lt;/em&gt;</code>。自测时用 <code>jq '.items[].highlight'</code> 看是否有片段。</p>
+
+        <h3>过滤 vs 打分（origin 进阶）</h3>
+        <p>origin 支持可选 <code>categoryId</code> / <code>authorId</code>：放进 <code>bool.filter</code>，<strong>只筛不参与打分</strong>；关键词仍在 <code>bool.must</code> 的 <code>multi_match</code> 里。练习版可后补 filter，先把加权 + 高亮跑通。</p>
+
+        <h3>IK 分词（origin 有、本课故意简化）</h3>
+        <ul>
+          <li><strong>写入</strong> <code>analyzer: ik_max_word</code>：细切，召回更全</li>
+          <li><strong>检索</strong> <code>search_analyzer: ik_smart</code>：粗切，查询更稳</li>
+          <li>origin 启动时若发现 mapping 未配 IK，会<strong>删索引重建</strong>（旧数据没了，须重新发布）</li>
+        </ul>
+        <div class="callout-warning">
+          <strong>练习版</strong>用官方镜像默认分词即可过关。要对齐中文效果：换带 IK 的镜像，并改 <code>ensureIndex</code> 的 mapping（对照 origin <code>search-index.service.ts</code>）。
+        </div>
+
+        <h3>性能与坑</h3>
+        <ul>
+          <li><code>from + size</code> 深分页越翻越贵；本课 pageSize cap 50。生产可再上 <code>search_after</code>。</li>
+          <li>草稿 / 待审不应进索引；改稿后须再次发布才刷新 ES。</li>
+          <li>改 mapping 后重建索引 = 数据清空，要重走发布 → MQ → 写入。</li>
+        </ul>
+      </section>
+
+      <section id="frontend">
+        <h2>前端对接（短）</h2>
+        <ul>
+          <li>列表摘要优先用 <code>highlight.content</code>（多段可拼）；没有再回退 <code>summary</code> / <code>title</code>。</li>
+          <li><strong>不要</strong>把带 <code>&lt;em&gt;</code> 的字符串直接 <code>innerHTML</code>（XSS）：先转义全文，再只把高亮标签白名单还原，或用安全高亮组件。</li>
+          <li><code>score</code> 只作排序参考，不要当业务绝对分展示给用户较真。</li>
+        </ul>
+      </section>
+
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>
           <thead><tr><th>origin</th><th>本课</th></tr></thead>
           <tbody>
-            <tr><td>自建镜像 + IK 中文分词</td><td>官方镜像 + 默认 analyzer</td></tr>
+            <tr><td>自建镜像 + IK（写入细切 / 检索粗切）</td><td>官方镜像 + 默认 analyzer</td></tr>
             <tr><td>PipelineOrchestrator 统一调度</td><td>Consumer 直接调 SearchIndexService</td></tr>
             <tr><td>权限码 @RequirePermission(search)</td><td>仅需登录（全局 JWT）</td></tr>
+            <tr><td>可选 categoryId / authorId filter</td><td>本课步骤可先不做</td></tr>
+            <tr><td>highlight 含 title / summary / content</td><td>步骤里至少 title + content</td></tr>
             <tr><td>RAG / KG 同发布触发</td><td>仍只有 Search 队列（第 6–7 课再加）</td></tr>
           </tbody>
         </table>
@@ -613,6 +679,8 @@ pnpm start:dev
           <tbody>
             <tr><td>ES 连不上 / 内存不够</td><td>调大 Docker 内存；检查 9200；看 ES 日志</td></tr>
             <tr><td>索引了但搜不到</td><td>是否 Published；keyword 是否匹配；refresh:true 是否生效</td></tr>
+            <tr><td>有结果但无 highlight</td><td>查询是否带了 <code>highlight.fields</code>；关键词是否真命中该字段</td></tr>
+            <tr><td>响应里出现整篇 content</td><td>是否漏了 <code>_source.excludes: ['content']</code></td></tr>
             <tr><td>Consumer 注入失败</td><td>MqModule 是否 imports PipelineModule</td></tr>
             <tr><td>中文分词效果差</td><td>练习版无 IK；要对齐 origin 再换带 IK 的镜像</td></tr>
           </tbody>

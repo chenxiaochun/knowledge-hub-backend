@@ -110,6 +110,8 @@
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
         <li><a href="#design">设计决策</a></li>
+        <li><a href="#deep-graph">深度：建图与检索</a></li>
+        <li><a href="#frontend">前端对接</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
@@ -122,8 +124,9 @@
           提供简单图查询 API。抽取支持 <strong>mock 规则</strong>与可选 LLM。
         </p>
         <div class="callout-tip">
-          <strong>自测</strong>：发布后 Neo4j Browser 能看到 Document / Entity 节点；
-          <code>GET /graph/search?keyword=…</code> 有结果。
+          <strong>自测</strong>：发布后 Neo4j Browser 能看到 Document / Chunk / Entity 节点；
+          <code>GET /graph/search?keyword=…</code> 有结果；可选再验证
+          <code>/graph/nodes</code>、<code>/graph/edges</code>（origin 有；练习版可后补）。
         </div>
         <h3>Docker</h3>
         <div class="code-block"><button type="button" class="copy-btn">复制</button>
@@ -147,6 +150,14 @@
 DocumentChunk-[:MENTIONS]-&gt;(KnowledgeEntity)
 (KnowledgeEntity)-[:RELATED_TO]-&gt;(KnowledgeEntity)</div>
         <p>与 RAG 共用分块；本课重点是图存储与查询，不深究 NLP 算法。</p>
+        <table>
+          <thead><tr><th>对照</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>第 5 课 ES</td><td>文档级倒排 + 高亮片段；擅长「关键词找文」</td></tr>
+            <tr><td>本课 Neo4j</td><td>实体关系与结构化浏览；关键词检索是 <code>CONTAINS</code> 扫图，<strong>互补不是替代</strong></td></tr>
+            <tr><td>权限差异（origin）</td><td><code>POST /search</code> 常要 search 权限；图谱只读接口往往「登录即可」——前端别混用</td></tr>
+          </tbody>
+        </table>
       </section>
       <section id="files">
         <h2>本课文件清单</h2>
@@ -724,20 +735,89 @@ curl -s 'http://localhost:3000/graph/search?keyword=知识' \
         <p>多跳「实体—关系—实体」查询在图库是一等公民；关系库也能做，但路径查询与可视化成本更高。练习版用最小 Cypher 演示「按文档建图 / 按关键词搜」。</p>
         <h3>为什么抽取支持 mock 与 LLM 两套？</h3>
         <p>与 RAG 同理：先保证「Consumer → 写图 → 查询」闭环；LLM structured output（zod schema）是可替换的抽取器。</p>
+        <h3>为什么先清再建？</h3>
+        <p>重复发布同一文档若不删旧图，会边/节点翻倍。origin 的 <code>deleteForDocument</code> 还会清掉无人 <code>MENTIONS</code> 的孤儿实体，避免图膨胀。</p>
         <h3>对照 origin 建议阅读顺序</h3>
         <ol>
-          <li>KG / graph 相关 module 与 Cypher</li>
+          <li><code>src/pipeline/graph-build.service.ts</code>（建图 + <code>searchGraph</code> / <code>listNodes</code> / <code>listEdges</code>）</li>
           <li><code>extraction</code> / structured output schema</li>
+          <li><code>src/graph/</code> Controller 与 DTO</li>
           <li>发布后触发 KG 的 MQ 与 Orchestrator 分支</li>
         </ol>
       </section>
+
+      <section id="deep-graph">
+        <h2>深度：建图与检索（对齐 origin v10）</h2>
+
+        <h3>写入链路（比步骤更细）</h3>
+        <ol>
+          <li><code>deleteForDocument</code>：<code>DETACH DELETE</code> 文档及 chunk，再删无人提及的孤儿实体</li>
+          <li><code>MERGE</code> 文档节点（按业务 id 幂等）</li>
+          <li>同 RAG 分块 → 每块 <code>MERGE</code> chunk + <code>HAS_CHUNK</code></li>
+          <li>抽取 → <code>MERGE</code> 实体（按 name）/ <code>MENTIONS</code> / <code>RELATED_TO</code></li>
+        </ol>
+        <p>单块抽取失败：该块按空实体继续，不阻断整篇。Neo4j 不可用：跳过写入，不阻断发布。</p>
+
+        <h3>Cypher 幂等写法</h3>
+        <ul>
+          <li><code>MERGE ... ON CREATE SET / ON MATCH SET</code>：跨文档复用同名实体；首次写 createdAt，再次刷新可变字段</li>
+          <li><code>DETACH DELETE</code>：删节点时连带拆边，避免悬空关系</li>
+          <li>边类型统一 <code>RELATED_TO</code>，语义类型放在边属性（origin 用 <code>relation</code>；练习版步骤里用 <code>type</code> 亦可，对齐时改字段名）</li>
+        </ul>
+
+        <h3><code>searchGraph</code> 怎么搜</h3>
+        <p>origin 对多个文本字段做大小写不敏感子串匹配，例如：</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code>WHERE toLower(coalesce(n.name, '')) CONTAINS toLower($kw)
+   OR toLower(coalesce(n.title, '')) CONTAINS toLower($kw)
+   OR ... heading / description / summary / content ...</code></pre></div>
+        <ul>
+          <li>练习版步骤可先只匹配 Entity / Document 的 name、title，过关后再扩展到 Chunk</li>
+          <li>返回建议统一：<code>label</code>、<code>id</code>、<code>name</code>、<code>snippet</code>（content 截断约 160）等，方便前端分组</li>
+        </ul>
+
+        <h3>origin 另两个只读 API</h3>
+        <table>
+          <thead><tr><th>接口</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /graph/nodes?type=&amp;limit=</code></td><td>列出 <code>KnowledgeEntity</code></td></tr>
+            <tr><td><code>GET /graph/edges?limit=</code></td><td>列出 <code>RELATED_TO</code>（source / target / relation / weight）</td></tr>
+          </tbody>
+        </table>
+        <p>练习版最小闭环只需 <code>/graph/search</code>；要做力导向图可视化时，再补 nodes/edges（对照 origin <code>graph.controller.ts</code>）。</p>
+
+        <h3>性能与坑</h3>
+        <ul>
+          <li><strong><code>CONTAINS</code> 无全文索引</strong>：大图会扇出扫节点；课内点明即可，上 fulltext index 是后续优化</li>
+          <li>逐块同步 <code>session.run</code> + LLM：块多时建图明显变慢</li>
+          <li>ES 有结果、图为空：多半 Neo4j 未起或抽实体失败；文档节点一般仍会写入，可用标题关键词验证</li>
+        </ul>
+
+        <h3>动手对照（Browser）</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code>MATCH (e:KnowledgeEntity) RETURN e.name, e.type LIMIT 25
+MATCH (a:KnowledgeEntity)-[r:RELATED_TO]-&gt;(b:KnowledgeEntity)
+RETURN a.name, r, b.name LIMIT 25</code></pre></div>
+      </section>
+
+      <section id="frontend">
+        <h2>前端对接（短）</h2>
+        <ul>
+          <li><code>/graph/nodes</code> + <code>/graph/edges</code> 可直接喂力导向图（<code>source</code> / <code>target</code> / 关系名 / weight）</li>
+          <li><code>/graph/search</code> 结果建议按 <code>label</code>（或 <code>labels[0]</code>）分组：Document / Chunk / Entity</li>
+          <li><code>snippet</code> 多为截断纯文本，一般不必当 HTML 渲染</li>
+          <li>勿假设「有 search 权限才能打 /graph」——以本仓 Guard 装饰器为准</li>
+        </ul>
+      </section>
+
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>
           <thead><tr><th>origin</th><th>本课</th></tr></thead>
           <tbody>
             <tr><td>LLM structured output 抽实体</td><td>已接 ChatOpenAI.withStructuredOutput；默认也可 mock</td></tr>
-            <tr><td>更完整的图查询 / 清理 Cypher</td><td>最小可演示子集</td></tr>
+            <tr><td>search / nodes / edges 三套查询 + 更完整清理 Cypher</td><td>最小可演示：建图 + search；nodes/edges 可选补齐</td></tr>
+            <tr><td>多字段 CONTAINS + snippet 截断</td><td>步骤可先搜 name/title</td></tr>
             <tr><td>APOC 插件</td><td>不依赖</td></tr>
           </tbody>
         </table>
@@ -749,6 +829,9 @@ curl -s 'http://localhost:3000/graph/search?keyword=知识' \
           <tbody>
             <tr><td>认证失败</td><td>首次启动密码须符合策略；与 NEO4J_AUTH 一致</td></tr>
             <tr><td>无节点</td><td>Consumer 是否处理 KG 队列；文档是否 Published 且有正文</td></tr>
+            <tr><td>ES 有、图无</td><td>Neo4j 是否 up；KG 日志；抽取是否全失败（mock/llm）</td></tr>
+            <tr><td>重复发布边翻倍</td><td>是否先 <code>deleteForDocument</code> 再重建</td></tr>
+            <tr><td>search 很慢</td><td>数据量上去后 <code>CONTAINS</code> 全图扫；先 limit，再考虑索引优化</td></tr>
           </tbody>
         </table>
         <div class="callout-tip"><strong>下一步</strong>：<a href="./08-team-mail-align.html">第 8 课收尾对齐</a></div>
