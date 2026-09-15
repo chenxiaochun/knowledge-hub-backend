@@ -102,7 +102,8 @@
   <header class="header">
     <h1>第 4 课 · 审核发布 + MQ</h1>
     <p>
-      <a href="./index.html">← 课程目录</a> · 上接 <a href="./03-document-sync.html">第 3 课</a> · 对照 origin <code>src/mq/</code>
+      <a href="./index.html">← 课程目录</a> · 上接 <a href="./03-document-sync.html">第 3 课</a>
+      · 对照 origin <code>v3</code> 起的 MQ（本课练习先接 Search 队列）
     </p>
   </header>
   <div class="layout">
@@ -112,6 +113,7 @@
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#origin-v3">对照 origin v3</a></li>
         <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
@@ -597,6 +599,78 @@ pnpm start:dev
       </section>
 
 
+      <section id="origin-v3">
+        <h2>对照 origin <code>v3</code>（本课必读）</h2>
+        <p>
+          origin <strong>v3</strong> 第一次引入「发布 → RabbitMQ → 异步管线」。
+          但那时<strong>只投 RAG 队列</strong>（分块向量化），还没有本课的 Search 队列、也没有审核表。
+        </p>
+        <table>
+          <thead><tr><th>点</th><th>origin v3</th><th>本课练习版</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>发布接口</td>
+              <td><code>PUT /documents/:id/publish</code> 直接发布（无审核）</td>
+              <td>同样以直发为主；极简审核可选</td>
+            </tr>
+            <tr>
+              <td>MQ 投递</td>
+              <td><code>afterPublish(doc)</code> → 仅 <code>rag.reindex.*</code></td>
+              <td>先投 <code>search.index.*</code>（给第 5 课）；第 6 课再加 RAG</td>
+            </tr>
+            <tr>
+              <td>消费</td>
+              <td>Consumer → <code>PipelineOrchestrator.handleRagReindex</code></td>
+              <td>本课 Consumer 先打日志；第 5/6 课再接真逻辑</td>
+            </tr>
+            <tr>
+              <td>投递失败</td>
+              <td>只 warn，<strong>不回滚</strong>已发布</td>
+              <td>同左（务必保持）</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          <strong>为什么练习版第 4 课先做 Search 队列？</strong>
+          课表刻意拆成：第 4 课打通 MQ 骨架 → 第 5 课接全文 ES → 第 6 课再接 RAG。
+          origin v3 是「一步到位只做 RAG」。两套路并行时：常量名以本课/第 6 课讲义为准，对照阅读用 origin v3 的
+          <code>mq.constants.ts</code> / <code>document-pipeline.publisher.ts</code> / <code>publish()</code>。
+        </div>
+        <h3>origin v3 的 Publisher（对照抄）</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/** origin v3：发布后只触发 RAG */
+async afterPublish(document: DocumentEntity) {
+  await this.triggerRagReindex(document.id);
+}
+
+private async triggerRagReindex(documentId: string) {
+  const message: ReindexMessage = {
+    taskId: randomUUID(),
+    type: 'BY_DOC_IDS',
+    documentIds: [documentId],
+  };
+  const ok = await this.rabbit.publish(
+    RAG_REINDEX_EXCHANGE,
+    RAG_RK_BY_IDS,
+    message,
+  );
+  this.logger.log(
+    `RAG 重建索引${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
+  );
+}</code></pre></div>
+        <p>
+          本课请继续投 Search；学到第 6 课时在 <code>afterPublish</code> 里<strong>追加</strong>
+          RAG 投递（可同时保留 Search），即可与 origin 后期「多队列扇出」对齐。
+        </p>
+        <h3>验收（与 origin <code>curl3.md</code> 同形）</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 上传拿到 DOC_ID 后直接发布（无审核）
+curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish" \
+  -H "Authorization: Bearer $TOKEN" | jq '{id, status, publishTime}'
+
+# 期望 status=1；应用日志有「已投递」；Management UI http://localhost:15672 能看到消息进出</code></pre></div>
+      </section>
+
       <section id="design" class="design-block">
         <h2>设计决策（为什么这样写）</h2>
         <h3>为什么发布用 MQ，而不是 Service 里直接调索引？</h3>
@@ -606,12 +680,13 @@ pnpm start:dev
           <li><strong>扩展</strong>：origin 同一发布事件扇出多队列；本课先单队列把链路跑通。</li>
         </ul>
         <h3>为什么投递失败不回滚发布？</h3>
-        <p>与 origin 一致：用户可见状态以 DB 为准；管道用补偿/重投。练习版看到日志报错即可，不必事务包裹 MQ。</p>
+        <p>与 origin（含 v3）一致：用户可见状态以 DB 为准；管道用补偿/重投。练习版看到日志报错即可，不必事务包裹 MQ。</p>
         <h3>对照 origin 建议阅读顺序</h3>
         <ol>
-          <li><code>src/mq/</code> — exchange / queue / publisher / consumer 命名</li>
-          <li><code>src/document/document.service.ts</code> 里 publish / afterPublish 调用点</li>
-          <li><code>src/document/document-review.service.ts</code> — 完整审核表与你本课极简版的差距</li>
+          <li>origin 分支 <code>v3</code>：<code>src/mq/</code>、<code>document.service.ts#publish</code></li>
+          <li>本课 Search 常量 / Publisher / Consumer（练习骨架）</li>
+          <li>第 6 课再对照 v3 的 RAG 常量与 Orchestrator</li>
+          <li><code>document-review.service.ts</code> — 完整审核表（进阶课 10）</li>
         </ol>
       </section>
       <section id="diff">
@@ -619,9 +694,9 @@ pnpm start:dev
         <table>
           <thead><tr><th>origin</th><th>本课</th></tr></thead>
           <tbody>
-            <tr><td>RAG + Search + KG 三队列</td><td>仅 Search</td></tr>
-            <tr><td>审核表 + 权限码</td><td>免审直发</td></tr>
-            <tr><td>Consumer → PipelineOrchestrator</td><td>Consumer 只打日志</td></tr>
+            <tr><td>v3 仅 RAG 队列；后期才 Search+KG</td><td>本课仅 Search（第 6 课加 RAG）</td></tr>
+            <tr><td>v3 无审核，直接 publish</td><td>直发为主；极简审核可选</td></tr>
+            <tr><td>Consumer → PipelineOrchestrator</td><td>本课 Consumer 只打日志</td></tr>
           </tbody>
         </table>
       </section>

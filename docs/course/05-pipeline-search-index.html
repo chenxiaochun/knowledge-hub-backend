@@ -116,6 +116,7 @@
         <li><a href="#deep-query">深度：查询与高亮</a></li>
         <li><a href="#frontend">前端对接</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#align">教你怎么补齐（v4）</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
     </nav>
@@ -668,8 +669,189 @@ pnpm start:dev
             <tr><td>可选 categoryId / authorId filter</td><td>本课步骤可先不做</td></tr>
             <tr><td>highlight 含 title / summary / content</td><td>步骤里至少 title + content</td></tr>
             <tr><td>RAG / KG 同发布触发</td><td>仍只有 Search 队列（第 6–7 课再加）</td></tr>
+            <tr><td>v4：INDEX 消息带文档快照（正文截前 1000 字）</td><td>消息只带 documentId，消费时查库（更接近后期 origin）</td></tr>
+            <tr><td><code>ELASTICSEARCH_ENABLED</code> 默认开，仅 <code>false</code> 关</td><td>练习仓常写成显式 <code>true</code> 才开——环境漏配会「发布成功但索引空」</td></tr>
           </tbody>
         </table>
+        <p class="muted" style="color:#64748b;font-size:0.92rem;">
+          主链路过关后，用下一节清单对照 <code>knowledge-hub-backend-origin</code> 的 <code>v4</code> 补齐稳健性与字段完整度。
+        </p>
+      </section>
+
+      <section id="align">
+        <h2>课后补齐：教你怎么改（对齐 origin <code>v4</code>）</h2>
+        <div class="callout-warning">
+          <strong>原则</strong>：讲义<strong>只教你怎么写</strong>，不替你改练习仓业务代码。
+          你打开自己的 <code>src/pipeline/search-index.service.ts</code>，对照下面「在哪改 / 为什么 / 示例」自己动手。
+          对照答案可看 origin 分支 <code>v4</code>（写入）与后期 <code>searchDocuments</code>（查询）。
+        </div>
+        <div class="callout-info">
+          <strong>先别做</strong>：不必把 INDEX 消息改回「塞文档快照」。你现在「消息只带 documentId → 消费时查库」能索引全文，比 v4 截断 1000 字更合理；保留即可。
+        </div>
+
+        <h3>练习 1 · 删除对 404 幂等</h3>
+        <p>
+          <strong>为什么</strong>：下架/删除时 ES 里可能本来就没有这篇（从未索引成功、或已删过）。
+          若 <code>es.delete</code> 抛错再 <code>throw</code>，Consumer 会 <code>nack</code>，DELETE 变成毒消息反复失败。
+          v4 的做法是：404 当成功，其它错误只打 warn。
+        </p>
+        <p><strong>在哪改</strong>：<code>SearchIndexService.deleteDocument</code>。</p>
+        <p><strong>思路</strong>：<code>try/catch</code> 里看错误信息是否包含 <code>404</code>（或 statusCode===404）；是则吞掉并打日志「已不存在」；其它错误再 warn，但<strong>不要向上抛</strong>（保证 Consumer 能 ack）。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">async deleteDocument(documentId: string) {
+  if (!this.es) {
+    this.logger.warn(`跳过搜索索引删除（ES 不可用）：documentId=${documentId}`);
+    return;
+  }
+  try {
+    await this.es.delete({ index: ES_INDEX, id: documentId, refresh: true });
+    this.logger.log(`搜索索引已删除：documentId=${documentId}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // 幂等：没有这篇就当删除成功
+    if (message.includes('404')) {
+      this.logger.warn(`ES 中无此文档，视为已删除：documentId=${documentId}`);
+      return;
+    }
+    this.logger.warn(`ES 删除失败：documentId=${documentId}, ${message}`);
+    // 不要 throw —— 避免毒消息
+  }
+}</code></pre>
+        </div>
+        <p><strong>自测</strong>：对一个从未进过 ES 的假 id 投递 DELETE（或直接调服务方法）；Consumer 应正常 ack，进程不因该消息卡住。</p>
+
+        <h3>练习 2 · <code>ELASTICSEARCH_ENABLED</code> 语义</h3>
+        <p>
+          <strong>为什么</strong>：若写成「必须 <code>=== 'true'</code> 才开」，漏配 <code>.env</code> 时会出现「发布成功、索引永远空」，很难排查。
+          v4：默认开，只有显式 <code>'false'</code> 才关。
+        </p>
+        <p><strong>在哪改</strong>：构造函数里读配置的那一行；同时改 <code>.env.example</code> 注释。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// 推荐（对齐 v4）
+this.esEnabled =
+  this.configService.get&lt;string&gt;('ELASTICSEARCH_ENABLED', 'true') !== 'false';
+
+// 避免：只有显式 true 才启用（漏配就静默空索引）
+// this.esEnabled = this.configService.get('ELASTICSEARCH_ENABLED') === 'true';</code></pre>
+        </div>
+        <p><strong>自测</strong>：临时注释掉 <code>.env</code> 里的开关，重启后发布一篇；应仍能写入，或日志明确写「已禁用」而不是「未初始化」却毫无说明。</p>
+
+        <h3>练习 3 · <code>publishTime</code> 写成 ISO 字符串</h3>
+        <p>
+          <strong>为什么</strong>：ES <code>date</code> 字段要 ISO-8601。直接把 TypeORM 的 <code>Date</code> 对象塞进 document，
+          序列化结果可能变成非标准字符串，偶发 mapping 解析失败。
+        </p>
+        <p><strong>在哪改</strong>：组装写入 body 的地方（如 <code>indexFromDocumentId</code>）。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">const body = {
+  id: doc.id,
+  title: doc.title,
+  summary: content?.contentSummary || '',
+  content: content?.content || '',
+  authorId: doc.authorId ?? null,
+  status: doc.status,
+  tags: doc.tags ?? null, // 练习 4 一并加上
+  // Date → ISO；没有发布时间就 null
+  publishTime: doc.publishTime?.toISOString?.() ?? null,
+  indexedAt: new Date().toISOString(),
+};</code></pre>
+        </div>
+        <p><strong>自测</strong>：<code>curl 'http://localhost:9200/kh_document/_doc/你的id?pretty'</code>，看 <code>publishTime</code> 形如 <code>2026-09-14T...</code>。</p>
+
+        <h3>练习 4 · mapping + 写入补 <code>tags</code></h3>
+        <p>
+          <strong>为什么</strong>：实体里已有 tags，索引却没有，等于检索维度少一维。
+          v4 mapping 里是 <code>keyword</code>（精确筛选用）；你若想按标签短语搜，也可用 <code>text</code>——先跟 v4 用 keyword 即可。
+        </p>
+        <ol>
+          <li>在 <code>ensureIndex</code> 的 <code>properties</code> 增加 <code>tags: { type: 'keyword' }</code>。</li>
+          <li>写入 body 带上 <code>tags: doc.tags ?? null</code>。</li>
+          <li>
+            <strong>坑</strong>：索引若早已创建，改 mapping 不会自动生效。开发环境可删索引重建：
+          </li>
+        </ol>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 开发环境：删掉重建（数据清空，需重新发布文档）
+curl -X DELETE 'http://localhost:9200/kh_document'
+# 再重启应用（onModuleInit → ensureIndex）→ 重新 publish</code></pre>
+        </div>
+
+        <h3>练习 5 · 高亮与响应形状（可选）</h3>
+        <p>
+          <strong>为什么</strong>：用 <code>...(h._source as object)</code> 整包展开，字段不可控；origin 显式挑
+          <code>id/title/summary/...</code>，并给 <code>highlight.summary</code>。
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">highlight: {
+  fields: {
+    title: { number_of_fragments: 0 },
+    summary: { fragment_size: 120, number_of_fragments: 1 },
+    content: { fragment_size: 160, number_of_fragments: 3 },
+  },
+},
+
+// 映射结果时显式挑字段，而不是 ..._source
+const items = response.hits.hits.map((hit) =&gt; {
+  const src = (hit._source ?? {}) as Record&lt;string, unknown&gt;;
+  const hl = hit.highlight ?? {};
+  return {
+    id: String(src.id ?? hit._id),
+    title: src.title ?? '',
+    summary: src.summary ?? null,
+    tags: src.tags ?? null,
+    authorId: src.authorId ?? null,
+    status: src.status ?? null,
+    publishTime: src.publishTime ?? null,
+    score: hit._score ?? 0,
+    highlight: {
+      title: hl.title ?? [],
+      summary: hl.summary ?? [],
+      content: hl.content ?? [],
+    },
+  };
+});</code></pre>
+        </div>
+
+        <h3>练习 6 · filter 不参与打分（可选）</h3>
+        <p>
+          有 <code>authorId</code>（或以后有 category）时，用 <code>bool.filter</code> 筛，关键词仍放
+          <code>bool.must</code> 的 <code>multi_match</code>。<strong>filter 只缩小候选，不改 score。</strong>
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">const filters: Record&lt;string, unknown&gt;[] = [];
+if (params.authorId) {
+  filters.push({ term: { authorId: params.authorId } });
+}
+
+const multiMatch = {
+  multi_match: {
+    query: keyword,
+    fields: ['title^3', 'summary^2', 'content'],
+  },
+};
+
+const query =
+  filters.length &gt; 0
+    ? { bool: { must: [multiMatch], filter: filters } }
+    : multiMatch;</code></pre>
+        </div>
+
+        <h3>建议动手顺序</h3>
+        <ol>
+          <li>练习 1（删除幂等）→ 2（开关）→ 3（日期）</li>
+          <li>练习 4（tags；记得删索引重建）</li>
+          <li>有余力再做 5、6</li>
+        </ol>
+        <div class="callout-tip">
+          <strong>总验收</strong>：发布 → 搜得到 → 删除/下架 → 搜不到；对「本就不存在」的 id 再 DELETE 一次，Consumer 仍健康。
+          卡住时打开 origin <code>v4</code> 的 <code>search-index.service.ts</code> 对照，而不是让 AI 直接改你的仓库。
+        </div>
       </section>
 
       <section id="errors">
@@ -683,10 +865,14 @@ pnpm start:dev
             <tr><td>响应里出现整篇 content</td><td>是否漏了 <code>_source.excludes: ['content']</code></td></tr>
             <tr><td>Consumer 注入失败</td><td>MqModule 是否 imports PipelineModule</td></tr>
             <tr><td>中文分词效果差</td><td>练习版无 IK；要对齐 origin 再换带 IK 的镜像</td></tr>
+            <tr><td>发布成功但 ES 一直空</td><td>查 <code>ELASTICSEARCH_ENABLED</code> 是否未开；Consumer 是否报「未初始化」</td></tr>
+            <tr><td>DELETE 反复失败 / 队列堆积</td><td>是否对 404 抛错；对照「课后补齐」P0-1</td></tr>
           </tbody>
         </table>
         <div class="callout-tip">
-          <strong>过关后</strong>：下一课是分块 + Embedding + 向量检索（可 mock）。回到
+          <strong>过关后</strong>：主课可进
+          <a href="./06-pipeline-rag.html">第 6 课</a>；想对齐 v4 稳健性则先做
+          <a href="#align">课后补齐</a>。目录：
           <a href="./index.html">课程目录</a>。
         </div>
       </section>

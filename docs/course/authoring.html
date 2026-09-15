@@ -119,10 +119,10 @@
         <tr><td>1</td><td><code>01-user-crud.html</code>（已有样张）</td><td>Postgres</td><td>无 RBAC；<code>synchronize: true</code> 可接受</td></tr>
         <tr><td>2</td><td><code>02-auth-rbac.html</code></td><td>Redis 可选</td><td>RBAC 可先简化，但 Guard/JWT 要真</td></tr>
         <tr><td>3</td><td><code>03-document-sync.html</code></td><td>Mongo + 存储</td><td>可先本地盘再换 S3</td></tr>
-        <tr><td>4</td><td><code>04-review-mq.html</code></td><td>RabbitMQ</td><td>先打通发布→消费，再对齐多队列</td></tr>
-        <tr><td>5</td><td><code>05-pipeline-search-index.html</code></td><td>ES</td><td>全文索引 + 简单搜</td></tr>
-        <tr><td>6</td><td><code>06-pipeline-rag.html</code></td><td>OpenAI / mock</td><td>正文给真实 + mock 两套</td></tr>
-        <tr><td>7</td><td><code>07-pipeline-kg.html</code></td><td>Neo4j</td><td>不讲算法，只讲接线与数据流</td></tr>
+        <tr><td>4</td><td><code>04-review-mq.html</code></td><td>RabbitMQ</td><td>先打通发布→消费；对照 origin v3 直发+MQ（练习先 Search 队列）</td></tr>
+        <tr><td>5</td><td><code>05-pipeline-search-index.html</code></td><td>ES</td><td>全文索引 + 简单搜；文末「课后补齐」对齐 origin <code>v4</code></td></tr>
+        <tr><td>6</td><td><code>06-pipeline-rag.html</code></td><td>OpenAI / mock</td><td>练习版 mock +「对齐 origin v3」完整 RAG</td></tr>
+        <tr><td>7</td><td><code>07-pipeline-kg.html</code></td><td>Neo4j</td><td>不讲算法，只讲接线与数据流；文末「课后补齐」对齐 origin <code>v5</code></td></tr>
         <tr><td>8</td><td><code>08-team-mail-align.html</code></td><td>Mailer</td><td>收尾对齐；写清仍简化了什么</td></tr>
         <tr><td>09+</td><td><code>09-rbac-permissions.html</code> 等</td><td>按课</td><td>进阶：新 HTML，不塞进主课；教学子集对齐 origin</td></tr>
       </tbody>

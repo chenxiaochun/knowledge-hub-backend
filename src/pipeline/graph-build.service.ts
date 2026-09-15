@@ -2,9 +2,11 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
-import neo4j, { Driver } from 'neo4j-driver';
+
 import { Model } from 'mongoose';
+import neo4j, { Driver } from 'neo4j-driver';
 import { Repository } from 'typeorm';
+
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
   DocumentContent,

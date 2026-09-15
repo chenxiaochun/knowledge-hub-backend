@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
+
+import { PipelineModule } from '../pipeline/pipeline.module';
 import { DocumentPipelineConsumer } from './document-pipeline.consumer';
 import { DocumentPipelinePublisher } from './document-pipeline.publisher';
 import { RabbitMQService } from './rabbitmq.service';
-import { PipelineModule } from '../pipeline/pipeline.module';
 
 @Module({
   imports: [PipelineModule],

@@ -1,10 +1,12 @@
-import { Client } from '@elastic/elasticsearch';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
+
+import { Client } from '@elastic/elasticsearch';
 import { Model } from 'mongoose';
 import { Repository } from 'typeorm';
+
 import { DocumentStatus } from '../document/document-status';
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
@@ -76,6 +78,7 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
           status: { type: 'integer' },
           publishTime: { type: 'date' },
           indexedAt: { type: 'date' },
+          tags: { type: 'keyword' },
         },
       },
     });
@@ -102,7 +105,7 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
       content: content?.content || '',
       authorId: doc.authorId ?? null,
       status: doc.status,
-      publishTime: doc.publishTime ?? null,
+      publishTime: doc.publishTime?.toISOString() ?? null,
       indexedAt: new Date().toISOString(),
     };
     await this.es.index({
@@ -116,18 +119,21 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
 
   async deleteDocument(documentId: string) {
     if (!this.es) {
-      this.logger.error('Elasticsearch 未初始化');
+      this.logger.warn(`跳过搜索索引删除（ES 不可用）：documentId=${documentId}`);
       return;
     }
     try {
-      await this.es.delete({
-        index: ES_INDEX,
-        id: documentId,
-        refresh: true,
-      });
+      await this.es.delete({ index: ES_INDEX, id: documentId, refresh: true });
+      this.logger.log(`搜索索引已删除：documentId=${documentId}`);
     } catch (error) {
-      this.logger.error(`删除文档 ${documentId} 失败`, error);
-      throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      // 幂等：没有这篇就当删除成功
+      if (message.includes('404')) {
+        this.logger.warn(`ES 中无此文档，视为已删除：documentId=${documentId}`);
+        return;
+      }
+      this.logger.warn(`ES 删除失败：documentId=${documentId}, ${message}`);
+      // 不要 throw —— 避免毒消息
     }
   }
 

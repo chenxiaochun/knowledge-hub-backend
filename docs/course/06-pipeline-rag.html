@@ -101,14 +101,18 @@
 <body>
   <header class="header">
     <h1>第 6 课 · 分块 / Embedding / 向量检索</h1>
-    <p><a href="./index.html">← 课程目录</a> · 上接 <a href="./05-pipeline-search-index.html">第 5 课</a> · 对照 origin <code>chunking</code> / <code>embedding</code> / <code>vector-index</code></p>
+    <p>
+      <a href="./index.html">← 课程目录</a> · 上接 <a href="./05-pipeline-search-index.html">第 5 课</a>
+      · 对照 origin 分支 <code>v3</code>（<code>pipeline/*</code>、<code>mq/*</code>）
+    </p>
   </header>
   <div class="layout">
     <nav id="nav"><ul>
         <li><a href="#goal">目标与验收</a></li>
         <li><a href="#concept">概念</a></li>
         <li><a href="#files">文件清单</a></li>
-        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#steps">逐步实现（练习版）</a></li>
+        <li><a href="#origin-v3">对齐 origin v3</a></li>
         <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
@@ -128,6 +132,8 @@
         </div>
         <div class="callout-warning">
           <strong>前置</strong>：第 4–5 课 MQ + ES 已通。本课扩展 RAG 队列（可与 Search 共用 ES）。
+          <br><strong>对照</strong>：origin 分支 <code>v3</code> 首次引入完整 RAG 管线；下面「逐步实现」是练习简化版，
+          <a href="#origin-v3">对齐 origin v3</a> 给出可整段替换的完整代码（LangChain splitter / OpenAIEmbeddings / Orchestrator）。
         </div>
         <h3>验收 curl</h3>
         <div class="code-block"><button type="button" class="copy-btn">复制</button>
@@ -164,7 +170,9 @@ curl -s -X POST http://localhost:3000/search/semantic \
             <tr><td><code>src/pipeline/chunking.service.ts</code></td><td>新建（练习版可自写切分）</td></tr>
             <tr><td><code>src/pipeline/embedding.service.ts</code></td><td>新建（mock + 真实）</td></tr>
             <tr><td><code>src/pipeline/vector-index.service.ts</code></td><td>新建</td></tr>
-            <tr><td><code>src/pipeline/rag.service.ts</code></td><td>新建（编排：读库→分块→向量→写入）</td></tr>
+            <tr><td><code>src/pipeline/rag.service.ts</code> 或 <code>pipeline.orchestrator.ts</code></td><td>新建编排（练习版 RagService；对齐 v3 用 Orchestrator）</td></tr>
+            <tr><td><code>src/pipeline/types/pipeline.types.ts</code></td><td>对齐 v3 时新建</td></tr>
+            <tr><td><code>elasticsearch/Dockerfile</code></td><td>可选：与 origin v3 一样打 IK 镜像</td></tr>
             <tr><td><code>src/mq/document-pipeline.*</code></td><td>发布投递 RAG；Consumer 调 RagService</td></tr>
             <tr><td><code>src/search/search.controller.ts</code></td><td>加 <code>POST /search/semantic</code></td></tr>
             <tr><td><code>src/pipeline/pipeline.module.ts</code></td><td>注册并导出本课全部 Service</td></tr>
@@ -779,29 +787,910 @@ export class SearchController {
         </ol>
       </section>
 
+
+      <section id="origin-v3">
+        <h2>对齐 origin <code>v3</code>（完整可替换）</h2>
+        <p>
+          origin <strong>v3</strong> = 直接发布 + RabbitMQ +
+          <code>Chunking → Embedding → ES kh_chunk</code>。
+          上面练习步骤用滑窗切分 + mock 向量，方便无 Key 过关；
+          要对齐仓库答案，按本节替换（可保留 mock 开关作本地兜底）。
+        </p>
+        <div class="callout-tip">
+          <strong>依赖</strong>：
+          <code>pnpm add @langchain/openai @langchain/textsplitters @langchain/core @elastic/elasticsearch</code>
+          （amqplib 第 4 课应已装）
+        </div>
+
+        <h3>环境变量（origin v3 <code>.env.example</code>）</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># RabbitMQ
+RABBITMQ_ENABLED=true
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+
+# RAG 分块（token 口径；服务内 ×2 换成字符）
+RAG_CHUNK_SIZE=512
+RAG_CHUNK_OVERLAP=64
+
+# Embedding（OpenAI 兼容，如 DashScope）
+EMBEDDING_DIMENSION=1024
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_BATCH_SIZE=10
+OPENAI_API_KEY=sk-xxx
+# 也认 EMBEDDING_API_KEY / DASHSCOPE_API_KEY
+
+ELASTICSEARCH_ENABLED=true
+ELASTICSEARCH_NODE=http://localhost:9200</code></pre></div>
+
+        <h3>Docker：ES + IK + Kibana（origin v3）</h3>
+        <p class="file-path">elasticsearch/Dockerfile</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-dockerfile"># 官方 ES 基础镜像（origin v3）
+FROM elasticsearch:8.17.0
+
+# 安装 IK 分词（版本严格和 ES 一致；RAG dense_vector 不依赖 IK，但与第 5 课全文可共用镜像）
+RUN elasticsearch-plugin install --batch \
+    https://release.infinilabs.com/analysis-ik/stable/elasticsearch-analysis-ik-8.17.0.zip</code></pre></div>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-yaml">  # Elasticsearch 8.17.0 + IK（origin v3 片段）
+  es:
+    build: ./elasticsearch
+    container_name: knowledge_hub_elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/es/data:/usr/share/elasticsearch/data
+    restart: always
+
+  kibana:
+    image: kibana:8.17.0
+    container_name: knowledge_hub_kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es:9200
+    depends_on:
+      - es
+    restart: always</code></pre></div>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d es kibana rabbitmq
+curl -sf http://localhost:9200 | head
+# Kibana：http://localhost:5601  → Dev Tools 可查 kh_chunk</code></pre></div>
+
+        <h3>类型定义</h3>
+        <p class="file-path">src/pipeline/types/pipeline.types.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/**
+ * 管线共用类型定义
+ *
+ * 这些结构在 MQ 消息体、分块结果之间流转。
+ */
+
+/**
+ * 一篇文档切出来的一块文本。
+ * RAG：附 embedding 写入 ES `kh_chunk`（dense_vector）。
+ */
+export interface DocumentChunk {
+  /** 稳定 ID：sha256(documentId:index) 前 64 位，重建时可覆盖 */
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  /** 实际送去嵌入 / 抽取的文本（通常含章节标题前缀） */
+  content: string;
+  /** 所属 Markdown 标题；无标题章节为 null */
+  heading?: string | null;
+  /** 从 0 开始的块序号 */
+  chunkIndex: number;
+  /** 该文档总块数（切完后回填） */
+  totalChunks: number;
+  categoryId?: string | null;
+  authorId?: string | null;
+  teamId?: string | null;
+  docStatus?: number | null;
+  publishTime?: string | null;
+  /** 向量；分块阶段为空，EmbeddingService 填充后写入 ES dense_vector */
+  embedding?: number[];
+}
+
+/**
+ * 管线内部使用的「文档快照」：
+ */
+export interface PipelineDocument {
+  id: string;
+  title: string;
+  content: string;
+  summary?: string | null;
+  categoryId?: string | null;
+  authorId?: string | null;
+  teamId?: string | null;
+  status: number;
+  tags?: string | null;
+  isPublic?: boolean;
+  viewCount?: number;
+  likeCount?: number;
+  commentCount?: number;
+  publishTime?: Date | string | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+}
+</code></pre></div>
+
+        <h3>ChunkingService（LangChain Markdown 切分）</h3>
+        <p class="file-path">src/pipeline/chunking.service.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { createHash } from 'crypto';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { DocumentChunk } from './types/pipeline.types';
+
+/**
+ * 文档分块服务（基于 LangChain RecursiveCharacterTextSplitter / markdown）
+ *
+ * &lt;p&gt;为什么要分块？&lt;/p&gt;
+ * RAG 不能整篇文档直接向量化或喂给 LLM：
+ * - Embedding 有长度上限，超长会被截断丢信息
+ * - 检索时需要「段落级」命中，整篇召回噪声太大
+ *
+ * &lt;p&gt;分块策略：&lt;/p&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;用 Markdown 感知分隔符（标题 / 代码块 / 段落…）递归切分&lt;/li&gt;
+ *   &lt;li&gt;按 chunkSize / chunkOverlap 控制块大小与重叠&lt;/li&gt;
+ *   &lt;li&gt;从块内标题行推断 heading，跨块继承上一标题并必要时前缀补全&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;配置：&lt;/p&gt;
+ * - RAG_CHUNK_SIZE：目标 token 数（默认 512）
+ * - RAG_CHUNK_OVERLAP：重叠 token 数（默认 64）
+ * - 换算：CHARS_PER_TOKEN=2，即 512 token ≈ 1024 字符
+ */
+@Injectable()
+export class ChunkingService {
+  private readonly logger = new Logger(ChunkingService.name);
+  private readonly splitter: RecursiveCharacterTextSplitter;
+
+  /**
+   * token → 字符的粗略换算系数。
+   * 中英文混合场景偏保守：约 1 token ≈ 2 字符。
+   */
+  private static readonly CHARS_PER_TOKEN = 2.0;
+
+  /** 匹配块内 Markdown ATX 标题行 */
+  private static readonly HEADING_LINE = /^(#{1,6})\s+(.+)$/m;
+
+  constructor(config: ConfigService) {
+    const chunkSizeTokens = Number(config.get('RAG_CHUNK_SIZE', 512));
+    const chunkOverlapTokens = Number(config.get('RAG_CHUNK_OVERLAP', 64));
+    const chunkSize = Math.floor(
+      chunkSizeTokens * ChunkingService.CHARS_PER_TOKEN,
+    );
+    const chunkOverlap = Math.floor(
+      chunkOverlapTokens * ChunkingService.CHARS_PER_TOKEN,
+    );
+
+    // 内置 markdown 分隔符未含 H1（\n# ），补上以免一级标题不切分
+    this.splitter = new RecursiveCharacterTextSplitter({
+      chunkSize,
+      chunkOverlap,
+      keepSeparator: true,
+      separators: [
+        '\n# ',
+        ...RecursiveCharacterTextSplitter.getSeparatorsForLanguage('markdown'),
+      ],
+    });
+  }
+
+  /**
+   * 将一篇文档正文切成可索引的 DocumentChunk 列表。
+   *
+   * @param params.content  Markdown 正文
+   * @param params.documentId 文档雪花 ID（写入 chunk 元数据，供按文档删除）
+   * @param params.documentTitle 文档标题（检索展示用）
+   * @returns 分块结果；内容为空时返回 []
+   */
+  async chunk(params: {
+    content: string;
+    documentId: string;
+    documentTitle: string;
+    categoryId?: string | null;
+    authorId?: string | null;
+    teamId?: string | null;
+    docStatus?: number | null;
+    publishTime?: string | null;
+  }): Promise&lt;DocumentChunk[]&gt; {
+    const { content, documentId, documentTitle } = params;
+    if (!content?.trim()) {
+      this.logger.warn(`文档内容为空，跳过分块：documentId=${documentId}`);
+      return [];
+    }
+
+    const texts = await this.splitter.splitText(content);
+    const chunks: DocumentChunk[] = [];
+    let currentHeading: string | null = null;
+
+    for (const text of texts) {
+      const trimmed = text.trim();
+      if (!trimmed) continue;
+
+      const headingInChunk = this.extractHeading(trimmed);
+      if (headingInChunk) {
+        currentHeading = headingInChunk;
+      }
+
+      // 同章节后续块通常不含标题行：前缀补上，便于检索命中时带上下文
+      let chunkContent = trimmed;
+      if (currentHeading &amp;&amp; !ChunkingService.HEADING_LINE.test(trimmed)) {
+        chunkContent = `${currentHeading}\n\n${trimmed}`;
+      }
+
+      chunks.push({
+        chunkId: createHash('sha256')
+          .update(`${documentId}:${chunks.length}`)
+          .digest('hex')
+          .slice(0, 64),
+        documentId,
+        documentTitle,
+        content: chunkContent,
+        heading: currentHeading,
+        chunkIndex: chunks.length,
+        totalChunks: 0,
+        categoryId: params.categoryId,
+        authorId: params.authorId,
+        teamId: params.teamId,
+        docStatus: params.docStatus,
+        publishTime: params.publishTime,
+      });
+    }
+
+    const total = chunks.length;
+    chunks.forEach((c) =&gt; {
+      c.totalChunks = total;
+    });
+
+    this.logger.debug(
+      `文档分块完成：documentId=${documentId}, totalChunks=${total}`,
+    );
+    return chunks;
+  }
+
+  /** 取块内第一个 ATX 标题文案（不含 #） */
+  private extractHeading(text: string): string | null {
+    const match = text.match(ChunkingService.HEADING_LINE);
+    return match?.[2]?.trim() || null;
+  }
+}
+</code></pre></div>
+
+        <h3>EmbeddingService（OpenAIEmbeddings）</h3>
+        <p class="file-path">src/pipeline/embedding.service.ts</p>
+        <div class="callout-warning">
+          origin v3 <strong>强制</strong>配置 API Key（构造时抛错）。本地无 Key 时可继续用上文练习版 mock，
+          或自己加 <code>EMBEDDING_MODE=mock</code> 分支。
+          DashScope <code>text-embedding-v3</code> 单次最多 10 条，batch 会被钳制到 10。
+        </div>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { OpenAIEmbeddings } from '@langchain/openai';
+
+/**
+ * 文本向量化服务（基于 LangChain OpenAIEmbeddings）
+ *
+ * &lt;p&gt;作用：把 chunk 文本变成固定维度浮点向量，供后续相似度检索。&lt;/p&gt;
+ *
+ * &lt;p&gt;相关环境变量：&lt;/p&gt;
+ * - EMBEDDING_API_KEY / DASHSCOPE_API_KEY / OPENAI_API_KEY
+ * - EMBEDDING_BASE_URL、EMBEDDING_MODEL、EMBEDDING_DIMENSION、EMBEDDING_BATCH_SIZE
+ */
+@Injectable()
+export class EmbeddingService {
+  private readonly logger = new Logger(EmbeddingService.name);
+  /** 向量维度，需与 ES dense_vector.dims 一致（kh_chunk.embedding） */
+  private readonly dimension: number;
+  private readonly embeddings: OpenAIEmbeddings;
+
+  constructor(config: ConfigService) {
+    this.dimension = Number(config.get('EMBEDDING_DIMENSION', 1024));
+    // DashScope text-embedding-v3 单次最多 10 条；超过会 400 InvalidParameter
+    const configuredBatch = Number(config.get('EMBEDDING_BATCH_SIZE', 10));
+    const batchSize = Math.min(
+      Number.isFinite(configuredBatch) &amp;&amp; configuredBatch &gt; 0
+        ? configuredBatch
+        : 10,
+      10,
+    );
+    if (configuredBatch &gt; 10) {
+      this.logger.warn(
+        `EMBEDDING_BATCH_SIZE=${configuredBatch} 超过 DashScope 上限，已钳制为 10`,
+      );
+    }
+
+    const apiKey =
+      config.get&lt;string&gt;('EMBEDDING_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY') ||
+      config.get&lt;string&gt;('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new Error(
+        '未配置 EMBEDDING_API_KEY / DASHSCOPE_API_KEY / OPENAI_API_KEY',
+      );
+    }
+
+    const baseUrl = config.get(
+      'EMBEDDING_BASE_URL',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    );
+    const model = config.get('EMBEDDING_MODEL', 'text-embedding-v3');
+
+    this.embeddings = new OpenAIEmbeddings({
+      apiKey,
+      model,
+      dimensions: this.dimension,
+      batchSize,
+      // Markdown chunk 保留换行，避免语义被过度压扁
+      stripNewLines: false,
+      configuration: {
+        baseURL: baseUrl,
+      },
+    });
+  }
+
+  /** 单条嵌入 */
+  async embed(text: string): Promise&lt;number[]&gt; {
+    const [vec] = await this.embedBatch([text]);
+    return vec;
+  }
+
+  /** 批量嵌入（内部按 EMBEDDING_BATCH_SIZE 切片） */
+  async embedBatch(texts: string[]): Promise&lt;number[][]&gt; {
+    if (!texts.length) return [];
+
+    const vectors = await this.embeddings.embedDocuments(texts);
+    this.logger.debug(`嵌入完成：count=${vectors.length}`);
+    return vectors;
+  }
+}
+</code></pre></div>
+
+        <h3>VectorIndexService（kh_chunk + dense_vector）</h3>
+        <p class="file-path">src/pipeline/vector-index.service.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Client } from '@elastic/elasticsearch';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DocumentChunk } from './types/pipeline.types';
+
+/** RAG 分块向量索引名 */
+const CHUNK_INDEX = 'kh_chunk';
+
+/**
+ * 向量索引存储
+ *
+ * &lt;p&gt;写入 Elasticsearch `kh_chunk`，字段含 dense_vector(embedding)，供后续 kNN / 混合检索。&lt;/p&gt;
+ *
+ * &lt;p&gt;职责：&lt;/p&gt;
+ * - 启动时确保索引 mapping 存在（含 dense_vector）
+ * - 按 document_id 删除旧块（重建前先清）
+ * - bulk 写入带 embedding 的 chunk
+ */
+@Injectable()
+export class VectorIndexService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(VectorIndexService.name);
+  private es: Client | null = null;
+  private readonly esEnabled: boolean;
+  private readonly embeddingDims: number;
+
+  constructor(private readonly config: ConfigService) {
+    this.esEnabled =
+      this.config.get&lt;string&gt;('ELASTICSEARCH_ENABLED', 'true') !== 'false';
+    this.embeddingDims = Number(config.get('EMBEDDING_DIMENSION', 1024));
+  }
+
+  async onModuleInit() {
+    if (!this.esEnabled) {
+      this.logger.warn('Elasticsearch 已禁用，RAG 向量索引将跳过写入');
+      return;
+    }
+
+    const node = this.config.get(
+      'ELASTICSEARCH_NODE',
+      'http://localhost:9200',
+    );
+    this.es = new Client({ node });
+    try {
+      const health = await this.es.cluster.health();
+      this.logger.log(
+        `VectorIndex ES 已连接：${node}, status=${health.status}`,
+      );
+      await this.createIndexIfNotExists();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Elasticsearch 不可用，RAG 向量写入将跳过：${message}`);
+      this.es = null;
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.es?.close();
+  }
+
+  /** 删除某文档全部向量块（发布重建 / 下架时调用）。 */
+  async deleteByDocId(documentId: string) {
+    if (!this.es) {
+      this.logger.warn(
+        `跳过删除向量块（ES 不可用）：documentId=${documentId}`,
+      );
+      return;
+    }
+
+    try {
+      await this.es.deleteByQuery({
+        index: CHUNK_INDEX,
+        query: {
+          term: { document_id: documentId },
+        },
+        refresh: true,
+      });
+      this.logger.log(`已从 ES 删除文档向量块：documentId=${documentId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // 索引尚不存在时忽略
+      if (message.includes('index_not_found')) {
+        return;
+      }
+      this.logger.error(
+        `ES 删除文档块失败：documentId=${documentId}, error=${message}`,
+      );
+    }
+  }
+
+  /** bulk 写入 / 覆盖 chunk（_id = chunkId）。 */
+  async indexChunks(chunks: DocumentChunk[]) {
+    if (!chunks.length) return;
+
+    if (!this.es) {
+      this.logger.warn(
+        `跳过向量索引写入（ES 不可用）：chunks=${chunks.length}`,
+      );
+      return;
+    }
+
+    await this.createIndexIfNotExists();
+
+    const operations = chunks.flatMap((chunk) =&gt; [
+      { index: { _index: CHUNK_INDEX, _id: chunk.chunkId } },
+      this.buildDocMap(chunk),
+    ]);
+
+    const response = await this.es.bulk({
+      refresh: true,
+      operations,
+    });
+
+    if (response.errors) {
+      const failed = response.items
+        .filter((item) =&gt; item.index?.error)
+        .map(
+          (item) =&gt;
+            `${item.index?._id}: ${item.index?.error?.reason ?? 'unknown'}`,
+        );
+      this.logger.error(`ES 批量索引部分失败：${failed.join(', ')}`);
+      throw new Error(`ES 批量索引部分失败：${failed.length} 条`);
+    }
+
+    this.logger.log(`ES 批量索引成功：${chunks.length} chunks → ${CHUNK_INDEX}`);
+  }
+
+  /**
+   * 创建 kh_chunk 索引（含 dense_vector）。
+   * document_id 用 keyword：雪花 ID 以字符串传递，避免 JS long 精度问题。
+   */
+  private async createIndexIfNotExists() {
+    if (!this.es) return;
+
+    const exists = await this.es.indices.exists({ index: CHUNK_INDEX });
+    if (exists) return;
+
+    try {
+      await this.es.indices.create({
+        index: CHUNK_INDEX,
+        settings: {
+          number_of_shards: 1,
+          number_of_replicas: 0,
+          refresh_interval: '5s',
+        },
+        mappings: {
+          properties: {
+            chunk_id: { type: 'keyword' },
+            document_id: { type: 'keyword' },
+            document_title: {
+              type: 'text',
+              fields: { keyword: { type: 'keyword' } },
+            },
+            content: { type: 'text' },
+            heading: { type: 'keyword' },
+            chunk_index: { type: 'integer' },
+            total_chunks: { type: 'integer' },
+            category_id: { type: 'keyword' },
+            author_id: { type: 'keyword' },
+            team_id: { type: 'keyword' },
+            doc_status: { type: 'integer' },
+            publish_time: { type: 'date' },
+            indexed_at: { type: 'date' },
+            embedding: {
+              type: 'dense_vector',
+              dims: this.embeddingDims,
+              index: true,
+              similarity: 'cosine',
+            },
+          },
+        },
+      });
+      this.logger.log(
+        `ES 索引创建成功：index=${CHUNK_INDEX}, dims=${this.embeddingDims}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('resource_already_exists')) {
+        return;
+      }
+      this.logger.error(`ES 索引创建失败：${message}`);
+      throw error;
+    }
+  }
+
+  private buildDocMap(chunk: DocumentChunk): Record&lt;string, unknown&gt; {
+    const doc: Record&lt;string, unknown&gt; = {
+      chunk_id: chunk.chunkId,
+      document_id: chunk.documentId,
+      document_title: chunk.documentTitle,
+      content: chunk.content,
+      heading: chunk.heading ?? null,
+      chunk_index: chunk.chunkIndex,
+      total_chunks: chunk.totalChunks,
+      category_id: chunk.categoryId ?? null,
+      author_id: chunk.authorId ?? null,
+      team_id: chunk.teamId ?? null,
+      doc_status: chunk.docStatus ?? null,
+      publish_time: chunk.publishTime ?? null,
+      indexed_at: new Date().toISOString(),
+    };
+    if (chunk.embedding?.length) {
+      doc.embedding = chunk.embedding;
+    }
+    return doc;
+  }
+}
+</code></pre></div>
+
+        <h3>PipelineOrchestrator（替代练习版 RagService）</h3>
+        <p class="file-path">src/pipeline/pipeline.orchestrator.ts</p>
+        <p>职责：加载 Postgres+Mongo → 清旧块 → chunk → embedBatch → indexChunks。不直接碰 RabbitMQ。</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { InjectEntityManager } from '@nestjs/typeorm';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { EntityManager } from 'typeorm';
+import { DocumentEntity } from '../document/entities/document.entity';
+import {
+  DocumentContent,
+  DocumentContentDocument,
+} from '../document/schemas/document-content.schema';
+import { ChunkingService } from './chunking.service';
+import { EmbeddingService } from './embedding.service';
+import { VectorIndexService } from './vector-index.service';
+import { PipelineDocument } from './types/pipeline.types';
+
+/**
+ * 发布后知识管线编排器
+ *
+ * &lt;p&gt;RAG：分块 → Embedding → ES kh_chunk&lt;/p&gt;
+ *
+ * &lt;p&gt;由 {@link DocumentPipelineConsumer} 在消费到 MQ 消息后调用；&lt;/p&gt;
+ * &lt;p&gt;本类负责「加载文档 → 调具体服务」，不直接碰 RabbitMQ。&lt;/p&gt;
+ */
+@Injectable()
+export class PipelineOrchestrator {
+  private readonly logger = new Logger(PipelineOrchestrator.name);
+
+  constructor(
+    @InjectEntityManager()
+    private readonly em: EntityManager,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model&lt;DocumentContentDocument&gt;,
+    private readonly chunkingService: ChunkingService,
+    private readonly embeddingService: EmbeddingService,
+    private readonly vectorIndexService: VectorIndexService,
+  ) {}
+
+  /**
+   * 处理 RAG 重建消息。
+   *
+   * 重建流水线（单文档）：清旧块 → Chunking → Embedding → 写入 ES kh_chunk
+   */
+  async handleRagReindex(type: string, documentIds?: string[]) {
+    if (type !== 'BY_DOC_IDS' || !documentIds?.length) {
+      this.logger.warn(`忽略未支持的 RAG 消息：type=${type}`);
+      return;
+    }
+
+    const docs = await this.loadDocumentsByIds(documentIds);
+    this.logger.log(`RAG 开始索引：type=${type}, total=${docs.length}`);
+
+    for (const doc of docs) {
+      try {
+        await this.reindexOne(doc);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`RAG 索引失败：documentId=${doc.id}, ${message}`);
+      }
+    }
+  }
+
+  /** 单篇：分块 → 批量嵌入 → 落库 */
+  private async reindexOne(doc: PipelineDocument) {
+    if (!doc.content?.trim()) {
+      this.logger.warn(`文档内容为空，跳过 RAG：documentId=${doc.id}`);
+      return;
+    }
+
+    // 先清旧块，避免重复发布时脏数据残留
+    await this.vectorIndexService.deleteByDocId(doc.id);
+
+    const chunks = await this.chunkingService.chunk({
+      content: doc.content,
+      documentId: doc.id,
+      documentTitle: doc.title,
+      categoryId: doc.categoryId,
+      authorId: doc.authorId,
+      teamId: doc.teamId,
+      docStatus: doc.status,
+      publishTime: this.toIsoDate(doc.publishTime),
+    });
+
+    if (!chunks.length) return;
+
+    const embeddings = await this.embeddingService.embedBatch(
+      chunks.map((c) =&gt; c.content),
+    );
+    for (let i = 0; i &lt; chunks.length; i++) {
+      chunks[i].embedding = embeddings[i];
+    }
+
+    await this.vectorIndexService.indexChunks(chunks);
+    this.logger.log(
+      `RAG 索引完成：documentId=${doc.id}, chunks=${chunks.length}`,
+    );
+  }
+
+  /** ES date 字段需要 ISO-8601；Date#toString() 会被拒绝 */
+  private toIsoDate(value?: Date | string | null): string | null {
+    if (value == null) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  /** 按 ID 列表加载元数据 + Mongo 正文 */
+  private async loadDocumentsByIds(ids: string[]): Promise&lt;PipelineDocument[]&gt; {
+    const result: PipelineDocument[] = [];
+    for (const id of ids) {
+      const doc = await this.em.findOne(DocumentEntity, {
+        where: { id, deleted: false },
+      });
+      if (!doc) continue;
+      const contentDoc = await this.contentModel
+        .findOne({ _id: doc.contentId, deleted: false })
+        .lean();
+      result.push(this.toPipelineDoc(doc, contentDoc?.content ?? ''));
+    }
+    return result;
+  }
+
+  /** Postgres 实体 + Mongo 正文 → 管线统一 DTO */
+  private toPipelineDoc(
+    doc: DocumentEntity,
+    content: string,
+  ): PipelineDocument {
+    return {
+      id: doc.id,
+      title: doc.title,
+      content,
+      summary: doc.summary,
+      categoryId: doc.categoryId,
+      authorId: doc.authorId,
+      teamId: doc.teamId,
+      status: doc.status,
+      tags: doc.tags,
+      isPublic: doc.isPublic,
+      viewCount: doc.viewCount,
+      likeCount: doc.likeCount,
+      commentCount: doc.commentCount,
+      publishTime: doc.publishTime,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    };
+  }
+}
+</code></pre></div>
+
+        <h3>PipelineModule（origin v3）</h3>
+        <p class="file-path">src/pipeline/pipeline.module.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import {
+  DocumentContent,
+  DocumentContentSchema,
+} from '../document/schemas/document-content.schema';
+import { ChunkingService } from './chunking.service';
+import { EmbeddingService } from './embedding.service';
+import { PipelineOrchestrator } from './pipeline.orchestrator';
+import { VectorIndexService } from './vector-index.service';
+
+@Module({
+  imports: [
+    MongooseModule.forFeature([
+      { name: DocumentContent.name, schema: DocumentContentSchema },
+    ]),
+  ],
+  providers: [
+    ChunkingService,
+    EmbeddingService,
+    VectorIndexService,
+    PipelineOrchestrator,
+  ],
+  exports: [PipelineOrchestrator, VectorIndexService],
+})
+export class PipelineModule {}
+</code></pre></div>
+
+        <h3>Publisher / Consumer（只投 / 只吃 RAG）</h3>
+        <p>第 4 课若已投 Search：在 <code>afterPublish</code> 里<strong>追加</strong> RAG，不要删 Search。</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { DocumentEntity } from '../document/entities/document.entity';
+import { RAG_REINDEX_EXCHANGE, RAG_RK_BY_IDS } from './mq.constants';
+import { ReindexMessage } from './messages/pipeline.messages';
+import { RabbitMqService } from './rabbitmq.service';
+
+/**
+ * origin v3：文档发布后的知识管线生产者（仅 RAG）
+ * 练习版第 4 课已有 Search；本课在 afterPublish 里追加 triggerRagReindex 即可。
+ */
+@Injectable()
+export class DocumentPipelinePublisher {
+  private readonly logger = new Logger(DocumentPipelinePublisher.name);
+
+  constructor(private readonly rabbit: RabbitMqService) {}
+
+  async afterPublish(document: DocumentEntity) {
+    // 若第 4/5 课已投 Search，这里保留原逻辑，再追加：
+    await this.triggerRagReindex(document.id);
+  }
+
+  private async triggerRagReindex(documentId: string) {
+    const message: ReindexMessage = {
+      taskId: randomUUID(),
+      type: 'BY_DOC_IDS',
+      documentIds: [documentId],
+    };
+    const ok = await this.rabbit.publish(
+      RAG_REINDEX_EXCHANGE,
+      RAG_RK_BY_IDS,
+      message,
+    );
+    this.logger.log(
+      `RAG 重建索引${ok ? '已投递' : '投递失败'}：documentId=${documentId}, taskId=${message.taskId}`,
+    );
+  }
+}</code></pre></div>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConsumeMessage } from 'amqplib';
+import { PipelineOrchestrator } from '../pipeline/pipeline.orchestrator';
+import { RAG_REINDEX_QUEUE } from './mq.constants';
+import { ReindexMessage } from './messages/pipeline.messages';
+import { RabbitMqService } from './rabbitmq.service';
+
+/** origin v3：消费 RAG 队列 → Orchestrator */
+@Injectable()
+export class DocumentPipelineConsumer {
+  private readonly logger = new Logger(DocumentPipelineConsumer.name);
+
+  constructor(
+    private readonly rabbit: RabbitMqService,
+    private readonly orchestrator: PipelineOrchestrator,
+  ) {
+    this.rabbit.registerHandler(RAG_REINDEX_QUEUE, (msg) =&gt; this.handleRag(msg));
+    // 第 5 课的 Search handler 可继续 register
+  }
+
+  private async handleRag(msg: ConsumeMessage) {
+    const body = JSON.parse(msg.content.toString('utf8')) as ReindexMessage;
+    this.logger.log(
+      `[RAG] type=${body.type}, taskId=${body.taskId}, documentIds=${JSON.stringify(body.documentIds ?? [])}`,
+    );
+    await this.orchestrator.handleRagReindex(body.type, body.documentIds);
+  }
+}</code></pre></div>
+        <p>
+          RabbitMqService 的 setup 里需 assert/bind
+          <code>RAG_REINDEX_EXCHANGE</code> / <code>RAG_REINDEX_QUEUE</code> /
+          <code>RAG_RK_BY_IDS</code>（常量与练习步骤一致）。
+          MqModule 需 <code>imports: [PipelineModule]</code> 才能注入 Orchestrator。
+        </p>
+
+        <h3>发布语义（document.service.publish）</h3>
+        <ul>
+          <li>仅草稿 / 已发布可发布；已发布再次发布 = 重建索引</li>
+          <li>先写库 <code>status=Published</code> + <code>publishTime</code></li>
+          <li>再 <code>pipelinePublisher.afterPublish(saved)</code>；失败只 warn，不回滚</li>
+        </ul>
+
+        <h3>验收（对齐 origin <code>curl3.md</code>）</h3>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">DOC_ID=... # 上传解析得到的草稿 id
+curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish" \
+  -H "Authorization: Bearer $TOKEN" | jq '{id, status, publishTime}'
+
+# 日志期望：RAG 已投递 → [RAG] BY_DOC_IDS → RAG 索引完成
+# 查 ES：
+curl -s 'http://localhost:9200/_cat/indices?v' | grep kh_chunk
+curl -s 'http://localhost:9200/kh_chunk/_search' -H 'Content-Type: application/json' -d '{
+  "size": 5,
+  "query": { "term": { "document_id": "'"$DOC_ID"'" } },
+  "_source": ["document_id","document_title","content","chunk_index"]
+}' | jq '.hits.hits[]._source'
+
+# 练习版若实现了语义搜：
+curl -s -X POST http://localhost:3000/search/semantic \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"灰度发布","topK":5}' | jq</code></pre></div>
+        <div class="callout-info">
+          origin v3 <strong>没有</strong> <code>/search/semantic</code> HTTP 接口（向量写入为主）。
+          语义搜是本课练习增强；对照仓库时以「发布后 kh_chunk 有数据」为过关线。
+        </div>
+      </section>
+
       <section id="design" class="design-block">
         <h2>设计决策（为什么这样写）</h2>
         <h3>为什么默认 mock Embedding？</h3>
         <p>向量检索链路（切块 → 写 <code>kh_chunk</code> → knn）与「模型好不好」无关。mock 让你无 Key 也能验收；换成真实 API 只改 Embedding 实现，不改 Consumer/索引结构。</p>
         <h3>为什么 Search 与 RAG 分索引？</h3>
         <p><code>kh_document</code> 面向关键词全文；<code>kh_chunk</code> 面向片段 + dense_vector。混在一个 index 会让 mapping/召回策略互相拖累。</p>
-        <h3>对照 origin 建议阅读顺序</h3>
+        <h3>为什么 Orchestrator 不直接碰 RabbitMQ？</h3>
+        <p>与 origin v3 一致：Consumer 负责反序列化消息；Orchestrator 只「加载文档 → 调分块/嵌入/写索引」，便于单测与后续加 Search/KG 分支。</p>
+        <h3>对照 origin v3 建议阅读顺序</h3>
         <ol>
-          <li>分块与 Embedding 相关 service</li>
-          <li>chunk 索引 mapping（dims、knn）</li>
-          <li>语义检索 API 与权限</li>
-          <li>Orchestrator 如何同时触发 Search + RAG</li>
+          <li><code>chunking.service.ts</code> → <code>embedding.service.ts</code> → <code>vector-index.service.ts</code></li>
+          <li><code>pipeline.orchestrator.ts</code> + <code>types/pipeline.types.ts</code></li>
+          <li><code>document-pipeline.publisher.ts</code> / <code>consumer.ts</code> + <code>mq.constants.ts</code></li>
+          <li><code>document.service.ts#publish</code>、<code>curl3.md</code></li>
         </ol>
       </section>
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>
-          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <thead><tr><th>origin v3</th><th>本课练习步骤</th><th>对齐方式</th></tr></thead>
           <tbody>
-            <tr><td>LangChain Markdown splitter</td><td>字符滑窗切分</td></tr>
-            <tr><td>OpenAIEmbeddings 强制 Key</td><td>mock 默认 + 可选真实 API</td></tr>
-            <tr><td>PipelineOrchestrator 统一调度</td><td>RagService + Consumer</td></tr>
-            <tr><td>dims 默认 1024</td><td>mock 用 64 省事</td></tr>
+            <tr><td>RecursiveCharacterTextSplitter（markdown）</td><td>字符滑窗</td><td>用上方 v3 Chunking 整文件替换</td></tr>
+            <tr><td>OpenAIEmbeddings，强制 Key</td><td>mock 默认 + 可选真实 API</td><td>替换 Embedding；无 Key 时保留 mock 分支</td></tr>
+            <tr><td>PipelineOrchestrator</td><td>RagService</td><td>换 Orchestrator + Consumer 注入</td></tr>
+            <tr><td>dims 默认 1024</td><td>mock 用 64</td><td>改 EMBEDDING_DIMENSION 并删 kh_chunk 重建</td></tr>
+            <tr><td>无 /search/semantic</td><td>有语义搜练习接口</td><td>可选保留作增强</td></tr>
+            <tr><td>发布只投 RAG</td><td>第 4 课先 Search，本课追加 RAG</td><td>afterPublish 多投一条即可</td></tr>
           </tbody>
         </table>
       </section>
@@ -812,10 +1701,16 @@ export class SearchController {
           <tbody>
             <tr><td>dense_vector dims 不匹配</td><td>删 kh_chunk 重建；维度与 Embedding 一致</td></tr>
             <tr><td>knn 报错</td><td>ES 版本需支持 knn；mapping 含 index:true</td></tr>
-            <tr><td>真实 API 400</td><td>batch size、模型名、baseURL</td></tr>
+            <tr><td>真实 API 400</td><td>batch size（≤10）、模型名、baseURL、Key</td></tr>
+            <tr><td>未配置 OPENAI_API_KEY</td><td>origin Embedding 构造即抛错；改用 mock 或配 Key</td></tr>
+            <tr><td>发布了但 kh_chunk 空</td><td>RAG 队列是否 bind；Consumer 是否调 Orchestrator；ES 是否 healthy</td></tr>
+            <tr><td>重复发布块翻倍</td><td>重建前是否 <code>deleteByDocId</code></td></tr>
           </tbody>
         </table>
-        <div class="callout-tip"><strong>下一步</strong>：<a href="./07-pipeline-kg.html">第 7 课知识图谱</a></div>
+        <div class="callout-tip">
+          <strong>下一步</strong>：<a href="./07-pipeline-kg.html">第 7 课知识图谱</a>。
+          过关标准（对齐 v3）：publish 后 <code>kh_chunk</code> 能按 document_id 查到块。
+        </div>
       </section>
 
     </main>

@@ -113,6 +113,7 @@
         <li><a href="#deep-graph">深度：建图与检索</a></li>
         <li><a href="#frontend">前端对接</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#align">教你怎么补齐（v5）</a></li>
         <li><a href="#errors">常见报错</a></li>
     </ul></nav>
     <main id="main">
@@ -813,15 +814,287 @@ RETURN a.name, r, b.name LIMIT 25</code></pre></div>
       <section id="diff">
         <h2>与 origin 差异</h2>
         <table>
-          <thead><tr><th>origin</th><th>本课</th></tr></thead>
+          <thead><tr><th>origin（重点看 <code>v5</code>）</th><th>本课 / 常见练习仓现状</th></tr></thead>
           <tbody>
             <tr><td>LLM structured output 抽实体</td><td>已接 ChatOpenAI.withStructuredOutput；默认也可 mock</td></tr>
-            <tr><td>search / nodes / edges 三套查询 + 更完整清理 Cypher</td><td>最小可演示：建图 + search；nodes/edges 可选补齐</td></tr>
-            <tr><td>多字段 CONTAINS + snippet 截断</td><td>步骤可先搜 name/title</td></tr>
-            <tr><td>APOC 插件</td><td>不依赖</td></tr>
+            <tr><td>消息类型 <code>BUILD_BY_DOC_IDS</code> / <code>BUILD_ALL</code> / <code>DELETE_BY_DOC_IDS</code></td><td>常写成 <code>BY_DOC_IDS</code>；缺全量重建</td></tr>
+            <tr><td>Document / Chunk / Entity 属性较全；边用 <code>relation</code>+<code>weight</code></td><td>节点偏瘦；Chunk 可能用 <code>id</code> 且 content 截断过狠</td></tr>
+            <tr><td>删除后清理<strong>孤儿实体</strong></td><td>常只删 Document+Chunk，实体与 RELATED_TO 残留</td></tr>
+            <tr><td>关系两端必须落在本轮实体名集合内</td><td>易漏校验（建了 Set 却没用）</td></tr>
+            <tr><td>抽取正文截断约 4000 + 传入 heading</td><td>常截 1000；heading 固定 null</td></tr>
+            <tr><td>search / nodes / edges + APOC</td><td>最小：建图 + search；nodes/edges / APOC 可选</td></tr>
           </tbody>
         </table>
+        <p style="color:#64748b;font-size:0.92rem;">
+          v5 相对 v4<strong>几乎不改 Search</strong>；本课补齐对象是 KG。全文检索稳健性见
+          <a href="./05-pipeline-search-index.html#align">第 5 课课后补齐</a>。
+        </p>
       </section>
+
+      <section id="align">
+        <h2>课后补齐：教你怎么改（对齐 origin <code>v5</code>）</h2>
+        <div class="callout-warning">
+          <strong>原则</strong>：讲义<strong>只教你怎么写</strong>，不替你改练习仓业务代码。
+          打开自己的 <code>graph-build.service.ts</code> / <code>extraction.service.ts</code>，按练习顺序改；
+          对照答案看 origin 分支 <code>v5</code>。
+        </div>
+        <div class="callout-info">
+          改节点属性键（例如 Chunk 从 <code>id</code> 改成 <code>chunkId</code>）后，旧图可能对不上。
+          开发环境可在 Neo4j Browser 执行 <code>MATCH (n) DETACH DELETE n</code>，再重新发布文档。
+        </div>
+
+        <h3>练习 1 · 删除后清理孤儿实体</h3>
+        <p>
+          <strong>为什么</strong>：实体按 <code>name</code> 跨文档复用。你只删 Document/Chunk 时，
+          若某个实体再也没有 <code>MENTIONS</code> 入边，就会变成孤儿，RELATED_TO 也会挂着。
+          重复发布几轮后图会越来越脏。
+        </p>
+        <p><strong>在哪改</strong>：<code>GraphBuildService.deleteForDocument</code>——先删文档树，再单独跑一段孤儿清理。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">async deleteForDocument(documentId: string) {
+  if (!this.driver) return;
+  const session = this.driver.session();
+  try {
+    // ① 删文档 + 下属 chunk（DETACH 拆掉相连边）
+    await session.run(
+      `
+      MATCH (d:KnowledgeDocument {id: $id})
+      OPTIONAL MATCH (d)-[:HAS_CHUNK]-&gt;(c:DocumentChunk)
+      DETACH DELETE c, d
+      `,
+      { id: documentId },
+    );
+    // ② 孤儿实体：没有任何 chunk MENTIONS 它
+    await session.run(
+      `
+      MATCH (e:KnowledgeEntity)
+      WHERE NOT (e)&lt;-[:MENTIONS]-()
+      DETACH DELETE e
+      `,
+    );
+    this.logger.log(`KG 图谱已删除：documentId=${documentId}`);
+  } finally {
+    await session.close();
+  }
+}</code></pre>
+        </div>
+        <p><strong>自测</strong>：发布 → Browser 看到实体 → 删除/下架文档 → 再
+          <code>MATCH (e:KnowledgeEntity) RETURN count(e)</code>，应回到合理数量（无大片残留）。</p>
+
+        <h3>练习 2 · 关系必须落在本轮实体集合里</h3>
+        <p>
+          <strong>为什么</strong>：LLM 常捏造「关系两端有一边不在 entities 列表里」。
+          若不校验，后面 <code>MATCH</code> 实体写边会静默失败，或图语义混乱。
+          v5 在 <code>toExtractionResult</code> 里用 <code>entityNames.has(source) &amp;&amp; entityNames.has(target)</code>。
+        </p>
+        <p><strong>在哪改</strong>：<code>ExtractionService.toExtractionResult</code>（你若已建了 <code>entityNames</code> Set 却没用，就是缺这一步）。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">const relations: ExtractionResult['relations'] = [];
+for (const r of (parsed.relations ?? []).slice(0, this.maxRelations)) {
+  const source = (r.source ?? '').trim();
+  const target = (r.target ?? '').trim();
+  // 关键点：两端都必须是本轮已收录实体
+  if (
+    !source ||
+    !target ||
+    !entityNames.has(source) ||
+    !entityNames.has(target)
+  ) {
+    continue;
+  }
+  relations.push({
+    source,
+    target,
+    relation: normalizeRelationType(r.relation ?? r.type),
+    weight: typeof r.weight === 'number' ? r.weight : 0.5,
+  });
+}</code></pre>
+        </div>
+
+        <h3>练习 3 · 边属性用 <code>relation</code> + <code>weight</code></h3>
+        <p>
+          <strong>为什么</strong>：边类型统一叫 <code>RELATED_TO</code>（方便遍历），语义类型放在<strong>属性</strong>里。
+          写成 <code>SET rel.type = ...</code> 也能跑，但和 origin / 前端 edges API 字段对不齐。
+        </p>
+        <p><strong>在哪改</strong>：写关系的那段 Cypher；实体 MERGE 时顺带写 description / aliases。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// 实体（按 name 幂等）
+await session.run(
+  `
+  MERGE (e:KnowledgeEntity {name: $name})
+  ON CREATE SET e.type = $type, e.description = $description,
+                e.aliases = $aliases, e.createdAt = $now, e.updatedAt = $now
+  ON MATCH SET e.type = coalesce($type, e.type),
+               e.description = CASE WHEN $description &lt;&gt; '' THEN $description ELSE e.description END,
+               e.updatedAt = $now
+  `,
+  {
+    name: entity.name,
+    type: entity.type,
+    description: entity.description ?? '',
+    aliases: entity.aliases ?? [],
+    now,
+  },
+);
+
+// Chunk -[:MENTIONS]-&gt; Entity（chunk 主键见练习 4）
+await session.run(
+  `
+  MATCH (c:DocumentChunk {chunkId: $chunkId})
+  MATCH (e:KnowledgeEntity {name: $name})
+  MERGE (c)-[:MENTIONS]-&gt;(e)
+  `,
+  { chunkId, name: entity.name },
+);
+
+// 实体关系
+await session.run(
+  `
+  MATCH (a:KnowledgeEntity {name: $source})
+  MATCH (b:KnowledgeEntity {name: $target})
+  MERGE (a)-[r:RELATED_TO]-&gt;(b)
+  ON CREATE SET r.relation = $relType, r.weight = $weight, r.createdAt = datetime()
+  ON MATCH SET r.weight = coalesce($weight, r.weight)
+  `,
+  {
+    source: rel.source,
+    target: rel.target,
+    relType: rel.relation,
+    weight: rel.weight ?? 0.5,
+  },
+);</code></pre>
+        </div>
+        <p><strong>自测</strong>：<code>MATCH ()-[r:RELATED_TO]-&gt;() RETURN r.relation, r.weight LIMIT 5</code> 有值。</p>
+
+        <h3>练习 4 · Chunk 用 <code>chunkId</code>，别截太狠</h3>
+        <p>
+          <strong>为什么</strong>：与 RAG 共用同一套 chunkId，图和向量才能对得上「同一块」。
+          图里 content 截成 500 字会丢掉抽取上下文；检索展示再截断即可。
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">await session.run(
+  `
+  MERGE (c:DocumentChunk {chunkId: $chunkId})
+  SET c.documentId = $documentId,
+      c.content = $content,
+      c.heading = $heading,
+      c.chunkIndex = $chunkIndex,
+      c.totalChunks = $totalChunks,
+      c.updatedAt = $now
+  WITH c
+  MATCH (d:KnowledgeDocument {id: $documentId})
+  MERGE (d)-[r:HAS_CHUNK]-&gt;(c)
+  SET r.chunkIndex = $chunkIndex
+  `,
+  {
+    chunkId: chunk.chunkId, // 不要用随意的 id 字段名混用
+    documentId: doc.id,
+    content: chunk.content, // 存块全文；列表 API 再 slice
+    heading: chunk.heading ?? null,
+    chunkIndex: chunk.chunkIndex,
+    totalChunks: chunk.totalChunks,
+    now,
+  },
+);</code></pre>
+        </div>
+        <p>调用抽取时传入真实 heading：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">const { entities, relations } = await this.extraction.extract(
+  chunk.content,
+  chunk.heading ?? null, // 不要写死 null
+  doc.title,
+);</code></pre>
+        </div>
+
+        <h3>练习 5 · Document 节点多写一点元数据</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">await session.run(
+  `
+  MERGE (d:KnowledgeDocument {id: $id})
+  SET d.title = $title,
+      d.summary = $summary,
+      d.authorId = $authorId,
+      d.status = $status,
+      d.updatedAt = $now,
+      d.createdAt = coalesce(d.createdAt, $now)
+  `,
+  {
+    id: doc.id,
+    title: doc.title,
+    summary: doc.summary ?? '',
+    authorId: doc.authorId ?? null,
+    status: doc.status,
+    now,
+  },
+);</code></pre>
+        </div>
+        <p>若你建图入口只传了 <code>{ id, title, content }</code>，需要在 <code>buildByDocId</code> 里把 status / authorId 等一并带上。</p>
+
+        <h3>练习 6 · 抽取输入：4000 字 + 超时不重试</h3>
+        <p><strong>在哪改</strong>：<code>extractByLlm</code> 的 user 消息；构造 <code>ChatOpenAI</code> 的 <code>maxRetries</code>。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// user 内容：标题 + 章节 + 正文（截断防超上下文）
+const user = `文档标题: ${documentTitle}
+章节: ${heading ?? '无'}
+
+内容:
+${content.slice(0, 4000)}`;
+
+// ChatOpenAI：超时靠 KG_LLM_TIMEOUT_MS；不要 maxRetries: 3
+const llm = new ChatOpenAI({
+  apiKey,
+  model,
+  temperature: 0.1,
+  timeout: timeoutMs,
+  maxRetries: 0, // 与 v5 一致：超时/失败不连环重试拖垮队列
+  useResponsesApi: false,
+  configuration: { baseURL: baseUrl },
+});</code></pre>
+        </div>
+
+        <h3>练习 7 · 消息类型与 <code>BUILD_ALL</code>（可选）</h3>
+        <p>
+          v5 用 <code>BUILD_BY_DOC_IDS</code> / <code>BUILD_ALL</code> / <code>DELETE_BY_DOC_IDS</code>。
+          你若继续用 <code>BY_DOC_IDS</code>，Publisher 与 Consumer <strong>必须同一套字符串</strong>。
+          要对齐教学语义，建议改类型并实现全量重建：
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// messages
+export type KgBuildType =
+  | 'BUILD_BY_DOC_IDS'
+  | 'BUILD_ALL'
+  | 'DELETE_BY_DOC_IDS';
+
+// Consumer 分支示意
+if (body.type === 'DELETE_BY_DOC_IDS') {
+  await this.graphBuildService.deleteByDocIds(body.documentIds ?? []);
+} else if (body.type === 'BUILD_BY_DOC_IDS') {
+  await this.graphBuildService.buildByDocIds(body.documentIds ?? []);
+} else if (body.type === 'BUILD_ALL') {
+  await this.graphBuildService.buildAllPublished(); // 自己实现：查全部 Published 再逐篇 build
+}</code></pre>
+        </div>
+
+        <h3>建议动手顺序</h3>
+        <ol>
+          <li>练习 1 → 2 → 3（图不脏、边有语义）</li>
+          <li>练习 4 → 5 → 6（模型与抽取质量）</li>
+          <li>需要「清空后一键重建」再做练习 7</li>
+        </ol>
+        <div class="callout-tip">
+          <strong>总验收口诀</strong>：删得干净、边有 <code>relation/weight</code>、重复发布不翻倍、heading/4000 后实体更丰富。
+          卡住时对照 origin <code>v5</code> 的 <code>graph-build.service.ts</code> / <code>extraction.service.ts</code> 自己改，不要让别人直接改你的实现。
+        </div>
+      </section>
+
       <section id="errors">
         <h2>常见报错</h2>
         <table>
@@ -830,11 +1103,17 @@ RETURN a.name, r, b.name LIMIT 25</code></pre></div>
             <tr><td>认证失败</td><td>首次启动密码须符合策略；与 NEO4J_AUTH 一致</td></tr>
             <tr><td>无节点</td><td>Consumer 是否处理 KG 队列；文档是否 Published 且有正文</td></tr>
             <tr><td>ES 有、图无</td><td>Neo4j 是否 up；KG 日志；抽取是否全失败（mock/llm）</td></tr>
-            <tr><td>重复发布边翻倍</td><td>是否先 <code>deleteForDocument</code> 再重建</td></tr>
+            <tr><td>重复发布边翻倍</td><td>是否先 <code>deleteForDocument</code> 再重建；是否漏孤儿实体清理</td></tr>
+            <tr><td>删文档后实体还在</td><td>对照「课后补齐」P0-1 孤儿 Cypher</td></tr>
+            <tr><td>有实体无关系 / 关系对不上</td><td>是否过滤了不在 entityNames 内的边；LLM 是否截断过短</td></tr>
             <tr><td>search 很慢</td><td>数据量上去后 <code>CONTAINS</code> 全图扫；先 limit，再考虑索引优化</td></tr>
           </tbody>
         </table>
-        <div class="callout-tip"><strong>下一步</strong>：<a href="./08-team-mail-align.html">第 8 课收尾对齐</a></div>
+        <div class="callout-tip">
+          <strong>下一步</strong>：主课进
+          <a href="./08-team-mail-align.html">第 8 课收尾对齐</a>；
+          图质量对齐先做 <a href="#align">课后补齐（v5）</a>。
+        </div>
       </section>
 
     </main>
