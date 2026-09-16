@@ -93,13 +93,20 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     if (!this.driver) return;
     const session = this.driver.session();
     try {
+      // ① 删文档 + 下属 chunk（DETACH 拆掉相连边）
       await session.run(
         `MATCH (d:KnowledgeDocument {id: $id})
          OPTIONAL MATCH (d)-[:HAS_CHUNK]->(c:DocumentChunk)
-         OPTIONAL MATCH (c)-[:MENTIONS]->(e)
-         DETACH DELETE d, c`,
+        DETACH DELETE c, d`,
         { id: documentId },
       );
+      // ② 孤儿实体：没有任何 chunk MENTIONS 它
+      await session.run(
+        `MATCH (e:KnowledgeEntity)
+         WHERE NOT (e)<-[:MENTIONS]-()
+         DETACH DELETE e`,
+      );
+      this.logger.log(`KG 图谱已删除：documentId=${documentId}`);
     } finally {
       await session.close();
     }

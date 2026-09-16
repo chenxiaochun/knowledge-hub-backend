@@ -12,3 +12,29 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   [DocumentStatus.Archived]: '已归档',
   [DocumentStatus.PendingReview]: '待审核',
 };
+
+export function canPublishFrom(status: DocumentStatus): boolean {
+  return (
+    status === DocumentStatus.Draft ||
+    status === DocumentStatus.Published ||
+    status === DocumentStatus.Archived ||
+    status === DocumentStatus.PendingReview
+  );
+}
+
+export function canSubmitReview(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Draft || status === DocumentStatus.Published;
+}
+
+export function canArchive(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Published;
+}
+
+/** 待审核期间禁止改正文/标题 */
+export function canEditContent(status: DocumentStatus): boolean {
+  return (
+    status === DocumentStatus.Draft ||
+    status === DocumentStatus.Published ||
+    status === DocumentStatus.Archived
+  );
+}

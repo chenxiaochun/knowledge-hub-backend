@@ -40,7 +40,7 @@ export class DocumentReviewService {
     }
 
     const pending = await this.documentReviewRepository.findOne({
-      where: { documentId, reviewerId: IsNull() },
+      where: { documentId, reviewResult: IsNull() },
     });
     if (pending) {
       throw new BadRequestException('文档正在审核中');
@@ -60,6 +60,16 @@ export class DocumentReviewService {
     this.logger.log(
       `文档 ${documentId} 提交审核，审核人：${actor.realName}，审核结果：${DOCUMENT_STATUS_LABEL[DocumentStatus.PendingReview]}`,
     );
+
+    // 如果之前是已发布，则需要先下架
+    if (beforeStatus === DocumentStatus.Published) {
+      try {
+        await this.documentPipelinePublisher.afterUnpublish(documentId);
+      } catch (error) {
+        this.logger.error(`文档 ${documentId} 下架失败：${error}`);
+      }
+    }
+
     return {
       document: doc,
       review,
@@ -93,6 +103,10 @@ export class DocumentReviewService {
   }
 
   async rejectReview(reviewId: string, actor: AuthUser, comment: string) {
+    if (!comment) {
+      throw new BadRequestException('驳回意见不能为空');
+    }
+
     const review = await this.documentReviewRepository.findOne({
       where: { id: reviewId },
     });

@@ -713,7 +713,10 @@ curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish" \
         </table>
         <div class="callout-tip">
           <strong>过关后</strong>：打开 <a href="./05-pipeline-search-index.html">第 5 课</a>，把消费日志换成写 Elasticsearch。
-          若要可追溯审核流水表，看进阶 <a href="./10-document-review.html">课 10</a>。
+          完整「提交 → 审核 → 发布」状态机（对齐 origin <code>v6</code>）看进阶
+          <a href="./10-document-review.html">课 10</a>，尤其是
+          <a href="./10-document-review.html#align">教你怎么对齐 v6</a>
+         （讲义只教怎么改，不替你改 <code>src/</code>）。
         </div>
       </section>
 

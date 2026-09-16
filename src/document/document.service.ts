@@ -10,7 +10,7 @@ import type { AuthUser } from '../auth/auth-user.interface';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
 import { RustfsService } from '../storage/rustfs.service';
-import { DocumentStatus } from './document-status';
+import { DocumentStatus, canArchive } from './document-status';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
 import { DocumentEntity } from './entities/document.entity';
@@ -181,6 +181,45 @@ export class DocumentService {
     await this.contentModel.updateOne({ documentId: id }, { $set: { deleted: true } });
 
     return { id, deleted: true };
+  }
+
+  async archive(id: string) {
+    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+    if (!doc) {
+      throw new NotFoundException('文档不存在');
+    }
+    if (!canArchive(doc.status)) {
+      throw new BadRequestException('当前状态不允许归档');
+    }
+
+    doc.status = DocumentStatus.Archived;
+    const saved = await this.docRepo.save(doc);
+
+    try {
+      await this.pipelinePublisher.afterUnpublish(saved.id);
+    } catch (error) {
+      this.logger.warn(`文档 ${id} 清索引失败：${error}`);
+    }
+    return saved;
+  }
+
+  async saveAsDraft(id: string) {
+    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+    if (!doc) {
+      throw new NotFoundException('文档不存在');
+    }
+    if (doc.status !== DocumentStatus.Published) {
+      throw new BadRequestException('只有已发布的文档可以保存为草稿');
+    }
+
+    doc.status = DocumentStatus.Draft;
+    const saved = await this.docRepo.save(doc);
+    try {
+      await this.pipelinePublisher.afterPublish(saved.id);
+    } catch (error) {
+      this.logger.warn(`文档 ${id} 清索引失败：${error}`);
+    }
+    return saved;
   }
 
   /**
