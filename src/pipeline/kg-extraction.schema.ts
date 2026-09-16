@@ -64,11 +64,18 @@ export const kgExtractedEntitySchema = z.object({
   name: z.string().describe('文中原文实体名'),
   // string 而非 enum：模型常返回中文类型或额外字段，交给 normalizeEntityType 归类
   type: z.string().describe('实体类型').optional(),
-  description: z.string().describe('简短描述，可空').optional(),
-  // 模型常把 aliases 写成字符串；统一 transform 成 string[]
+  // 模型常返回 null；nullish 后再兜底
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? undefined)
+    .describe('简短描述，可空'),
+  // 模型常把 aliases 写成字符串或 null；统一 transform 成 string[]
   aliases: z
-    .union([z.array(z.string()), z.string()])
+    .union([z.array(z.string()), z.string(), z.null()])
+    .optional()
     .transform((value): string[] => {
+      if (value == null) return [];
       if (Array.isArray(value)) return value;
       const t = value.trim();
       if (!t) return [];
@@ -79,7 +86,6 @@ export const kgExtractedEntitySchema = z.object({
             .filter(Boolean)
         : [t];
     })
-    .optional()
     .describe('别名'),
 });
 
@@ -117,7 +123,7 @@ export function buildExtractionSystemPrompt(
 ## 抽取规则
 1. 只抽取文中明确提到的、有实际意义的实体，不要臆测
 2. 不要抽取过于泛化的词（如「系统」「功能」「数据」「问题」）
-3. 实体名使用文中原文；别名放入 aliases
+3. 实体名使用文中原文；别名放入 aliases（无别名时用 []，不要写 null）
 4. 关系必须有文中依据（同句或相邻句），且 source/target 必须是已抽取实体的 name
 5. 每个片段最多 ${maxEntities} 个实体、${maxRelations} 个关系
 6. 无法归类时用实体类型 CONCEPT、关系类型 RELATED_TO
