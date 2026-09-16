@@ -58,7 +58,7 @@ export class DocumentReviewService {
     await this.documentRepository.save(doc);
 
     this.logger.log(
-      `文档 ${documentId} 提交审核，审核人：${actor.realName}，审核结果：${DOCUMENT_STATUS_LABEL[DocumentStatus.PendingReview]}`,
+      `文档 ${documentId} 提交审核，操作人：${actor.realName || actor.username}，状态：${DOCUMENT_STATUS_LABEL[DocumentStatus.PendingReview]}`,
     );
 
     // 如果之前是已发布，则需要先下架
@@ -98,7 +98,9 @@ export class DocumentReviewService {
 
     await this.documentPipelinePublisher.afterPublish(saved.id);
 
-    this.logger.log(`文档 ${review.documentId} 审核通过，审核人：${actor.realName}`);
+    this.logger.log(
+      `文档 ${review.documentId} 审核通过，审核人：${actor.realName || actor.username}`,
+    );
     return saved;
   }
 
@@ -126,7 +128,9 @@ export class DocumentReviewService {
     doc.status = DocumentStatus.Draft;
     await this.documentRepository.save(doc);
 
-    this.logger.log(`文档 ${review.documentId} 审核拒绝，审核人：${actor.realName}`);
+    this.logger.log(
+      `文档 ${review.documentId} 审核拒绝，审核人：${actor.realName || actor.username}`,
+    );
     return doc;
   }
 
