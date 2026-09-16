@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
@@ -9,7 +10,6 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
-  Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 
@@ -22,13 +22,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { DocumentReviewService } from './document-review.service';
 import { DocumentService } from './document.service';
 import { QueryDocumentDto } from './dto/query-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
 
 @Controller('document')
 export class DocumentController {
   constructor(
     private readonly documentService: DocumentService,
-
     private readonly reviewService: DocumentReviewService,
   ) {}
 
@@ -45,40 +45,20 @@ export class DocumentController {
     return this.documentService.uploadAndCreateDocument(file, meta, user);
   }
 
-  /** 列表须在 :id 之前 */
+  /** 静态路径须在 :id 之前 */
   @Get()
   page(@Query() query: QueryDocumentDto) {
     return this.documentService.pageDocuments(query);
   }
 
-  @Get(':id')
-  detail(@Param('id') id: string) {
-    return this.documentService.getDetail(id);
-  }
-
-  @Put(':id/publish')
-  @Roles(RoleCode.ADMIN)
-  publish(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.documentService.publish(id, user);
-  }
-
-  @Delete(':id')
-  @Roles(RoleCode.ADMIN)
-  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.documentService.remove(id, user);
-  }
-
-  @Put(':id/submit-review')
-  submitReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.reviewService.submitForReview(id, user);
-  }
-
   @Get('reviews/pending')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
   listPending() {
     return this.reviewService.listPending();
   }
 
   @Put('reviews/:reviewId/approve')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
   approve(
     @Param('reviewId') reviewId: string,
     @CurrentUser() user: AuthUser,
@@ -88,11 +68,44 @@ export class DocumentController {
   }
 
   @Put('reviews/:reviewId/reject')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
   reject(
     @Param('reviewId') reviewId: string,
     @CurrentUser() user: AuthUser,
     @Body() body: { comment: string },
   ) {
     return this.reviewService.rejectReview(reviewId, user, body.comment);
+  }
+
+  @Put(':id/submit-review')
+  submitReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.reviewService.submitForReview(id, user);
+  }
+
+  @Put(':id/archive')
+  @Roles(RoleCode.ADMIN)
+  archive(@Param('id') id: string) {
+    return this.documentService.archive(id);
+  }
+
+  @Put(':id/save-as-draft')
+  saveAsDraft(@Param('id') id: string) {
+    return this.documentService.saveAsDraft(id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateDocumentDto) {
+    return this.documentService.updateDocument(id, dto);
+  }
+
+  @Get(':id')
+  detail(@Param('id') id: string) {
+    return this.documentService.getDetail(id);
+  }
+
+  @Delete(':id')
+  @Roles(RoleCode.ADMIN)
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.remove(id, user);
   }
 }

@@ -26,7 +26,7 @@ export class DocumentReviewService {
   ) {}
 
   private async findDoc(id: string) {
-    const doc = await this.documentRepository.findOne({ where: { id } });
+    const doc = await this.documentRepository.findOne({ where: { id, deleted: false } });
     if (!doc) {
       throw new NotFoundException('文档不存在');
     }
@@ -103,7 +103,7 @@ export class DocumentReviewService {
   }
 
   async rejectReview(reviewId: string, actor: AuthUser, comment: string) {
-    if (!comment) {
+    if (!comment?.trim()) {
       throw new BadRequestException('驳回意见不能为空');
     }
 
@@ -132,7 +132,7 @@ export class DocumentReviewService {
 
   async listPending() {
     return this.documentReviewRepository.find({
-      where: { reviewerId: IsNull() },
+      where: { reviewResult: IsNull() },
       order: { createdAt: 'DESC' },
     });
   }

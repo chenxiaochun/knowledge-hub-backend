@@ -231,8 +231,11 @@ pnpm add -D @types/amqplib</code></pre>
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-bash"># .env 追加
 RABBITMQ_ENABLED=true
-RABBITMQ_URL=amqp://guest:guest@localhost:5672
-DOCUMENT_REQUIRE_APPROVAL=false</code></pre>
+RABBITMQ_URL=amqp://guest:guest@localhost:5672</code></pre>
+            </div>
+            <div class="callout-info">
+              本课用「管理员直发 + MQ」先把管道跑通。
+              进阶 <a href="./10-document-review.html">课 10</a> 起改为<strong>强制审核</strong>（去掉直发，不设环境开关）。
             </div>
           </li>
           <li>
@@ -713,9 +716,8 @@ curl -s -X PUT "http://localhost:3000/documents/${DOC_ID}/publish" \
         </table>
         <div class="callout-tip">
           <strong>过关后</strong>：打开 <a href="./05-pipeline-search-index.html">第 5 课</a>，把消费日志换成写 Elasticsearch。
-          完整「提交 → 审核 → 发布」状态机（对齐 origin <code>v6</code>）看进阶
-          <a href="./10-document-review.html">课 10</a>，尤其是
-          <a href="./10-document-review.html#align">教你怎么对齐 v6</a>
+          完整「提审 → 通过/驳回 → 归档/草稿 → 编辑保护 → 审核角色」看进阶
+          <a href="./10-document-review.html">课 10</a>
          （讲义只教怎么改，不替你改 <code>src/</code>）。
         </div>
       </section>

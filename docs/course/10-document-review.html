@@ -126,7 +126,7 @@
         <li><a href="#steps">逐步实现</a></li>
         <li><a href="#design">设计决策</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
-        <li><a href="#align">教你怎么对齐 v6</a></li>
+        <li><a href="#align">对齐练习</a></li>
         <li><a href="#errors">常见报错</a></li>
       </ul>
     </nav>
@@ -134,29 +134,55 @@
       <section id="goal">
         <h2>目标与验收</h2>
         <p><strong>前置</strong>：<a href="./04-review-mq.html">第 4 课</a> MQ 发布已通；建议已完成
-          <a href="./09-rbac-permissions.html">课 09</a>（也可用 <code>@Roles(ADMIN)</code> 临时过关）。</p>
-        <p><strong>本课</strong>：用 <code>kh_document_review</code> 记录审核流水，不再只改 Document.status。</p>
+          <a href="./09-rbac-permissions.html">课 09</a>（至少会用 <code>@Roles</code>）。</p>
+        <p><strong>本课</strong>：用 <code>kh_document_review</code> 记录审核流水；<strong>强制审核</strong>（不再直发）；补齐归档 / 存草稿 / 编辑保护 / 审核角色。</p>
         <div class="callout-info">
           <strong>验收</strong>
           <ol>
-            <li>Draft → submit-review：文档 PendingReview，表中一条 <code>review_result IS NULL</code></li>
-            <li>approve：记录结案 + 文档 Published + MQ INDEX 日志</li>
-            <li>另开文档 reject：回 Draft，记录有 comment</li>
-            <li><code>DOCUMENT_REQUIRE_APPROVAL=false</code> 时可直接 publish（兼容课 4）</li>
+            <li>上传 → Draft；<code>submit-review</code> → PendingReview，表中一条 <code>review_result IS NULL</code></li>
+            <li><code>approve</code>：结案 + Published + MQ INDEX；<code>reject</code>：回 Draft，comment 必填</li>
+            <li><strong>没有</strong>可用的直发：删掉或禁用 <code>PUT …/publish</code>；发布只经 approve</li>
+            <li><code>archive</code> / <code>save-as-draft</code>：Published → 归档或草稿，并清索引</li>
+            <li><code>PUT …/:id</code> 可改正文/标题；PendingReview 时 400</li>
+            <li>待办 / 通过 / 驳回仅 <code>ADMIN</code> 或 <code>REVIEWER</code></li>
           </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>与课 4 的关系</strong>：课 4 用「管理员直发 + MQ」先把管道跑通。
+          本课起<strong>一律强制审核</strong>，不要再保留 <code>DOCUMENT_REQUIRE_APPROVAL</code> 开关。
+          若 <code>.env</code> 里还有该变量，删掉以免误导。
         </div>
       </section>
 
       <section id="concept">
         <h2>概念</h2>
-        <div class="flow">Draft ──publish/submit──► PendingReview ──approve──► Published
-PendingReview ──reject──► Draft
-Published ──archive──────► Archived（清索引）
-Published ──save-draft───► Draft（清索引）
-Published ──改稿+submit──► PendingReview（先清旧索引）
+        <div class="flow">上传 ──► Draft ──submit-review──► PendingReview
+                              │                    │
+                              │              ┌─────┴─────┐
+                              │           approve      reject
+                              │              │           │
+                              │         Published ◄── Draft
+                              │              │
+                              │     ┌────────┼────────┐
+                              │  archive  save-draft  再 submit
+                              │     │         │         │
+                              │ Archived    Draft   PendingReview
+                              │              （已发布再提审：先 afterUnpublish）
 
-开关 DOCUMENT_REQUIRE_APPROVAL（默认 true；false 时 publish 直发+MQ）</div>
-        <p>课 4 极简版把「审核」缩成状态翻转；本课补<strong>可追溯流水</strong>。完整状态机对齐 origin <code>v6</code>，见文末 <a href="#align">教你怎么对齐 v6</a>。</p>
+唯一入索引时机：approve → afterPublish
+清索引时机：archive / save-draft / 已发布再提审 / 软删除</div>
+        <table>
+          <thead><tr><th>操作</th><th>前状态</th><th>后状态</th><th>索引</th></tr></thead>
+          <tbody>
+            <tr><td>upload</td><td>—</td><td>Draft</td><td>—</td></tr>
+            <tr><td>submit-review</td><td>Draft / Published</td><td>PendingReview</td><td>若来自 Published → 清</td></tr>
+            <tr><td>approve</td><td>PendingReview</td><td>Published</td><td>建（afterPublish）</td></tr>
+            <tr><td>reject</td><td>PendingReview</td><td>Draft</td><td>—</td></tr>
+            <tr><td>archive</td><td>Published</td><td>Archived</td><td>清</td></tr>
+            <tr><td>save-as-draft</td><td>Published</td><td>Draft</td><td>清</td></tr>
+            <tr><td>update</td><td>Draft / Published / Archived</td><td>不变</td><td>不自动重建；改后再提审</td></tr>
+          </tbody>
+        </table>
       </section>
 
       <section id="files">
@@ -165,9 +191,12 @@ Published ──改稿+submit──► PendingReview（先清旧索引）
           <thead><tr><th>路径</th><th>动作</th></tr></thead>
           <tbody>
             <tr><td><code>src/document/entities/document-review.entity.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/document-status.ts</code></td><td>补 <code>canArchive</code> / <code>canEditContent</code> 等</td></tr>
             <tr><td><code>src/document/document-review.service.ts</code></td><td>新建</td></tr>
-            <tr><td><code>src/document/document.module.ts</code> / controller</td><td>接线</td></tr>
-            <tr><td><code>.env</code></td><td><code>DOCUMENT_REQUIRE_APPROVAL</code></td></tr>
+            <tr><td><code>src/document/dto/update-document.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/document/document.service.ts</code></td><td><code>archive</code> / <code>saveAsDraft</code> / <code>updateDocument</code>；去掉直发</td></tr>
+            <tr><td><code>src/document/document.controller.ts</code></td><td>路由 + <code>@Roles</code>；注意静态路径顺序</td></tr>
+            <tr><td><code>src/document/document.module.ts</code> / AppModule entities</td><td>接线</td></tr>
           </tbody>
         </table>
       </section>
@@ -230,8 +259,46 @@ export class DocumentReviewEntity {
             </div>
           </li>
           <li>
-            <h4>DocumentReviewService（完整）</h4>
+            <h4>状态辅助函数</h4>
+            <p class="file-path">src/document/document-status.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export enum DocumentStatus {
+  Draft = 0,
+  Published = 1,
+  Archived = 2,
+  PendingReview = 3,
+}
+
+export const DOCUMENT_STATUS_LABEL: Record&lt;DocumentStatus, string&gt; = {
+  [DocumentStatus.Draft]: '草稿',
+  [DocumentStatus.Published]: '已发布',
+  [DocumentStatus.Archived]: '已归档',
+  [DocumentStatus.PendingReview]: '待审核',
+};
+
+export function canSubmitReview(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Draft || status === DocumentStatus.Published;
+}
+
+export function canArchive(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Published;
+}
+
+/** 待审核期间禁止改正文/标题 */
+export function canEditContent(status: DocumentStatus): boolean {
+  return (
+    status === DocumentStatus.Draft ||
+    status === DocumentStatus.Published ||
+    status === DocumentStatus.Archived
+  );
+}</code></pre>
+            </div>
+          </li>
+          <li>
+            <h4>DocumentReviewService</h4>
             <p class="file-path">src/document/document-review.service.ts</p>
+            <p>不注入 <code>ConfigService</code>，不读任何「是否需审」开关。</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">import {
@@ -240,12 +307,11 @@ export class DocumentReviewEntity {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
-import { DocumentStatus } from './document-status'; // 或你课 3/4 的枚举文件
+import { DocumentStatus } from './document-status';
 import { DocumentEntity } from './entities/document.entity';
 import {
   DocumentReviewEntity,
@@ -263,14 +329,7 @@ export class DocumentReviewService {
     @InjectRepository(DocumentEntity)
     private readonly docRepo: Repository&lt;DocumentEntity&gt;,
     private readonly pipelinePublisher: DocumentPipelinePublisher,
-    private readonly config: ConfigService,
   ) {}
-
-  isRequireApproval(): boolean {
-    return (
-      this.config.get&lt;string&gt;('DOCUMENT_REQUIRE_APPROVAL', 'true') !== 'false'
-    );
-  }
 
   private async findDoc(id: string) {
     const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
@@ -278,13 +337,13 @@ export class DocumentReviewService {
     return doc;
   }
 
-  async submitForReview(documentId: string, actor?: AuthUser) {
+  async submitForReview(documentId: string, actor: AuthUser) {
     const doc = await this.findDoc(documentId);
     if (
       doc.status !== DocumentStatus.Draft &amp;&amp;
       doc.status !== DocumentStatus.Published
     ) {
-      throw new BadRequestException('只有草稿或已发布可提交审核');
+      throw new BadRequestException('只有草稿或已发布文档可以提交审核');
     }
 
     const pending = await this.reviewRepo.findOne({
@@ -302,15 +361,21 @@ export class DocumentReviewService {
 
     doc.status = DocumentStatus.PendingReview;
     await this.docRepo.save(doc);
-    this.logger.log(`已提交审核 reviewId=${review.id} doc=${documentId}`);
+
+    // 已发布再提审：审核期间不可检索
+    if (beforeStatus === DocumentStatus.Published) {
+      try {
+        await this.pipelinePublisher.afterUnpublish(documentId);
+      } catch (e) {
+        this.logger.warn(`提审后清索引失败：${e}`);
+      }
+    }
+
+    this.logger.log(`已提交审核 reviewId=${review.id} by ${actor.username}`);
     return { document: doc, review };
   }
 
-  async approveReview(
-    reviewId: string,
-    actor: AuthUser,
-    comment?: string,
-  ) {
+  async approveReview(reviewId: string, actor: AuthUser, comment?: string) {
     const review = await this.reviewRepo.findOne({ where: { id: reviewId } });
     if (!review || review.reviewResult != null) {
       throw new BadRequestException('待审任务不存在或已结案');
@@ -328,19 +393,19 @@ export class DocumentReviewService {
     doc.publishTime = new Date();
     const saved = await this.docRepo.save(doc);
 
-    // 与课 4 publish 一致：投递失败不回滚
+    // 唯一发布入口：投递失败不回滚（与课 4 一致）
     await this.pipelinePublisher.afterPublish(saved.id);
     this.logger.log(`审核通过 reviewId=${reviewId}`);
     return saved;
   }
 
   async rejectReview(reviewId: string, actor: AuthUser, comment: string) {
+    if (!comment?.trim()) {
+      throw new BadRequestException('驳回意见不能为空');
+    }
     const review = await this.reviewRepo.findOne({ where: { id: reviewId } });
     if (!review || review.reviewResult != null) {
       throw new BadRequestException('待审任务不存在或已结案');
-    }
-    if (!comment?.trim()) {
-      throw new BadRequestException('驳回必须填写原因');
     }
 
     review.reviewResult = ReviewResult.Rejected;
@@ -363,367 +428,32 @@ export class DocumentReviewService {
       order: { createdAt: 'DESC' },
     });
   }
-
-  /** 供 DocumentService.publish 调用：开启审核时禁止直接发布 */
-  assertCanDirectPublish() {
-    if (this.isRequireApproval()) {
-      throw new BadRequestException(
-        '已开启审核，请走 submit-review → approve',
-      );
-    }
-  }
-}</code></pre>
-            </div>
-          </li>
-          <li>
-            <h4>改 DocumentService.publish</h4>
-            <div class="code-block">
-              <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">async publish(id: string, actor: AuthUser) {
-  this.reviewService.assertCanDirectPublish();
-  // …课 4 原 publish 逻辑
-}</code></pre>
-            </div>
-            <p><code>.env</code>：</p>
-            <div class="code-block">
-              <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-bash">DOCUMENT_REQUIRE_APPROVAL=true</code></pre>
-            </div>
-          </li>
-          <li>
-            <h4>Controller</h4>
-            <div class="code-block">
-              <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">// 有课 09 时：
-// @RequirePermission(PermissionCode.documentReview)
-// 否则临时：@Roles(RoleCode.ADMIN)
-
-@Put(':id/submit-review')
-submitReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-  return this.reviewService.submitForReview(id, user);
-}
-
-@Get('reviews/pending')
-listPending() {
-  return this.reviewService.listPending();
-}
-
-@Put('reviews/:reviewId/approve')
-approve(
-  @Param('reviewId') reviewId: string,
-  @CurrentUser() user: AuthUser,
-  @Body() body: { comment?: string },
-) {
-  return this.reviewService.approveReview(reviewId, user, body?.comment);
-}
-
-@Put('reviews/:reviewId/reject')
-reject(
-  @Param('reviewId') reviewId: string,
-  @CurrentUser() user: AuthUser,
-  @Body() body: { comment: string },
-) {
-  return this.reviewService.rejectReview(reviewId, user, body.comment);
 }</code></pre>
             </div>
             <div class="callout-warning">
-              <strong>路由顺序（必做）</strong>：所有静态路径必须写在 <code>:id</code> 之前。
-              错误顺序下 <code>GET …/reviews/pending</code> 会被当成 <code>id=reviews</code>。
-            </div>
-            <div class="code-block">
-              <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">@Controller('documents') // 或你练习仓的 'document'
-export class DocumentController {
-  // ✅ 静态路径在前
-  @Get('reviews/pending')
-  listPending() { … }
-
-  @Get('reviews/tasks/pending-count')
-  pendingCount() { … }
-
-  @Put('reviews/:reviewId/approve')
-  approve(…) { … }
-
-  @Put('reviews/:reviewId/reject')
-  reject(…) { … }
-
-  @Get()
-  page(…) { … }
-
-  // ✅ 带 :id 的发布/提审
-  @Put(':id/publish')
-  publish(…) { … }
-
-  @Put(':id/submit-review')
-  submitReview(…) { … }
-
-  // ❌ 不要把 @Get(':id') 写在 reviews/* 前面
-  @Get(':id')
-  detail(…) { … }
-}</code></pre>
+              待审条件用 <code>reviewResult: IsNull()</code>，不要用 <code>reviewerId: IsNull()</code>。
             </div>
           </li>
           <li>
-            <h4>Module</h4>
+            <h4>强制审核：去掉直发</h4>
+            <p>课 4 的 <code>DocumentService.publish</code> + <code>PUT :id/publish</code> 在本课<strong>删除或改为明确拒绝</strong>：</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">TypeOrmModule.forFeature([DocumentEntity, DocumentReviewEntity, …]),
-providers: [DocumentService, DocumentReviewService, …],
-exports: [DocumentService, DocumentReviewService],</code></pre>
+              <pre><code class="lang-ts">// 方案 A（推荐）：删掉 Controller 的 publish 路由与 Service.publish 方法
+
+// 方案 B：保留方法但禁止调用，便于旧客户端拿到明确错误
+async publish(_id: string, _actor: AuthUser) {
+  throw new BadRequestException('请提交审核，由审核通过后发布');
+}</code></pre>
             </div>
-            <p>AppModule <code>entities</code> 追加 <code>DocumentReviewEntity</code>。</p>
+            <p>发布只允许发生在 <code>approveReview</code>。</p>
           </li>
           <li>
-            <h4>自测（最小闭环）</h4>
+            <h4>归档 / 存为草稿</h4>
+            <p class="file-path">src/document/document.service.ts</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-bash"># 上传草稿 → submit-review → GET …/reviews/pending
-# → approve → 看 MQ / ES
-# psql: SELECT * FROM kh_document_review;
-
-# 完整状态机自测见文末「对齐 v6」与 origin v6 的 curl-document-status.md</code></pre>
-            </div>
-          </li>
-        </ol>
-      </section>
-
-      <section id="design" class="design-block">
-        <h2>设计决策</h2>
-        <h3>为什么 approve 按 reviewId 而不是 documentId？</h3>
-        <p>同一文档可有多条历史；结案必须对准「那一条待审」。列表接口返回 reviewId 给审核人。</p>
-        <h3>为什么「待审」用 <code>review_result IS NULL</code>，不用 <code>reviewer_id IS NULL</code>？</h3>
-        <p>
-          待审语义是「还没出结果」。审核人字段结案时才填；用 reviewer 判断会和「未来预分配审核人」等扩展冲突。
-          表索引也按 <code>review_result IS NULL</code> 建（见 origin <code>init.sql</code>）。
-        </p>
-        <h3>对照 origin（分支 <code>v6</code>）</h3>
-        <ol>
-          <li><code>src/document/document-status.ts</code>（流转辅助函数）</li>
-          <li><code>src/document/document-review.service.ts</code></li>
-          <li><code>src/document/document.service.ts</code> 的 <code>publish</code> / <code>archive</code> / <code>saveAsDraft</code></li>
-          <li><code>curl-document-status.md</code> 整条状态机 curl</li>
-          <li>环境变量 <code>DOCUMENT_REQUIRE_APPROVAL</code></li>
-        </ol>
-      </section>
-
-      <section id="diff">
-        <h2>与 origin <code>v6</code> 差异</h2>
-        <table>
-          <thead><tr><th>origin v6</th><th>本课步骤 / 常见练习仓</th></tr></thead>
-          <tbody>
-            <tr><td><code>publish</code> 需审时进 PendingReview，不投索引</td><td>若仍「直发 + afterPublish」，须按 <a href="#align">对齐练习</a> 改</td></tr>
-            <tr><td>Published 再提审先 <code>afterUnpublish</code></td><td>常漏清索引 → 审核中仍能搜到旧文</td></tr>
-            <tr><td>待审判定 <code>reviewResult IS NULL</code></td><td>误用 <code>reviewerId IS NULL</code> 时要对齐</td></tr>
-            <tr><td>列名 <code>reviewer_id</code> / <code>reviewed_at</code></td><td>勿写成 <code>review_id</code> / <code>review_at</code></td></tr>
-            <tr><td><code>archive</code> / <code>save-draft</code> + 待审禁改</td><td>本课可后补；对齐练习有教法</td></tr>
-            <tr><td>分页 tasks / history / pending-count</td><td>步骤可先只做 pending 列表</td></tr>
-            <tr><td>EntityManager</td><td>Repository 注入亦可</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section id="align">
-        <h2>教你怎么对齐 origin <code>v6</code></h2>
-        <div class="callout-warning">
-          <strong>原则</strong>：讲义<strong>只教你怎么写</strong>，不替你改练习仓 <code>src/</code>。
-          打开自己的 <code>document.service.ts</code> / <code>document-review.service.ts</code> / controller / entity，
-          按练习顺序改；对照答案看 origin 分支 <code>v6</code>。
-        </div>
-
-        <h3>练习 0 · 先修路由顺序与列名</h3>
-        <p>
-          <strong>为什么</strong>：静态路由被 <code>:id</code> 吃掉时，待办列表永远 404/详情错乱，后面全测不准。
-          列名错则和 <code>init.sql</code> / origin 对不上。
-        </p>
-        <ol>
-          <li>把 <code>reviews/*</code> 全部挪到 <code>@Get(':id')</code> 之前（见上文 Controller 示例）。</li>
-          <li>
-            Entity 对齐：
-            <code>name: 'reviewer_id'</code>、<code>name: 'reviewed_at'</code>；
-            不要用 <code>review_id</code> / <code>review_at</code>。
-          </li>
-          <li>若库表已错建：开发环境可删表或改列后重启（有数据先备份）。</li>
-        </ol>
-        <p><strong>自测</strong>：<code>GET …/reviews/pending</code> 返回数组，而不是「文档不存在」。</p>
-
-        <h3>练习 1 · 待审条件改用 <code>reviewResult IS NULL</code></h3>
-        <p><strong>在哪改</strong>：<code>submitForReview</code> 查重、以及 <code>listPending</code>。</p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">import { IsNull } from 'typeorm';
-
-// ❌ 不要：where: { documentId, reviewerId: IsNull() }
-// ✅ 要：
-const pending = await this.documentReviewRepository.findOne({
-  where: { documentId, reviewResult: IsNull() },
-});
-if (pending) {
-  throw new BadRequestException('该文档已有待审核任务');
-}
-
-async listPending() {
-  return this.documentReviewRepository.find({
-    where: { reviewResult: IsNull() },
-    order: { createdAt: 'DESC' },
-  });
-}</code></pre>
-        </div>
-
-        <h3>练习 2 · <code>DOCUMENT_REQUIRE_APPROVAL</code> + 改写 <code>publish</code></h3>
-        <p>
-          <strong>为什么</strong>：v6 的「发布」在需审模式下等于「提交审核」；只有免审或 approve 之后才进索引。
-          若 <code>publish</code> 仍直接 Published + <code>afterPublish</code>，审核台形同虚设。
-        </p>
-        <p><strong>在哪改</strong>：ReviewService 加开关；DocumentService.publish 分支；Approve 继续投 MQ。</p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">// document-review.service.ts
-constructor(
-  …,
-  private readonly config: ConfigService,
-) {}
-
-isRequireApproval(): boolean {
-  return (
-    this.config.get&lt;string&gt;('DOCUMENT_REQUIRE_APPROVAL', 'true') !== 'false'
-  );
-}</code></pre>
-        </div>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">// document.service.ts — 注入 DocumentReviewService
-async publish(id: string, actor: AuthUser) {
-  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
-  if (!doc) throw new NotFoundException('文档不存在');
-
-  if (doc.status === DocumentStatus.PendingReview) {
-    throw new BadRequestException('文档审核中，请等待审核结果');
-  }
-
-  // 需审核：进入待审，不投索引
-  if (this.reviewService.isRequireApproval()) {
-    if (
-      doc.status === DocumentStatus.Draft ||
-      doc.status === DocumentStatus.Published
-    ) {
-      return this.reviewService.submitForReview(id, actor);
-    }
-    throw new BadRequestException('当前状态不允许发布');
-  }
-
-  // 免审：直接发布（兼容课 4）
-  return this.directPublish(id);
-}
-
-/** 免审直发；也可给 approve 复用「写状态」以外的逻辑 */
-private async directPublish(id: string) {
-  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
-  if (!doc) throw new NotFoundException('文档不存在');
-
-  doc.status = DocumentStatus.Published;
-  doc.publishTime = new Date();
-  const saved = await this.docRepo.save(doc);
-  try {
-    await this.pipelinePublisher.afterPublish(saved.id);
-  } catch (e) {
-    this.logger.warn(`发布后索引投递失败：${e}`);
-  }
-  return saved;
-}</code></pre>
-        </div>
-        <p><code>.env</code>：</p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-bash"># 对齐 v6 默认需审
-DOCUMENT_REQUIRE_APPROVAL=true
-# 课 4 只测 MQ 时可临时 false</code></pre>
-        </div>
-        <p><strong>自测</strong>：需审时 <code>PUT …/publish</code> → <code>status=3</code>，ES 尚无该文；approve 后才有索引。</p>
-
-        <h3>练习 3 · 已发布再提审：先清索引</h3>
-        <p>
-          <strong>为什么</strong>：审核期间文档不应可检索。v6 在 <code>submitForReview</code> 里若
-          <code>beforeStatus === Published</code>，先 <code>afterUnpublish</code>。
-        </p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">async submitForReview(documentId: string, actor: AuthUser) {
-  const doc = await this.findDoc(documentId); // 记得 where: { id, deleted: false }
-  if (
-    doc.status !== DocumentStatus.Draft &amp;&amp;
-    doc.status !== DocumentStatus.Published
-  ) {
-    throw new BadRequestException('只有草稿或已发布文档可以提交审核');
-  }
-
-  const pending = await this.documentReviewRepository.findOne({
-    where: { documentId, reviewResult: IsNull() },
-  });
-  if (pending) throw new BadRequestException('该文档已有待审核任务');
-
-  const beforeStatus = doc.status;
-  const review = this.documentReviewRepository.create({
-    id: nextSnowflakeId(),
-    documentId,
-    beforeStatus,
-  });
-  await this.documentReviewRepository.save(review);
-
-  doc.status = DocumentStatus.PendingReview;
-  await this.documentRepository.save(doc);
-
-  // 关键点：来自已发布 → 先下架索引
-  if (beforeStatus === DocumentStatus.Published) {
-    try {
-      await this.documentPipelinePublisher.afterUnpublish(documentId);
-    } catch (e) {
-      this.logger.warn(`提审后清索引失败：documentId=${documentId}, ${e}`);
-    }
-  }
-
-  return { document: doc, review };
-}</code></pre>
-        </div>
-        <p><strong>自测</strong>：已发布文档能搜到 → 再 publish/submit → 立刻搜不到 → approve → 又能搜到。</p>
-
-        <h3>练习 4 · 状态辅助函数（可选但推荐）</h3>
-        <p><strong>在哪改</strong>：扩充 <code>document-status.ts</code>，publish / submit / archive / update 共用。</p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">export function canPublishFrom(status: DocumentStatus): boolean {
-  return (
-    status === DocumentStatus.Draft ||
-    status === DocumentStatus.Published ||
-    status === DocumentStatus.Archived ||
-    status === DocumentStatus.PendingReview
-  );
-}
-
-export function canSubmitReview(status: DocumentStatus): boolean {
-  return (
-    status === DocumentStatus.Draft || status === DocumentStatus.Published
-  );
-}
-
-export function canArchive(status: DocumentStatus): boolean {
-  return status === DocumentStatus.Published;
-}
-
-/** 待审核期间禁止改正文/标题 */
-export function canEditContent(status: DocumentStatus): boolean {
-  return (
-    status === DocumentStatus.Draft ||
-    status === DocumentStatus.Published ||
-    status === DocumentStatus.Archived
-  );
-}</code></pre>
-        </div>
-
-        <h3>练习 5 · <code>archive</code> / <code>save-draft</code></h3>
-        <p><strong>为什么</strong>：已发布下架有两种产品语义——归档保留「已归档」态，或退回草稿再改。都必须清索引。</p>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">async archive(id: string) {
+              <pre><code class="lang-ts">async archive(id: string) {
   const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
   if (!doc) throw new NotFoundException('文档不存在');
   if (!canArchive(doc.status)) {
@@ -732,7 +462,7 @@ export function canEditContent(status: DocumentStatus): boolean {
   doc.status = DocumentStatus.Archived;
   const saved = await this.docRepo.save(doc);
   try {
-    await this.pipelinePublisher.afterUnpublish(id);
+    await this.pipelinePublisher.afterUnpublish(saved.id);
   } catch (e) {
     this.logger.warn(`归档清索引失败：${e}`);
   }
@@ -748,100 +478,305 @@ async saveAsDraft(id: string) {
   doc.status = DocumentStatus.Draft;
   const saved = await this.docRepo.save(doc);
   try {
-    await this.pipelinePublisher.afterUnpublish(id);
+    // 注意：这里是 afterUnpublish，不是 afterPublish
+    await this.pipelinePublisher.afterUnpublish(saved.id);
   } catch (e) {
     this.logger.warn(`下架清索引失败：${e}`);
   }
   return saved;
-}
-
-// Controller（写在 :id 详情之前或与其它 :id 动作并列均可）
-// @Put(':id/archive')
-// @Put(':id/save-draft')</code></pre>
-        </div>
-
-        <h3>练习 6 · 待审禁改 + 驳回意见必填</h3>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">// update 里（若你有 PATCH）
-if (doc.status === DocumentStatus.PendingReview) {
-  if (dto.content !== undefined || dto.title !== undefined) {
-    throw new BadRequestException('审核中的文档不可编辑');
-  }
-}
-
-// rejectReview
-async rejectReview(reviewId: string, actor: AuthUser, comment: string) {
-  if (!comment?.trim()) {
-    throw new BadRequestException('驳回意见不能为空');
-  }
-  // … 其余：result=Rejected，文档回 Draft
 }</code></pre>
-        </div>
+            </div>
+          </li>
+          <li>
+            <h4>编辑正文 / 元数据</h4>
+            <p class="file-path">src/document/dto/update-document.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { IsOptional, IsString, MaxLength } from 'class-validator';
 
-        <h3>练习 7 · 审核工作台增强（可选）</h3>
-        <p>对齐 v6 可继续补（命名可按你路由风格微调）：</p>
-        <ul>
-          <li><code>GET …/reviews/tasks?status=pending|approved|rejected</code> 分页</li>
-          <li><code>GET …/reviews/tasks/pending-count</code> 角标</li>
-          <li><code>GET …/:id/reviews/current</code>、<code>…/history</code></li>
-        </ul>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-ts">async getCurrentReview(documentId: string) {
-  return this.documentReviewRepository.findOne({
-    where: { documentId, reviewResult: IsNull() },
-    order: { createdAt: 'DESC' },
-  });
-}
+export class UpdateDocumentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
 
-async getReviewHistory(documentId: string) {
-  return this.documentReviewRepository.find({
-    where: { documentId },
-    order: { createdAt: 'DESC' },
-  });
+  @IsOptional()
+  @IsString()
+  content?: string;
+
+  @IsOptional()
+  @IsString()
+  tags?: string;
 }</code></pre>
-        </div>
+            </div>
+            <p class="file-path">DocumentService.updateDocument</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async updateDocument(id: string, dto: UpdateDocumentDto) {
+  const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+  if (!doc) throw new NotFoundException('文档不存在');
+  if (!canEditContent(doc.status)) {
+    throw new BadRequestException('待审核文档不可编辑');
+  }
 
-        <h3>建议动手顺序</h3>
-        <ol>
-          <li>练习 0 → 1（路由、列名、待审条件）</li>
-          <li>练习 2 → 3（publish 走审核 + 提审清索引）——主流程对齐 v6</li>
-          <li>练习 4 → 5 → 6（状态机完整）</li>
-          <li>有余力再做练习 7</li>
-        </ol>
+  // 用 !== undefined，不要写成 if (!dto.title)（空字符串 / 未传会搞反）
+  if (dto.title !== undefined) doc.title = dto.title;
+  if (dto.tags !== undefined) doc.tags = dto.tags;
 
-        <h3>总验收 curl（对齐 v6）</h3>
-        <div class="code-block">
-          <button type="button" class="copy-btn">复制</button>
-          <pre><code class="lang-bash">BASE=http://localhost:3000
-TOKEN=…   # 登录后的 Bearer
+  if (dto.content !== undefined) {
+    const summary = dto.content.slice(0, 200);
+    await this.contentModel.updateOne(
+      { documentId: id, deleted: false },
+      {
+        $set: {
+          content: dto.content,
+          contentLength: dto.content.length,
+          contentSummary: summary,
+        },
+      },
+    );
+    doc.wordCount = this.countWords(dto.content);
+  }
+
+  // 已发布改正文：不在这里重建索引；应再走 submit-review（会先清索引）→ approve
+  return this.docRepo.save(doc);
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              产品规则（本课约定）：编辑不自动改状态、不投 MQ。
+              已发布文档改完后，作者再 <code>submit-review</code>；审核通过才重新入索引。
+            </div>
+          </li>
+          <li>
+            <h4>Controller：路由顺序 + 角色</h4>
+            <div class="callout-warning">
+              <strong>路由顺序（必做）</strong>：所有 <code>reviews/*</code> 静态路径必须写在
+              <code>@Get(':id')</code> / <code>@Put(':id')</code> 之前。
+              否则 <code>GET …/reviews/pending</code> 会被当成查文档。
+            </div>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Controller('document')
+export class DocumentController {
+  constructor(
+    private readonly documentService: DocumentService,
+    private readonly reviewService: DocumentReviewService,
+  ) {}
+
+  @Post('upload/parse')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadAndParse(…) { … }
+
+  // ✅ 静态路径在前
+  @Get('reviews/pending')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
+  listPending() {
+    return this.reviewService.listPending();
+  }
+
+  @Put('reviews/:reviewId/approve')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
+  approve(
+    @Param('reviewId') reviewId: string,
+    @CurrentUser() user: AuthUser,
+    @Body() body: { comment?: string },
+  ) {
+    return this.reviewService.approveReview(reviewId, user, body?.comment ?? '');
+  }
+
+  @Put('reviews/:reviewId/reject')
+  @Roles(RoleCode.ADMIN, RoleCode.REVIEWER)
+  reject(
+    @Param('reviewId') reviewId: string,
+    @CurrentUser() user: AuthUser,
+    @Body() body: { comment: string },
+  ) {
+    return this.reviewService.rejectReview(reviewId, user, body.comment);
+  }
+
+  @Get()
+  page(@Query() query: QueryDocumentDto) {
+    return this.documentService.pageDocuments(query);
+  }
+
+  @Put(':id/submit-review')
+  submitReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.reviewService.submitForReview(id, user);
+  }
+
+  @Put(':id/archive')
+  @Roles(RoleCode.ADMIN)
+  archive(@Param('id') id: string) {
+    return this.documentService.archive(id);
+  }
+
+  @Put(':id/save-as-draft')
+  saveAsDraft(@Param('id') id: string) {
+    return this.documentService.saveAsDraft(id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateDocumentDto) {
+    return this.documentService.updateDocument(id, dto);
+  }
+
+  @Get(':id')
+  detail(@Param('id') id: string) {
+    return this.documentService.getDetail(id);
+  }
+
+  @Delete(':id')
+  @Roles(RoleCode.ADMIN)
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.documentService.remove(id, user);
+  }
+
+  // ❌ 本课不要再提供 PUT :id/publish 直发
+}</code></pre>
+            </div>
+            <p>
+              全局已注册 <code>RolesGuard</code>：未写 <code>@Roles</code> 则放行；
+              写了则 OR 命中即可。审核台给 <code>ADMIN</code> + <code>REVIEWER</code>；
+              <code>submit-review</code> / <code>update</code> 保持登录即可（可选：Service 内校验作者）。
+            </p>
+          </li>
+          <li>
+            <h4>Module</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">TypeOrmModule.forFeature([DocumentEntity, DocumentReviewEntity, …]),
+providers: [DocumentService, DocumentReviewService, …],
+exports: [DocumentService, DocumentReviewService],</code></pre>
+            </div>
+            <p>AppModule <code>entities</code> 追加 <code>DocumentReviewEntity</code>。</p>
+          </li>
+          <li>
+            <h4>自测（最小闭环）</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">BASE=http://localhost:3000/api
+TOKEN=…   # 管理员或审核员 Bearer
 DOC_ID=…  # 上传得到的草稿 id
 
-# 1) 需审发布 → status=3，不进索引
-curl -s -X PUT "$BASE/document/${DOC_ID}/publish" \
-  -H "Authorization: Bearer $TOKEN" | jq '{id, status}'
+# 1) 提审 → status=3
+curl -s -X PUT "$BASE/document/${DOC_ID}/submit-review" \
+  -H "Authorization: Bearer $TOKEN" | jq
 
-# 2) 待办（路径以你 Controller 为准）
+# 2) 待办
 curl -s "$BASE/document/reviews/pending" \
   -H "Authorization: Bearer $TOKEN" | jq
 
-# 3) 通过 → status=1 + MQ
-TASK_ID=…  # pending 列表里的 id
+# 3) 通过 → status=1 + MQ / ES
+TASK_ID=…
 curl -s -X PUT "$BASE/document/reviews/${TASK_ID}/approve" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"comment":"准予发布"}' | jq '{id, status, publishTime}'
 
-# 4) 已发布再提审 → 应搜不到旧文，再 approve 恢复
-# 5) reject 须带 comment；PendingReview 时改标题应 400
-# 6) DOCUMENT_REQUIRE_APPROVAL=false 重启后，publish 可直发</code></pre>
+# 4) 编辑 → 再提审应先清索引；reject 须带 comment
+# 5) archive / save-as-draft 后搜不到
+# 6) 普通 USER 调 approve 应 403</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么本课不设 <code>DOCUMENT_REQUIRE_APPROVAL</code>？</h3>
+        <p>
+          课 4 已经用直发验证了 MQ。进阶状态机若再保留开关，容易半套半用（管理员仍绕过审核台）。
+          练习仓约定：<strong>发布 = 审核通过</strong>，一条路径更清晰。
+        </p>
+        <h3>为什么 approve 按 reviewId 而不是 documentId？</h3>
+        <p>同一文档可有多条历史；结案必须对准「那一条待审」。列表接口返回 reviewId 给审核人。</p>
+        <h3>为什么「待审」用 <code>review_result IS NULL</code>？</h3>
+        <p>
+          待审语义是「还没出结果」。审核人字段结案时才填；用 reviewer 判断会和「预分配审核人」等扩展冲突。
+        </p>
+        <h3>为什么编辑不立刻重建索引？</h3>
+        <p>
+          强制审核下，索引内容应与「已通过审核的版本」一致。改完再提审 → 先清旧索引 → 通过后再建，避免未审文进入检索。
+        </p>
+        <h3>对照 origin（分支 <code>v6</code>）</h3>
+        <ol>
+          <li><code>src/document/document-status.ts</code></li>
+          <li><code>src/document/document-review.service.ts</code></li>
+          <li><code>document.service.ts</code> 的 <code>archive</code> / <code>saveAsDraft</code> / <code>update</code></li>
+          <li>Controller 路由顺序与角色</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin <code>v6</code> 差异</h2>
+        <table>
+          <thead><tr><th>本课约定</th><th>origin v6 / 常见练习仓坑</th></tr></thead>
+          <tbody>
+            <tr><td>强制审核，无环境开关</td><td>origin 可能仍有 <code>DOCUMENT_REQUIRE_APPROVAL</code>；练习仓按本课，不抄开关</td></tr>
+            <tr><td>无 <code>PUT …/publish</code> 直发</td><td>若仍直发 + afterPublish，审核台形同虚设</td></tr>
+            <tr><td>Published 再提审先 <code>afterUnpublish</code></td><td>常漏清索引 → 审核中仍能搜到旧文</td></tr>
+            <tr><td>待审判定 <code>reviewResult IS NULL</code></td><td>误用 <code>reviewerId IS NULL</code></td></tr>
+            <tr><td><code>saveAsDraft</code> 必须 <code>afterUnpublish</code></td><td>误写成 <code>afterPublish</code> 会把草稿再索引进去</td></tr>
+            <tr><td><code>update</code> 用 <code>!== undefined</code></td><td><code>if (!dto.title)</code> 会把「要清空」与「未传」搞反</td></tr>
+            <tr><td>审核接口 <code>@Roles(ADMIN, REVIEWER)</code></td><td>漏写则任意登录用户可审</td></tr>
+            <tr><td>分页 tasks / history 可选</td><td>本课步骤可先只做 pending 列表</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐练习（自查清单）</h2>
+        <div class="callout-warning">
+          <strong>原则</strong>：讲义<strong>只教你怎么写</strong>，不替你改练习仓 <code>src/</code>。
+          按下面顺序对照自己的实现；卡住再打开 origin <code>v6</code>。
         </div>
-        <div class="callout-tip">
-          更完整脚本可对照 origin <code>v6</code> 仓库根目录的
-          <code>curl-document-status.md</code>。卡住时打开该分支
-          <code>document-review.service.ts</code> / <code>document.service.ts#publish</code> 自己改，不要让别人直接改你的实现。
+
+        <h3>练习 0 · 路由顺序与列名</h3>
+        <ol>
+          <li>把 <code>reviews/*</code> 全部挪到 <code>@Get(':id')</code> / <code>@Put(':id')</code> 之前。</li>
+          <li>Entity：<code>reviewer_id</code> / <code>reviewed_at</code>（勿写成 <code>review_id</code> / <code>review_at</code>）。</li>
+        </ol>
+        <p><strong>自测</strong>：<code>GET …/reviews/pending</code> 返回数组，而不是「文档不存在」。</p>
+
+        <h3>练习 1 · 待审条件</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">// ❌ where: { documentId, reviewerId: IsNull() }
+// ✅
+where: { documentId, reviewResult: IsNull() }</code></pre>
         </div>
+
+        <h3>练习 2 · 确认已去掉直发</h3>
+        <ul>
+          <li>Controller 无 <code>publish</code>，或调用即 400「请提交审核…」</li>
+          <li>仅 <code>approve</code> 调用 <code>afterPublish</code></li>
+          <li><code>.env</code> 无 <code>DOCUMENT_REQUIRE_APPROVAL</code></li>
+        </ul>
+
+        <h3>练习 3 · 已发布再提审先清索引</h3>
+        <p>见上文 <code>submitForReview</code> 中 <code>beforeStatus === Published</code> 分支。</p>
+        <p><strong>自测</strong>：已发布能搜到 → submit → 立刻搜不到 → approve → 又能搜到。</p>
+
+        <h3>练习 4 · archive / save-as-draft / update / Roles</h3>
+        <ul>
+          <li><code>saveAsDraft</code> 用 <code>afterUnpublish</code></li>
+          <li><code>updateDocument</code> 用 <code>canEditContent</code> + <code>!== undefined</code></li>
+          <li>pending / approve / reject 带 <code>@Roles(ADMIN, REVIEWER)</code></li>
+        </ul>
+
+        <h3>练习 5 · 审核工作台增强（可选）</h3>
+        <ul>
+          <li><code>GET …/reviews/tasks?status=pending|approved|rejected</code></li>
+          <li><code>GET …/:id/reviews/history</code></li>
+        </ul>
+
+        <h3>建议动手顺序</h3>
+        <ol>
+          <li>练习 0 → 1（路由、待审条件）</li>
+          <li>练习 2 → 3（强制审核 + 提审清索引）</li>
+          <li>练习 4（归档 / 草稿 / 编辑 / 角色）</li>
+          <li>有余力再做练习 5</li>
+        </ol>
       </section>
 
       <section id="errors">
@@ -849,14 +784,16 @@ curl -s -X PUT "$BASE/document/reviews/${TASK_ID}/approve" \
         <table>
           <thead><tr><th>现象</th><th>排查</th></tr></thead>
           <tbody>
-            <tr><td>直接 publish 进了 Published 且已索引</td><td>是否未接 <code>DOCUMENT_REQUIRE_APPROVAL</code>；对照练习 2</td></tr>
-            <tr><td>需审时 publish 400「审核中」</td><td>已是 PendingReview；去 approve/reject，勿重复 publish</td></tr>
+            <tr><td>仍能直发进 Published 且已索引</td><td>是否还留着课 4 的 <code>publish</code>；对照练习 2</td></tr>
             <tr><td>重复 submit</td><td>已有 <code>review_result IS NULL</code> 的行</td></tr>
             <tr><td><code>GET reviews/pending</code> 变成查文档</td><td>路由顺序；对照练习 0</td></tr>
-            <tr><td>提审后仍能搜到旧文</td><td>Published 再提审是否 <code>afterUnpublish</code>；对照练习 3</td></tr>
+            <tr><td>提审后仍能搜到旧文</td><td>Published 再提审是否 <code>afterUnpublish</code></td></tr>
+            <tr><td>存为草稿后仍能搜到</td><td><code>saveAsDraft</code> 是否误调 <code>afterPublish</code></td></tr>
+            <tr><td>编辑不生效 / 字段被清空</td><td>是否写成 <code>if (!dto.title)</code>；应 <code>!== undefined</code></td></tr>
+            <tr><td>待审仍能改标题</td><td>是否调用 <code>canEditContent</code></td></tr>
+            <tr><td>普通用户能 approve</td><td>是否漏 <code>@Roles</code>；RolesGuard 是否全局注册</td></tr>
             <tr><td>通过了无 MQ</td><td>approve 是否调用 Publisher；MqModule 导出</td></tr>
-            <tr><td>列找不到 / 字段全 null</td><td>Entity <code>reviewer_id</code> / <code>reviewed_at</code> 是否与表一致</td></tr>
-            <tr><td>驳回 400</td><td>comment 是否为空（练习 6）</td></tr>
+            <tr><td>驳回 400</td><td>comment 是否为空</td></tr>
           </tbody>
         </table>
         <div class="callout-tip">
@@ -910,5 +847,3 @@ curl -s -X PUT "$BASE/document/reviews/${TASK_ID}/approve" \
   </script>
 </body>
 </html>
-
-

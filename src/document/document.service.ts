@@ -10,8 +10,9 @@ import type { AuthUser } from '../auth/auth-user.interface';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentPipelinePublisher } from '../mq/document-pipeline.publisher';
 import { RustfsService } from '../storage/rustfs.service';
-import { DocumentStatus, canArchive } from './document-status';
+import { DocumentStatus, canArchive, canEditContent } from './document-status';
 import { QueryDocumentDto } from './dto/query-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { UploadParseDto } from './dto/upload-parse.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { FileParserService } from './parser/file-parser.service';
@@ -105,6 +106,37 @@ export class DocumentService {
     };
   }
 
+  async updateDocument(id: string, dto: UpdateDocumentDto) {
+    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
+    if (!doc) {
+      throw new NotFoundException('文档不存在');
+    }
+    if (!canEditContent(doc.status)) {
+      throw new BadRequestException('待审核文档不可编辑');
+    }
+
+    if (dto.title !== undefined) doc.title = dto.title;
+    if (dto.tags !== undefined) doc.tags = dto.tags;
+
+    if (dto.content !== undefined) {
+      const summary = dto.content.slice(0, 200);
+      await this.contentModel.updateOne(
+        { documentId: id, deleted: false },
+        {
+          $set: {
+            content: dto.content,
+            contentLength: dto.content.length,
+            contentSummary: summary,
+          },
+        },
+      );
+      doc.wordCount = this.countWords(dto.content);
+    }
+
+    // 已发布改正文：不在这里重建索引；应再走 submit-review → approve
+    return this.docRepo.save(doc);
+  }
+
   async pageDocuments(query: QueryDocumentDto) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 10;
@@ -140,26 +172,6 @@ export class DocumentService {
       content: content?.content ?? '',
       contentLength: content?.contentLength ?? 0,
     };
-  }
-
-  async publish(id: string, _actor: AuthUser) {
-    const doc = await this.docRepo.findOne({ where: { id, deleted: false } });
-    if (!doc) throw new NotFoundException('文档不存在');
-    if (
-      doc.status !== DocumentStatus.Draft &&
-      doc.status !== DocumentStatus.Published &&
-      doc.status !== DocumentStatus.Archived
-    ) {
-      throw new BadRequestException('当前状态不允许发布');
-    }
-
-    doc.status = DocumentStatus.Published;
-    doc.publishTime = new Date();
-    const saved = await this.docRepo.save(doc);
-
-    // 投递失败不回滚（与 origin 一致）
-    await this.pipelinePublisher.afterPublish(saved.id);
-    return saved;
   }
 
   /**
@@ -215,7 +227,7 @@ export class DocumentService {
     doc.status = DocumentStatus.Draft;
     const saved = await this.docRepo.save(doc);
     try {
-      await this.pipelinePublisher.afterPublish(saved.id);
+      await this.pipelinePublisher.afterUnpublish(saved.id);
     } catch (error) {
       this.logger.warn(`文档 ${id} 清索引失败：${error}`);
     }
