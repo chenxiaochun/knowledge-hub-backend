@@ -47,6 +47,9 @@ export class UserService {
     if (user.status !== 1) {
       throw new UnauthorizedException('用户已禁用');
     }
+    if (user.emailVerified !== 1) {
+      throw new UnauthorizedException('请先激活邮箱');
+    }
     return this.toAuthUser(user);
   }
 
@@ -124,9 +127,11 @@ export class UserService {
     password: string;
     email?: string;
     realName?: string;
+    requireEmailVerification?: boolean;
   }): Promise<{
     userId: string;
     message: string;
+    emailVerificationRequired?: boolean;
   }> {
     const exists = await this.userRepository.findOne({
       where: { username: dto.username, deleted: false },
@@ -220,5 +225,11 @@ export class UserService {
     user.deleted = true;
     const saved = await this.userRepository.save(user);
     return this.toVO(saved);
+  }
+
+  async findByEmail(email: string): Promise<UserEntity | null> {
+    return this.userRepository.findOne({
+      where: { email, deleted: false },
+    });
   }
 }

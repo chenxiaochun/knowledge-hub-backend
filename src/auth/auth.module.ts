@@ -1,15 +1,19 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+
 import { UserModule } from '../user/user.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt.strategy';
+import { EmailActivationService } from './email-activation.service';
+import { EmailService } from './email.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { RolesGuard } from './roles.guard';
+import { JwtStrategy } from './jwt.strategy';
+import { PasswordResetService } from './password-reset.service';
 import { PermissionsGuard } from './permissions.guard';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
@@ -33,7 +37,10 @@ import { PermissionsGuard } from './permissions.guard';
       provide: APP_GUARD,
       useClass: PermissionsGuard,
     },
+    EmailActivationService,
+    EmailService,
+    PasswordResetService,
   ],
-  exports: [AuthService],
+  exports: [AuthService, EmailActivationService, EmailService, PasswordResetService],
 })
 export class AuthModule {}

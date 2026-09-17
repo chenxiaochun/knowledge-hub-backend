@@ -1,10 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
 import { UserService } from '../user/user.service';
 import { AuthUser } from './auth-user.interface';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { EmailActivationService } from './email-activation.service';
+import { EmailService } from './email.service';
+import { PasswordResetService } from './password-reset.service';
 
 interface TokenPayload {
   sub: string;
@@ -16,6 +19,9 @@ interface TokenPayload {
 export class AuthService {
   constructor(
     private readonly userService: UserService,
+    private readonly emailActivation: EmailActivationService,
+    private readonly emailService: EmailService,
+    private readonly passwordReset: PasswordResetService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
   ) {}
@@ -44,6 +50,10 @@ export class AuthService {
     if (u === 'm') return n * 60;
     if (u === 'h') return n * 3600;
     return n * 86400;
+  }
+
+  private requireEmailVerification(): boolean {
+    return this.config.get<string>('REQUIRE_EMAIL_VERIFICATION', 'false') === 'true';
   }
 
   /**
@@ -84,7 +94,20 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    return await this.userService.register(dto);
+    const result = await this.userService.register({
+      ...dto,
+      requireEmailVerification: this.requireEmailVerification(),
+    });
+    if (result.emailVerificationRequired && dto.email) {
+      const token = await this.emailActivation.createToken(result.userId);
+      try {
+        await this.emailService.sendActivationEmail(dto.email, dto.username, token);
+      } catch {
+        await this.emailActivation.deleteByToken(token);
+        throw new BadRequestException('激活邮件发送失败，请稍后再试');
+      }
+    }
+    return result;
   }
 
   async refresh(refreshToken: string) {
@@ -102,5 +125,37 @@ export class AuthService {
 
   async getMe(userId: string) {
     return this.userService.getUserVO(userId);
+  }
+
+  async verifyEmail(token: string) {
+    const userId = await this.emailActivation.consumeToken(token);
+    if (!userId) {
+      throw new BadRequestException('激活链接无效或已过期');
+    }
+    await this.userService.markEmailVerified(userId);
+    return { message: '邮箱激活成功' };
+  }
+
+  async sendResetCode(dto: { email: string }) {
+    const left = await this.passwordReset.cooldownLeftMs(dto.email);
+    if (left > 0) {
+      throw new BadRequestException(`发送过于频繁，请 ${Math.ceil(left / 1000)} 秒后再试`);
+    }
+    const user = await this.userService.findByEmail?.(dto.email);
+    // 若没有 findByEmail，用 repo 查；用户不存在也返回成功文案，避免枚举邮箱
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await this.passwordReset.set(dto.email, code);
+    if (user) {
+      await this.emailService.sendResetCodeEmail(dto.email, user.username, code);
+    }
+    return { message: '若邮箱已注册，验证码已发送' };
+  }
+
+  async resetPasswordByEmail(dto: { email: string; code: string; newPassword: string }) {
+    const ok = await this.passwordReset.verify(dto.email, dto.code);
+    if (!ok) throw new BadRequestException('验证码错误或已过期');
+    await this.userService.resetPasswordByEmail(dto.email, dto.newPassword);
+    await this.passwordReset.delete(dto.email);
+    return { message: '密码已重置' };
   }
 }
