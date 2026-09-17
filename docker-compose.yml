@@ -162,3 +162,33 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
+
+  # Redis — 密码重置验证码等
+  redis:
+    image: redis:7-alpine
+    container_name: knowledge_hub_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Web GUI: RedisInsight
+  redisinsight:
+    image: redis/redisinsight:2.50
+    container_name: knowledge_hub_redisinsight
+    restart: always
+    ports:
+      - '5540:5540'
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/redisinsight:/data
+    environment:
+      - RI_HOST=0.0.0.0
+    depends_on:
+      redis:
+        condition: service_healthy

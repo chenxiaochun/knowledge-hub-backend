@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 13 · 注册邮箱验证（origin v8）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 13 · 注册邮箱验证 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./02-auth-rbac.html">第 2 课</a>（建议先过 <a href="./08-team-mail-align.html">第 8 课</a> 入门版）·
+      对照 origin 分支 <code>v8</code> · <code>src/auth/</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念与状态机</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 8 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#extension-resend">扩展 · 重发激活邮件</a></li>
+        <li><a href="#align">对齐 v8 检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          本课<strong>只聚焦「用户注册 → 邮件激活 → 才能登录」</strong>这一条链路，
+          按 origin <code>v8</code> 的实现方式手敲对齐：Redis 存激活 token、MailerModule 发信、
+          数据库 <code>email_verified</code> / <code>status</code> 双字段门禁。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：请在练习仓
+          <code>knowledge-hub-backend</code> 自己改 <code>src/</code>；
+          对照答案看 <code>knowledge-hub-backend-origin</code>（分支 <code>v8</code> 或 <code>main</code> 的 auth 模块）。
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li><code>REQUIRE_EMAIL_VERIFICATION=false</code>：注册后立即可登录（与 v8 默认行为一致）</li>
+            <li><code>REQUIRE_EMAIL_VERIFICATION=true</code> 且注册带 email：返回「请查收邮件」；未激活登录 → <code>401 账户未激活，请先验证邮箱</code></li>
+            <li>邮件里的 token 调 <code>GET /auth/verify-email?token=…</code> 成功后，同一账号可登录</li>
+            <li>激活 token 存 Redis，<strong>重启 Nest 后 token 仍有效</strong>（24h 内）</li>
+            <li>同一用户重复注册不会有多条有效 token（重发时旧 token 作废——本课未实现「重发接口」，但 <code>createToken</code> 已预留双向索引）</li>
+            <li>SMTP 发信失败时：Redis 里的 token 被清理，接口返回 <code>400 激活邮件发送失败</code></li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 2 课 JWT 登录已通；Postgres 用户表已有 <code>kh_user</code>。
+          本课需要 <strong>Redis</strong> + <strong>SMTP</strong>（或 MailHog 本地收信）。
+          若你刚学完第 8 课内存版，本课就是把激活链路升级到 origin v8 形态。
+        </div>
+        <h3>本课要启动的服务</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d postgres redis
+# 可选：MailHog 等 SMTP 调试器，端口 1025
+pnpm add @nestjs-modules/mailer nodemailer ioredis
+pnpm add -D @types/nodemailer</code></pre>
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">export BASE=http://localhost:3000
+
+# .env 先设 REQUIRE_EMAIL_VERIFICATION=true
+
+# 1) 注册
+curl -s -X POST "$BASE/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice_v8","password":"123456","email":"you@example.com","realName":"Alice"}' | jq
+
+# 2) 未激活登录 → 应 401
+curl -s -X POST "$BASE/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice_v8","password":"123456"}' | jq
+
+# 3) 从邮件 / MailHog / 日志取 token
+ACTIVATION_TOKEN='粘贴 token'
+curl -s "$BASE/auth/verify-email?token=$ACTIVATION_TOKEN" | jq
+
+# 4) 激活后再登录 → 应 200 + accessToken
+curl -s -X POST "$BASE/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice_v8","password":"123456"}' | jq '{accessToken, userInfo}'
+
+# 5) Redis 里应已无该 token（consume 后删除）
+redis-cli GET "email:activation:token:$ACTIVATION_TOKEN"</code></pre>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与状态机</h2>
+        <h3>端到端时序</h3>
+        <div class="flow">POST /auth/register
+  → AuthService.register()
+      → UserService.register(requireEmailVerification=true)
+          → kh_user: email_verified=0, status=0
+      → EmailActivationService.createToken(userId)  // Redis 双向 key，TTL 24h
+      → EmailService.sendActivationEmail()            // 链接含 APP_PUBLIC_URL
+  ← { message: "注册成功，请查收邮件激活账户", emailVerificationRequired: true }
+
+用户点击邮件链接 GET /auth/verify-email?token=xxx
+  → EmailActivationService.consumeToken()  // 校验 + 删除 Redis key
+  → UserService.activateEmail(userId)      // email_verified=1, status=1
+  ← { message: "账户激活成功，请登录" }
+
+POST /auth/login
+  → UserService.validateCredentials()
+      → emailVerified===0 → 401「账户未激活，请先验证邮箱」
+      → 否则校验密码 → 签发 JWT</div>
+
+        <h3>开关与字段怎么配合</h3>
+        <table>
+          <thead>
+            <tr><th>条件</th><th>注册后 email_verified</th><th>注册后 status</th><th>能否登录</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>REQUIRE_EMAIL_VERIFICATION=false</code></td>
+              <td>1</td><td>1</td><td>立即可以</td>
+            </tr>
+            <tr>
+              <td><code>true</code> 且请求<strong>带 email</strong></td>
+              <td>0</td><td>0</td><td>需先点邮件链接</td>
+            </tr>
+            <tr>
+              <td><code>true</code> 但<strong>未填 email</strong></td>
+              <td>1</td><td>1</td>
+              <td>立即可以（v8 不强制邮箱字段；没邮箱就无法发激活信）</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>前端类比</h3>
+        <table>
+          <thead><tr><th>后端概念</th><th>前端类比</th></tr></thead>
+          <tbody>
+            <tr><td><code>email_verified</code></td><td>账号是否完成邮箱验证（类似「已验证 badge」）</td></tr>
+            <tr><td><code>status</code></td><td>账号是否可用（管理员禁用 vs 未激活共用 0，但原因不同）</td></tr>
+            <tr><td>Redis 激活 token</td><td>一次性 magic link，24h 过期，用后即焚</td></tr>
+            <tr><td><code>APP_PUBLIC_URL</code></td><td>邮件里拼绝对 URL 的站点根地址</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout-info">
+          <strong>本课范围说明</strong>：origin v8 同一套 auth 里还有「忘记密码验证码」（<code>PasswordResetService</code>），
+          逻辑类似但 key 前缀与 TTL 不同。本课<strong>不讲重置密码</strong>，避免和注册激活混在一起；
+          需要时可对照 origin <code>curl-auth.md</code> 第 5 节自行扩展。
+        </div>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th><th>职责</th></tr></thead>
+          <tbody>
+            <tr><td><code>.env</code></td><td>追加</td><td><code>REQUIRE_EMAIL_VERIFICATION</code>、<code>APP_PUBLIC_URL</code>、<code>MAIL_*</code>、<code>REDIS_*</code></td></tr>
+            <tr><td><code>src/redis/redis.service.ts</code></td><td>新建或核对</td><td>ioredis 封装 get/set/del/ttl</td></tr>
+            <tr><td><code>src/redis/redis.module.ts</code></td><td>新建</td><td>Global 导出 RedisService</td></tr>
+            <tr><td><code>src/user/entities/user.entity.ts</code></td><td>核对</td><td><code>emailVerified</code> 字段</td></tr>
+            <tr><td><code>src/user/user.service.ts</code></td><td>改</td><td><code>register</code> / <code>validateCredentials</code> / <code>activateEmail</code> / <code>findByEmail</code></td></tr>
+            <tr><td><code>src/auth/email-activation.service.ts</code></td><td>新建或替换课 8 内存版</td><td>Redis 双向 token</td></tr>
+            <tr><td><code>src/auth/email.service.ts</code></td><td>新建或改</td><td>Mailer 发激活邮件</td></tr>
+            <tr><td><code>src/auth/auth.service.ts</code></td><td>改</td><td><code>register</code> / <code>verifyEmail</code> 编排 + 发信失败回滚</td></tr>
+            <tr><td><code>src/auth/auth.controller.ts</code></td><td>改</td><td><code>GET verify-email</code></td></tr>
+            <tr><td><code>src/auth/auth.module.ts</code></td><td>改</td><td>注册 Email 相关 provider</td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>改</td><td><code>RedisModule</code> + <code>MailerModule.forRootAsync</code></td></tr>
+          </tbody>
+        </table>
+        <p class="muted">对照 origin 阅读顺序：<code>email-activation.service.ts</code> → <code>email.service.ts</code> → <code>auth.service.ts</code>（register/verifyEmail）→ <code>user.service.ts</code>（register/activateEmail/validateCredentials）。</p>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+
+          <li>
+            <h4>环境变量（对齐 origin <code>.env.example</code>）</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 邮箱验证开关（默认 false：注册后立即可登录）
+REQUIRE_EMAIL_VERIFICATION=true
+# 邮件里激活链接的站点根 URL（生产改成真实域名）
+APP_PUBLIC_URL=http://localhost:3000
+
+# SMTP（@nestjs-modules/mailer + nodemailer）
+MAIL_HOST=smtp.qq.com
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_USER=your@qq.com
+MAIL_PASS=your_smtp_auth_code
+MAIL_FROM="Knowledge Hub &lt;your@qq.com&gt;"
+
+# Redis（激活 token 24h TTL）
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0</code></pre>
+            </div>
+            <div class="callout-tip">
+              本地调试 SMTP 可用 MailHog：<code>MAIL_HOST=localhost</code>、<code>MAIL_PORT=1025</code>、
+              无账号密码，浏览器打开 <code>http://localhost:8025</code> 看邮件。
+            </div>
+          </li>
+
+          <li>
+            <h4>UserEntity：email_verified 字段</h4>
+            <p>origin <code>init.sql</code> 已有列 <code>email_verified SMALLINT DEFAULT 1</code>。Entity 对齐：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 0 未验证 1 已验证 */
+@Column({ name: 'email_verified', type: 'smallint', default: 1 })
+emailVerified: number;</code></pre>
+            </div>
+            <p>若练习仓是 <code>synchronize: true</code> 且缺列，启动后会自动加；生产库请走迁移脚本。</p>
+          </li>
+
+          <li>
+            <h4>RedisModule（v8 必用；课 11 已做可跳过）</h4>
+            <p class="file-path">src/redis/redis.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+@Injectable()
+export class RedisService implements OnModuleDestroy {
+  private readonly client: Redis;
+
+  constructor(private readonly config: ConfigService) {
+    const password = this.config.get&lt;string&gt;('REDIS_PASSWORD');
+    this.client = new Redis({
+      host: this.config.get&lt;string&gt;('REDIS_HOST', 'localhost'),
+      port: this.config.get&lt;number&gt;('REDIS_PORT', 6379),
+      password: password || undefined,
+      db: this.config.get&lt;number&gt;('REDIS_DB', 0),
+      maxRetriesPerRequest: 3,
+    });
+  }
+
+  async get(key: string): Promise&lt;string | null&gt; {
+    return this.client.get(key);
+  }
+
+  async set(key: string, value: string, ttlSeconds?: number): Promise&lt;void&gt; {
+    if (ttlSeconds !== undefined) {
+      await this.client.set(key, value, 'EX', ttlSeconds);
+      return;
+    }
+    await this.client.set(key, value);
+  }
+
+  async del(key: string): Promise&lt;void&gt; {
+    await this.client.del(key);
+  }
+
+  async ttl(key: string): Promise&lt;number&gt; {
+    return this.client.ttl(key);
+  }
+
+  async onModuleDestroy(): Promise&lt;void&gt; {
+    await this.client.quit();
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/redis/redis.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Global, Module } from '@nestjs/common';
+import { RedisService } from './redis.service';
+
+@Global()
+@Module({
+  providers: [RedisService],
+  exports: [RedisService],
+})
+export class RedisModule {}</code></pre>
+            </div>
+            <p><code>AppModule.imports</code> 最前面加 <code>RedisModule</code>。</p>
+          </li>
+
+          <li>
+            <h4>EmailActivationService（origin v8 完整）</h4>
+            <p class="file-path">src/auth/email-activation.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { RedisService } from '../redis/redis.service';
+
+const TOKEN_PREFIX = 'email:activation:token:';
+const USER_PREFIX = 'email:activation:user:';
+export const ACTIVATION_TOKEN_TTL_SECONDS = 24 * 3600;
+
+/** 邮箱激活令牌（Redis 存储，24 小时有效） */
+@Injectable()
+export class EmailActivationService {
+  constructor(private readonly redis: RedisService) {}
+
+  private tokenKey(token: string): string {
+    return `${TOKEN_PREFIX}${token}`;
+  }
+
+  private userKey(userId: string): string {
+    return `${USER_PREFIX}${userId}`;
+  }
+
+  async createToken(userId: string): Promise&lt;string&gt; {
+    const existing = await this.redis.get(this.userKey(userId));
+    if (existing) {
+      await this.redis.del(this.tokenKey(existing));
+    }
+
+    const token = randomBytes(32).toString('hex');
+    // token → userId：用户点激活链接时，用 token 查出要激活的账号
+    await this.redis.set(
+      this.tokenKey(token),
+      userId,
+      ACTIVATION_TOKEN_TTL_SECONDS,
+    );
+    // userId → token：同一用户只保留一个有效 token，重发时先按 userId 找到并作废旧的
+    await this.redis.set(
+      this.userKey(userId),
+      token,
+      ACTIVATION_TOKEN_TTL_SECONDS,
+    );
+    return token;
+  }
+
+  /** 校验并消费 token，返回 userId */
+  async consumeToken(token: string): Promise&lt;string | null&gt; {
+    const userId = await this.redis.get(this.tokenKey(token));
+    if (!userId) return null;
+
+    await this.redis.del(this.tokenKey(token));
+    await this.redis.del(this.userKey(userId));
+    return userId;
+  }
+
+  async deleteByToken(token: string): Promise&lt;void&gt; {
+    const userId = await this.redis.get(this.tokenKey(token));
+    await this.redis.del(this.tokenKey(token));
+    if (userId) {
+      await this.redis.del(this.userKey(userId));
+    }
+  }
+}</code></pre>
+            </div>
+            <p>Redis key 示例：</p>
+            <ul>
+              <li><code>email:activation:token:&lt;64位hex&gt;</code> → userId</li>
+              <li><code>email:activation:user:&lt;userId&gt;</code> → token</li>
+            </ul>
+          </li>
+
+          <li>
+            <h4>EmailService（origin v8：MailerModule）</h4>
+            <p class="file-path">src/auth/email.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MailerService } from '@nestjs-modules/mailer';
+
+@Injectable()
+export class EmailService {
+  constructor(
+    private readonly mailer: MailerService,
+    private readonly config: ConfigService,
+  ) {}
+
+  async sendActivationEmail(
+    email: string,
+    username: string,
+    token: string,
+  ): Promise&lt;void&gt; {
+    const baseUrl = this.config.get&lt;string&gt;(
+      'APP_PUBLIC_URL',
+      'http://localhost:3000',
+    );
+    const link = `${baseUrl}/auth/verify-email?token=${token}`;
+
+    await this.mailer.sendMail({
+      to: email,
+      subject: '激活您的知识库账户',
+      text: `您好 ${username}，请点击以下链接激活账户（24 小时内有效）：\n${link}`,
+      html: `
+        &lt;p&gt;您好 &lt;strong&gt;${username}&lt;/strong&gt;，&lt;/p&gt;
+        &lt;p&gt;欢迎注册知识库，请点击下方链接激活账户（24 小时内有效）：&lt;/p&gt;
+        &lt;p&gt;&lt;a href="${link}"&gt;${link}&lt;/a&gt;&lt;/p&gt;
+        &lt;p&gt;如非本人操作，请忽略此邮件。&lt;/p&gt;
+      `,
+    });
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/app.module.ts — MailerModule.forRootAsync</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { MailerModule } from '@nestjs-modules/mailer';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    RedisModule,
+    MailerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =&gt; ({
+        transport: {
+          host: configService.get&lt;string&gt;('MAIL_HOST'),
+          port: Number(configService.get&lt;string&gt;('MAIL_PORT')),
+          secure: configService.get&lt;string&gt;('MAIL_SECURE') === 'true',
+          auth: {
+            user: configService.get&lt;string&gt;('MAIL_USER'),
+            pass: configService.get&lt;string&gt;('MAIL_PASS'),
+          },
+        },
+        defaults: {
+          from: configService.get&lt;string&gt;('MAIL_FROM'),
+        },
+      }),
+    }),
+    // ...其余 Module
+  ],
+})
+export class AppModule {}</code></pre>
+            </div>
+            <p><code>AuthModule</code> 里 <code>imports: [MailerModule, …]</code>（与 origin 一致，便于 EmailService 注入 MailerService）。</p>
+          </li>
+
+          <li>
+            <h4>UserService：注册 / 登录门禁 / 激活</h4>
+            <p><strong>findByEmail</strong>（重置密码也会用到）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async findByEmail(email: string): Promise&lt;UserEntity | null&gt; {
+  return this.userRepo.findOne({ where: { email, deleted: false } });
+}</code></pre>
+            </div>
+            <p><strong>register</strong> 核心片段（对照 origin v8）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async register(input: {
+  username: string;
+  password: string;
+  email?: string;
+  realName?: string;
+  requireEmailVerification?: boolean;
+}): Promise&lt;{
+  userId: string;
+  emailVerificationRequired?: boolean;
+}&gt; {
+  const exists = await this.findByUsername(input.username);
+  if (exists) throw new ConflictException('用户名已存在');
+  if (input.email) {
+    const emailUsed = await this.findByEmail(input.email);
+    if (emailUsed) throw new ConflictException('邮箱已被使用');
+  }
+
+  const userId = nextSnowflakeId();
+  const needVerify = input.requireEmailVerification &amp;&amp; !!input.email;
+  const user = this.userRepo.create({
+    id: userId,
+    username: input.username,
+    password: await hash(input.password, 10),
+    email: input.email ?? null,
+    realName: input.realName ?? null,
+    status: needVerify ? 0 : 1,
+    emailVerified: needVerify ? 0 : 1,
+  });
+  await this.userRepo.save(user);
+  await this.assignRole(userId, RoleCode.USER);
+
+  return {
+    userId,
+    emailVerificationRequired: needVerify,
+  };
+}</code></pre>
+            </div>
+            <p><strong>validateCredentials</strong>：在密码校验<strong>之前</strong>拦截未激活：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">if (user.emailVerified === 0) {
+  throw new UnauthorizedException('账户未激活，请先验证邮箱');
+}</code></pre>
+            </div>
+            <p><strong>activateEmail</strong>（origin 会同时恢复 status）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async activateEmail(userId: string): Promise&lt;string&gt; {
+  const user = await this.findByIdOrThrow(userId);
+  if (user.emailVerified === 1) return '账户已激活，请直接登录';
+  user.emailVerified = 1;
+  user.status = 1;
+  await this.userRepo.save(user);
+  return '账户激活成功，请登录';
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>AuthService：编排注册与验证</h4>
+            <p class="file-path">src/auth/auth.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">private requireEmailVerification(): boolean {
+  return (
+    this.config.get&lt;string&gt;('REQUIRE_EMAIL_VERIFICATION', 'false') === 'true'
+  );
+}
+
+async register(
+  dto: RegisterDto,
+): Promise&lt;{ userId: string; message: string; emailVerificationRequired?: boolean }&gt; {
+  const result = await this.userService.register({
+    ...dto,
+    requireEmailVerification: this.requireEmailVerification(),
+  });
+
+  if (result.emailVerificationRequired &amp;&amp; dto.email) {
+    const token = await this.emailActivation.createToken(result.userId);
+    try {
+      await this.emailService.sendActivationEmail(
+        dto.email,
+        dto.username,
+        token,
+      );
+    } catch {
+      await this.emailActivation.deleteByToken(token);
+      throw new BadRequestException('激活邮件发送失败，请稍后再试');
+    }
+    return {
+      userId: result.userId,
+      message: '注册成功，请查收邮件激活账户',
+      emailVerificationRequired: true,
+    };
+  }
+
+  return {
+    userId: result.userId,
+    message: '注册成功，请登录',
+  };
+}
+
+async verifyEmail(token: string): Promise&lt;{ message: string }&gt; {
+  const userId = await this.emailActivation.consumeToken(token);
+  if (!userId) {
+    throw new BadRequestException('激活链接无效或已过期');
+  }
+  const message = await this.userService.activateEmail(userId);
+  return { message };
+}</code></pre>
+            </div>
+            <div class="callout-warning">
+              <strong>发信失败回滚</strong>：若 SMTP 报错，必须 <code>deleteByToken</code>，
+              否则 DB 里用户已是「未激活」，Redis 却留着永远用不了的 token，用户无法重试（v8 未提供重发 API，需手动删用户或补接口）。
+            </div>
+          </li>
+
+          <li>
+            <h4>AuthController + AuthModule</h4>
+            <p class="file-path">src/auth/auth.controller.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Public()
+@Get('verify-email')
+verifyEmail(@Query('token') token: string) {
+  return this.authService.verifyEmail(token);
+}</code></pre>
+            </div>
+            <p><code>RegisterDto</code> 已在 origin 定义可选 <code>@IsEmail() email</code>，无需改 DTO 即可支持带邮箱注册。</p>
+            <p class="file-path">src/auth/auth.module.ts — providers 追加</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">imports: [
+  PassportModule.register({ defaultStrategy: 'jwt' }),
+  MailerModule,
+  JwtModule.registerAsync({ /* 同课 2 */ }),
+  UserModule,
+],
+providers: [
+  AuthService,
+  EmailService,
+  EmailActivationService,
+  // PasswordResetService 本课不涉及
+  JwtStrategy,
+  { provide: APP_GUARD, useClass: JwtAuthGuard },
+  // ...
+],</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>自测矩阵</h4>
+            <table>
+              <thead><tr><th>场景</th><th>操作</th><th>预期</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>开关关闭</td>
+                  <td><code>REQUIRE_EMAIL_VERIFICATION=false</code> 注册</td>
+                  <td>message「注册成功，请登录」；立即可 login</td>
+                </tr>
+                <tr>
+                  <td>正常激活流</td>
+                  <td>开关 true + 带 email 注册 → verify → login</td>
+                  <td>401 → 200</td>
+                </tr>
+                <tr>
+                  <td>重复点击链接</td>
+                  <td>同一 token verify 两次</td>
+                  <td>第二次 <code>400 激活链接无效或已过期</code>（token 已 consume）</td>
+                </tr>
+                <tr>
+                  <td>已激活再点</td>
+                  <td>新 token verify（若手动 createToken）</td>
+                  <td><code>账户已激活，请直接登录</code></td>
+                </tr>
+                <tr>
+                  <td>重启持久化</td>
+                  <td>注册后 restart Nest，再 verify</td>
+                  <td>仍成功（Redis 未丢）</td>
+                </tr>
+                <tr>
+                  <td>邮箱重复</td>
+                  <td>两用户同 email 注册</td>
+                  <td>第二次 <code>409 邮箱已被使用</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 调试 Redis
+redis-cli KEYS 'email:activation:*'
+redis-cli TTL email:activation:token:&lt;your-token&gt;</code></pre>
+            </div>
+          </li>
+
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么 token 存 Redis 而不是 JWT？</h3>
+        <p>
+          激活链接需要<strong>可撤销、可一次性消费、可设 TTL</strong>。
+          自包含 JWT 难以在服务端「作废旧链接」或保证单次使用；
+          Redis 存 opaque token，<code>consumeToken</code> 读后即删，语义清晰。
+        </p>
+        <h3>为什么 token 与 userId 双向索引？</h3>
+        <p>
+          正向：<code>token → userId</code> 供用户点链接激活。
+          反向：<code>userId → token</code> 供「同一用户再次 createToken」时删掉旧链，避免多条有效激活 URL 并存。
+          origin v8 注册路径只会 create 一次；双向索引是为将来「重发激活邮件」预留。
+        </p>
+        <h3>为什么未激活时 status 也设为 0？</h3>
+        <p>
+          v8 把「未激活」与「管理员禁用」都映射到 <code>status=0</code>，登录时优先看 <code>emailVerified</code> 给出更明确的 401 文案。
+          <code>activateEmail</code> 同时把 <code>status</code> 拉回 1，避免只改 verified 字段导致边缘状态不一致。
+        </p>
+        <h3>为什么 GET 而不是 POST verify-email？</h3>
+        <p>邮件里的链接必须是可点击的 URL；GET + query token 是常见 magic link 形态。注意 token 会出现在访问日志里，生产应走 HTTPS。</p>
+        <h3>对照 origin v8 建议阅读顺序</h3>
+        <ol>
+          <li><code>src/auth/email-activation.service.ts</code></li>
+          <li><code>src/auth/email.service.ts</code></li>
+          <li><code>src/auth/auth.service.ts</code> — <code>register</code> / <code>verifyEmail</code></li>
+          <li><code>src/user/user.service.ts</code> — <code>register</code> / <code>validateCredentials</code> / <code>activateEmail</code></li>
+          <li><code>src/auth/auth.controller.ts</code> — <code>verify-email</code></li>
+          <li><code>curl-auth.md</code> 第 3–4 节自测</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与第 8 课（入门版）差异</h2>
+        <table>
+          <thead><tr><th>维度</th><th>第 8 课练习版</th><th>本课（origin v8）</th></tr></thead>
+          <tbody>
+            <tr><td>Token 存储</td><td>进程内 <code>Map</code>，重启丢失</td><td>Redis，TTL 24h</td></tr>
+            <tr><td>发信</td><td>默认 <code>MAIL_TRANSPORT=log</code></td><td><code>MailerModule</code> + 真实 SMTP</td></tr>
+            <tr><td>激活后状态</td><td>部分练习只改 <code>emailVerified</code></td><td>同时 <code>emailVerified=1</code> 且 <code>status=1</code></td></tr>
+            <tr><td>发信失败</td><td>课 8 已教 try/catch + deleteByToken</td><td>与 origin 相同，本课强调必做</td></tr>
+            <tr><td>范围</td><td>Team + 激活 + 重置密码混在一起</td><td><strong>只讲注册激活</strong>，便于专项练习</td></tr>
+          </tbody>
+        </table>
+        <p>若你已完成 <a href="./11-team-mail-redis.html">课 11</a> 的 Redis 迁移，本课重点是<strong>把 EmailService 换成 Mailer 版</strong>、核对 UserService 与 AuthService 与 origin 一致。</p>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>注册成功但没收到邮件</td><td><code>REQUIRE_EMAIL_VERIFICATION=true</code>？请求 body 是否带 <code>email</code>？查 SMTP / MailHog；看 Nest 是否 400「激活邮件发送失败」</td></tr>
+            <tr><td>登录 401「账户未激活」</td><td>先 <code>verify-email</code>；查 DB <code>email_verified</code> 是否为 0</td></tr>
+            <tr><td>verify 400 链接无效</td><td>token 是否过期（24h）；是否已点过一次（consume 后删除）；Redis 是否连对 db</td></tr>
+            <tr><td>重启后 token 失效</td><td>是否仍在用课 8 内存 Map；确认 <code>EmailActivationService</code> 已改 Redis 版</td></tr>
+            <tr><td>邮件链接 404</td><td><code>APP_PUBLIC_URL</code> 是否指向 Nest 服务根；前端若单独部署，链接应指 API 域名</td></tr>
+            <tr><td>Mailer 连接超时</td><td><code>MAIL_PORT</code> / <code>MAIL_SECURE</code>；QQ 邮箱需用授权码而非登录密码</td></tr>
+            <tr><td>注册 409 邮箱已被使用</td><td>正常；换邮箱或删测试用户</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="extension-resend">
+        <h2>扩展练习 · 重发激活邮件</h2>
+        <div class="callout-info">
+          <strong>说明</strong>：origin <code>v8</code> <strong>没有</strong> 重发接口，但
+          <code>EmailActivationService.createToken</code> 里的 <code>userId → token</code> 反向索引
+          就是为此预留的。本节是<strong>可选加练</strong>：你在练习仓自己加代码；origin 对照仓仍保持不变。
+        </div>
+
+        <h3>要解决什么问题</h3>
+        <ul>
+          <li>用户注册后邮件进垃圾箱 / 过期，需要「再发一封」</li>
+          <li>注册时 SMTP 失败，DB 已有未激活用户但无有效 token（主链路已 <code>deleteByToken</code>，必须能重发）</li>
+          <li>重发时必须<strong>作废旧链接</strong>，同一时刻只保留一条有效激活 URL</li>
+        </ul>
+
+        <h3>接口设计（建议）</h3>
+        <table>
+          <thead><tr><th>项</th><th>选择</th><th>原因</th></tr></thead>
+          <tbody>
+            <tr><td>路由</td><td><code>POST /auth/resend-activation-email</code></td><td>与 register 对称；公开接口加 <code>@Public()</code></td></tr>
+            <tr><td>入参</td><td><code>{ "email": "..." }</code></td><td>用户记得邮箱，不记得用户名</td></tr>
+            <tr><td>响应</td><td>固定文案，不暴露邮箱是否存在</td><td>防枚举（与业界忘记密码一致）</td></tr>
+            <tr><td>冷却</td><td>60 秒内不可重复发</td><td>对齐 origin 重置码 <code>RESET_CODE_COOLDOWN_SECONDS</code></td></tr>
+            <tr><td>前置</td><td>仅 <code>REQUIRE_EMAIL_VERIFICATION=true</code> 时有意义</td><td>开关关闭时可直接返回成功文案</td></tr>
+          </tbody>
+        </table>
+
+        <div class="flow">POST /auth/resend-activation-email { email }
+  → findByEmail(email)
+  → 用户不存在 / 已激活 → 200 统一文案（不泄露）
+  → emailVerified=0 → 检查 Redis userKey TTL（冷却）
+  → createToken(userId)     // 内部会删旧 token
+  → sendActivationEmail
+  → 失败则 deleteByToken
+  ← { message: "若该邮箱存在未激活账户，激活邮件已发送" }</div>
+
+        <h3>Step 1 · DTO</h3>
+        <p class="file-path">src/auth/dto/auth.dto.ts（或 <code>user/dto/extra.dto.ts</code>）</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import { IsEmail } from 'class-validator';
+
+export class ResendActivationEmailDto {
+  @IsEmail()
+  email: string;
+}</code></pre>
+        </div>
+
+        <h3>Step 2 · EmailActivationService 补 TTL 查询</h3>
+        <p>复用已有 <code>userKey</code> 的 Redis TTL 做冷却，不必新增 key：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/** 返回 userId 对应激活 token 的剩余秒数；-2 表示 key 不存在 */
+async getUserTokenTtl(userId: string): Promise&lt;number&gt; {
+  return this.redis.ttl(this.userKey(userId));
+}</code></pre>
+        </div>
+        <p>在文件顶部常量区追加（与 origin 重置码冷却同思路）：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">export const ACTIVATION_RESEND_COOLDOWN_SECONDS = 60;</code></pre>
+        </div>
+
+        <h3>Step 3 · AuthService.resendActivationEmail</h3>
+        <p class="file-path">src/auth/auth.service.ts</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import {
+  EmailActivationService,
+  ACTIVATION_TOKEN_TTL_SECONDS,
+  ACTIVATION_RESEND_COOLDOWN_SECONDS,
+} from './email-activation.service';
+import { ResendActivationEmailDto } from './dto/auth.dto';
+
+private readonly resendActivationMessage =
+  '若该邮箱存在未激活账户，激活邮件已发送';
+
+async resendActivationEmail(
+  dto: ResendActivationEmailDto,
+): Promise&lt;{ message: string }&gt; {
+  if (!this.requireEmailVerification()) {
+    return { message: this.resendActivationMessage };
+  }
+
+  const user = await this.userService.findByEmail(dto.email);
+  if (!user || user.emailVerified === 1) {
+    return { message: this.resendActivationMessage };
+  }
+
+  // 与 password reset 相同算法：TTL 仍接近满值说明刚发过
+  const ttl = await this.emailActivation.getUserTokenTtl(user.id);
+  if (ttl &gt; ACTIVATION_TOKEN_TTL_SECONDS - ACTIVATION_RESEND_COOLDOWN_SECONDS) {
+    throw new BadRequestException('激活邮件已发送，请稍后再试');
+  }
+
+  const token = await this.emailActivation.createToken(user.id);
+  try {
+    await this.emailService.sendActivationEmail(
+      dto.email,
+      user.username,
+      token,
+    );
+  } catch {
+    await this.emailActivation.deleteByToken(token);
+    throw new BadRequestException('激活邮件发送失败，请稍后再试');
+  }
+
+  return { message: this.resendActivationMessage };
+}</code></pre>
+        </div>
+
+        <h3>Step 4 · Controller</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">@Public()
+@Post('resend-activation-email')
+resendActivationEmail(@Body() dto: ResendActivationEmailDto) {
+  return this.authService.resendActivationEmail(dto);
+}</code></pre>
+        </div>
+
+        <h3>扩展验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">export BASE=http://localhost:3000
+
+# 1) 先注册未激活用户（REQUIRE_EMAIL_VERIFICATION=true）
+curl -s -X POST "$BASE/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"bob_resend","password":"123456","email":"bob@example.com"}' | jq
+
+# 2) 重发（应 200 + 统一文案）
+curl -s -X POST "$BASE/auth/resend-activation-email" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"bob@example.com"}' | jq
+
+# 3) 60 秒内再发 → 应 400「激活邮件已发送，请稍后再试」
+curl -s -X POST "$BASE/auth/resend-activation-email" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"bob@example.com"}' | jq
+
+# 4) 不存在的邮箱 → 仍 200 统一文案（防枚举）
+curl -s -X POST "$BASE/auth/resend-activation-email" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"nobody@example.com"}' | jq
+
+# 5) 旧 token 应失效：用注册时的 token verify → 400；用新邮件 token → 成功
+curl -s "$BASE/auth/verify-email?token=$OLD_TOKEN" | jq
+curl -s "$BASE/auth/verify-email?token=$NEW_TOKEN" | jq</code></pre>
+        </div>
+
+        <h3>自测补充项</h3>
+        <table>
+          <thead><tr><th>场景</th><th>预期</th></tr></thead>
+          <tbody>
+            <tr><td>重发后点<strong>旧</strong>邮件链接</td><td><code>400 激活链接无效或已过期</code>（createToken 已删旧 key）</td></tr>
+            <tr><td>已激活用户重发</td><td>200 统一文案，<strong>不发信</strong></td></tr>
+            <tr><td>注册 SMTP 失败后重发</td><td>能拿到新 token 并完成激活</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout-warning">
+          <strong>常见坑</strong>：
+          ① 冷却判断写反（应比较 <code>ttl &gt; TTL - COOLDOWN</code>）；
+          ② 已激活用户也发信（浪费且泄露状态）；
+          ③ 返回「该邮箱未注册」类文案（被用来扫库）。
+        </div>
+      </section>
+
+      <section id="align">
+        <h2>对齐 origin v8 检查表</h2>
+        <p>对照 <code>knowledge-hub-backend-origin</code>（<code>git checkout v8</code> 或看 main 的 auth 模块），逐项打勾：</p>
+        <table>
+          <thead><tr><th>检查项</th><th>origin 位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>REQUIRE_EMAIL_VERIFICATION</code> 读配置，默认 false</td><td><code>auth.service.ts</code> <code>requireEmailVerification()</code></td></tr>
+            <tr><td>注册写 <code>email_verified/status</code> 双 0</td><td><code>user.service.ts</code> <code>register()</code></td></tr>
+            <tr><td>登录拦截 <code>emailVerified===0</code></td><td><code>user.service.ts</code> <code>validateCredentials()</code></td></tr>
+            <tr><td>Redis 双向 key + 24h TTL</td><td><code>email-activation.service.ts</code></td></tr>
+            <tr><td>发信失败 deleteByToken</td><td><code>auth.service.ts</code> <code>register()</code> catch</td></tr>
+            <tr><td>激活 consume + activateEmail</td><td><code>auth.service.ts</code> <code>verifyEmail()</code></td></tr>
+            <tr><td>公开路由 <code>GET verify-email</code></td><td><code>auth.controller.ts</code></td></tr>
+            <tr><td>MailerModule 在 AppModule 配置</td><td><code>app.module.ts</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后可与 origin 并行跑同一套 <code>curl-auth.md</code> 第 3–4 节。回 <a href="./index.html">课程目录</a>。
+          可选加练：<a href="#extension-resend">重发激活邮件</a>（origin v8 无此 API，练习仓自实现）。
+          密码重置（同 v8 的 Redis 验证码）见 origin <code>password-reset.service.ts</code>，可另开练习。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

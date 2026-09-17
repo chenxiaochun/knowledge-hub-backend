@@ -18,6 +18,7 @@ import { RoleEntity } from './user/entities/role.entity';
 import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
+import { TeamModule } from './team/team.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -54,6 +55,7 @@ import { UserModule } from './user/user.module';
         uri: config.get<string>('MONGO_URI'),
       }),
     }),
+    TeamModule,
   ],
   controllers: [AppController],
   providers: [AppService],

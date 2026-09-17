@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+
 import { bigintTransformer } from '../../common/transformers/bigint.transformer';
 
 /** 用户（PostgreSQL kh_user） */
@@ -15,6 +16,10 @@ export class UserEntity {
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   email?: string | null;
+
+  /** 0 未验证 1 已验证 */
+  @Column({ name: 'email_verified', type: 'smallint', default: 0 })
+  emailVerified!: number;
 
   @Column({ name: 'real_name', type: 'varchar', length: 50, nullable: true })
   realName?: string | null;
