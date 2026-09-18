@@ -232,4 +232,19 @@ export class UserService {
       where: { email, deleted: false },
     });
   }
+
+  async markEmailVerified(userId: string) {
+    const user = await this.findByIdOrThrow(userId);
+    user.emailVerified = 1;
+    await this.userRepository.save(user);
+  }
+
+  async resetPasswordByEmail(email: string, newPassword: string) {
+    const user = await this.userRepository.findOne({
+      where: { email, deleted: false },
+    });
+    if (!user) throw new NotFoundException('用户不存在');
+    user.password = await hash(newPassword, 10);
+    await this.userRepository.save(user);
+  }
 }

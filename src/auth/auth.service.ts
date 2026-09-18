@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 
 import { UserService } from '../user/user.service';
 import { AuthUser } from './auth-user.interface';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, ResetPasswordDto, SendResetCodeDto } from './dto/auth.dto';
 import { EmailActivationService } from './email-activation.service';
 import { EmailService } from './email.service';
 import { PasswordResetService } from './password-reset.service';
@@ -136,13 +136,13 @@ export class AuthService {
     return { message: '邮箱激活成功' };
   }
 
-  async sendResetCode(dto: { email: string }) {
+  async sendResetCode(dto: SendResetCodeDto) {
     const left = await this.passwordReset.cooldownLeftMs(dto.email);
     if (left > 0) {
       throw new BadRequestException(`发送过于频繁，请 ${Math.ceil(left / 1000)} 秒后再试`);
     }
-    const user = await this.userService.findByEmail?.(dto.email);
-    // 若没有 findByEmail，用 repo 查；用户不存在也返回成功文案，避免枚举邮箱
+    const user = await this.userService.findByEmail(dto.email);
+    // 用户不存在也返回成功文案，避免枚举邮箱
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await this.passwordReset.set(dto.email, code);
     if (user) {
@@ -151,7 +151,7 @@ export class AuthService {
     return { message: '若邮箱已注册，验证码已发送' };
   }
 
-  async resetPasswordByEmail(dto: { email: string; code: string; newPassword: string }) {
+  async resetPasswordByEmail(dto: ResetPasswordDto) {
     const ok = await this.passwordReset.verify(dto.email, dto.code);
     if (!ok) throw new BadRequestException('验证码错误或已过期');
     await this.userService.resetPasswordByEmail(dto.email, dto.newPassword);

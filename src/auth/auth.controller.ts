@@ -1,9 +1,17 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
-import { Public } from './decorators/public.decorator';
-import { CurrentUser } from './decorators/current-user.decorator';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+
 import type { AuthUser } from './auth-user.interface';
+
+import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import {
+  LoginDto,
+  RefreshTokenDto,
+  RegisterDto,
+  ResetPasswordDto,
+  SendResetCodeDto,
+} from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -25,6 +33,24 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  @Public()
+  @Post('password/reset/send-code')
+  sendResetCode(@Body() dto: SendResetCodeDto) {
+    return this.authService.sendResetCode(dto);
+  }
+
+  @Public()
+  @Post('password/reset')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPasswordByEmail(dto);
   }
 
   @Post('logout')

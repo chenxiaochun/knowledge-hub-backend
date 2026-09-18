@@ -29,3 +29,21 @@ export class RefreshTokenDto {
   @IsString()
   refreshToken!: string;
 }
+
+export class SendResetCodeDto {
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(6)
+  code!: string;
+
+  @IsString()
+  @MinLength(6)
+  newPassword!: string;
+}
