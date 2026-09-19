@@ -37,9 +37,15 @@ export class UserService {
     const user = await this.userRepository.findOne({
       where: { username, deleted: false },
     });
+
     if (!user) {
       throw new UnauthorizedException('用户名或密码错误');
     }
+
+    if (user.emailVerified === 0) {
+      throw new UnauthorizedException('账户未激活，请先验证邮箱');
+    }
+
     const ok = await compare(password, user.password);
     if (!ok) {
       throw new UnauthorizedException('用户名或密码错误');
@@ -246,5 +252,14 @@ export class UserService {
     if (!user) throw new NotFoundException('用户不存在');
     user.password = await hash(newPassword, 10);
     await this.userRepository.save(user);
+  }
+
+  async activateEmail(userId: string): Promise<string> {
+    const user = await this.findByIdOrThrow(userId);
+    if (user.emailVerified === 1) return '账户已激活，请直接登录';
+    user.emailVerified = 1;
+    user.status = 1;
+    await this.userRepository.save(user);
+    return '账户激活成功，请登录';
   }
 }

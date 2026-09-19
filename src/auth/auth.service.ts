@@ -106,8 +106,17 @@ export class AuthService {
         await this.emailActivation.deleteByToken(token);
         throw new BadRequestException('激活邮件发送失败，请稍后再试');
       }
+      return {
+        userId: result.userId,
+        message: '注册成功，请查收邮件激活账户',
+        emailVerificationRequired: true,
+      };
     }
-    return result;
+
+    return {
+      userId: result.userId,
+      message: '注册成功，请登录',
+    };
   }
 
   async refresh(refreshToken: string) {
@@ -127,13 +136,13 @@ export class AuthService {
     return this.userService.getUserVO(userId);
   }
 
-  async verifyEmail(token: string) {
+  async verifyEmail(token: string): Promise<{ message: string }> {
     const userId = await this.emailActivation.consumeToken(token);
     if (!userId) {
       throw new BadRequestException('激活链接无效或已过期');
     }
-    await this.userService.markEmailVerified(userId);
-    return { message: '邮箱激活成功' };
+    const message = await this.userService.activateEmail(userId);
+    return { message };
   }
 
   async sendResetCode(dto: SendResetCodeDto) {

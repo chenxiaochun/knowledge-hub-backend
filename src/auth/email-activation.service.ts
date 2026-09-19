@@ -2,62 +2,54 @@ import { Injectable } from '@nestjs/common';
 
 import { randomBytes } from 'crypto';
 
-const TTL_MS = 24 * 3600 * 1000;
+import { RedisService } from '../redis/redis.service';
 
+const TOKEN_PREFIX = 'email:activation:token:';
+const USER_PREFIX = 'email:activation:user:';
+export const ACTIVATION_TOKEN_TTL_SECONDS = 24 * 3600;
+
+/** 邮箱激活令牌（Redis 存储，24 小时有效） */
 @Injectable()
 export class EmailActivationService {
-  /**
-   * 按令牌索引
-   */
-  private readonly byToken = new Map<
-    string,
-    {
-      userId: string;
-      expireAt: number;
-    }
-  >();
+  constructor(private readonly redis: RedisService) {}
 
-  private readonly byUser = new Map<string, string>();
+  private tokenKey(token: string): string {
+    return `${TOKEN_PREFIX}${token}`;
+  }
 
-  /**
-   * 创建激活令牌
-   * @param userId 用户ID
-   * @returns 激活令牌
-   */
+  private userKey(userId: string): string {
+    return `${USER_PREFIX}${userId}`;
+  }
+
   async createToken(userId: string): Promise<string> {
-    const old = this.byUser.get(userId);
-    if (old) {
-      this.byToken.delete(old);
-      this.byUser.delete(userId);
+    const existing = await this.redis.get(this.userKey(userId));
+    if (existing) {
+      await this.redis.del(this.tokenKey(existing));
     }
+
     const token = randomBytes(32).toString('hex');
-    const expireAt = Date.now() + TTL_MS;
-    this.byToken.set(token, { userId, expireAt });
-    this.byUser.set(userId, token);
+    // token → userId：用户点激活链接时，用 token 查出要激活的账号
+    await this.redis.set(this.tokenKey(token), userId, ACTIVATION_TOKEN_TTL_SECONDS);
+    // userId → token：同一用户只保留一个有效 token，重发时先按 userId 找到并作废旧的
+    await this.redis.set(this.userKey(userId), token, ACTIVATION_TOKEN_TTL_SECONDS);
     return token;
   }
 
-  /**
-   * 消费激活令牌
-   * @param token 激活令牌
-   * @returns 用户ID
-   */
+  /** 校验并消费 token，返回 userId */
   async consumeToken(token: string): Promise<string | null> {
-    const row = this.byToken.get(token);
-    if (!row) return null;
-    this.byToken.delete(token);
-    this.byUser.delete(row.userId);
-    if (Date.now() > row.expireAt) return null;
-    return row.userId;
+    const userId = await this.redis.get(this.tokenKey(token));
+    if (!userId) return null;
+
+    await this.redis.del(this.tokenKey(token));
+    await this.redis.del(this.userKey(userId));
+    return userId;
   }
 
-  /**
-   * 删除激活令牌
-   * @param token 激活令牌
-   */
   async deleteByToken(token: string): Promise<void> {
-    const row = this.byToken.get(token);
-    this.byToken.delete(token);
-    if (row) this.byUser.delete(row.userId);
+    const userId = await this.redis.get(this.tokenKey(token));
+    await this.redis.del(this.tokenKey(token));
+    if (userId) {
+      await this.redis.del(this.userKey(userId));
+    }
   }
 }
