@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 14 · RAG 混合检索与引用溯源（origin v11）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 14 · RAG 混合检索与引用溯源 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./06-pipeline-rag.html">第 6 课</a> ·
+      对照 origin 分支 <code>v11</code> · <code>src/ai/</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念与流水线</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#citation">引用溯源详解</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 6 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐 v11 检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          在第 6 课「分块 → Embedding → 写入 <code>kh_chunk</code>」之上，按 origin <code>v11</code> 补齐：
+          <strong>混合检索</strong>（BM25 + 向量 kNN → RRF 融合 → rerank 精排）和
+          <strong>引用溯源</strong>（LLM 回答带 <code>[1][2]</code>，响应里返回 <code>sources</code> 列表）。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：在练习仓手敲；对照答案看
+          <code>knowledge-hub-backend-origin</code> 分支 <code>v11</code>。
+          origin 还提供 <code>curl-rag.md</code> 与 <code>test-files/rag-*.json</code> 四篇测例。
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li><code>POST /rag/search</code>：只召回 chunk，不调 LLM；换说法提问仍能命中正确文档标题</li>
+            <li><code>POST /ai/chat</code>：返回答案 + <code>sources</code>；答案句末有 <code>[n]</code> 与资料编号对应</li>
+            <li>跨文档问题（如「故障找李明还是王芳」）的 <code>sources</code> 里出现<strong>多个</strong> <code>documentTitle</code></li>
+            <li>Embedding 失败时降级：日志「仅走关键词」，仍可能有 BM25 命中</li>
+            <li>Rerank 未配置 Key 时降级：日志「跳过重排」，按 RRF 顺序返回 topK</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：第 6 课 RAG 管线已通（<code>kh_chunk</code> 有数据）；
+          ES 已装 IK 分词（第 5 课）；需要 DashScope / OpenAI 兼容 Key（Embedding + LLM + 可选 rerank）。
+          <br>建议设 <code>DOCUMENT_REQUIRE_APPROVAL=false</code> 并用 origin 的 4 篇 JSON 测跨文档召回。
+        </div>
+        <h3>环境变量（v11 新增）</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 混合检索
+RAG_HYBRID_TOP_K=20      # RRF 粗排候选数
+RAG_RRF_C=60             # RRF 常数 C
+RAG_RERANK_ENABLED=true
+RAG_RERANK_MODEL=qwen3-rerank
+# RERANK_API_KEY=        # 默认可复用 DASHSCOPE_API_KEY
+
+# LLM 对话（/ai/chat）
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+MODEL_NAME=qwen-plus
+AI_CHAT_TIMEOUT_MS=60000
+
+# Embedding（第 6 课已有）
+EMBEDDING_API_KEY=...
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_MODEL=text-embedding-v3
+
+DOCUMENT_REQUIRE_APPROVAL=false   # 测例用免审直发</code></pre>
+        </div>
+        <h3>依赖</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">pnpm add @langchain/core @langchain/openai</code></pre>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与流水线</h2>
+        <h3>检索四段式</h3>
+        <div class="flow">用户 query
+  ├─ 路 1：BM25 multi_match（document_title^2 + content，ik_smart）
+  └─ 路 2：query → EmbeddingService.embed → ES knn(embedding)
+        ↓ 并行，各取 hybridTopK（默认 20）
+  RRF 融合（按 chunkId 去重，score += 1/(C+rank+1)）
+        ↓
+  Reranker（DashScope text-rerank，失败则 null → 降级 RRF 顺序）
+        ↓
+  返回 topK 个 ChunkHit</div>
+
+        <h3>对话 + 溯源</h3>
+        <div class="flow">POST /ai/chat { content, topK }
+  → HybridRetrievalService.retrieve
+  → buildContext：把 hits 编号为 [1]、[2]… 拼进 prompt
+  → LLM（system：要求句末标注 [n]）
+  → toCitedSources：正则 /\[(\\d+)\]/g 抽出实际引用的编号
+  → 返回 { answer, sources: [{ index, documentId, documentTitle, heading, excerpt, score }] }</div>
+
+        <h3>两个接口的分工</h3>
+        <table>
+          <thead><tr><th>接口</th><th>是否调 LLM</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>POST /rag/search</code></td><td>否</td><td>调试召回、看跨文档排序、前端自己做引用 UI</td></tr>
+            <tr><td><code>POST /ai/chat</code></td><td>是</td><td>端到端问答 + sources 溯源</td></tr>
+          </tbody>
+        </table>
+        <p>均需权限码 <code>search</code>（origin v11）。</p>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th><th>职责</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/pipeline/types/pipeline.types.ts</code></td><td>改</td><td>新增 <code>ChunkHit</code>（含 bm25Score / vectorScore）</td></tr>
+            <tr><td><code>src/pipeline/vector-index.service.ts</code></td><td>改</td><td><code>keywordSearch</code> / <code>knnSearch</code> / <code>searchHybrid</code> / <code>rrfFuse</code>；mapping 加 IK</td></tr>
+            <tr><td><code>src/ai/reranker.service.ts</code></td><td>新建</td><td>DashScope text-rerank</td></tr>
+            <tr><td><code>src/ai/hybrid-retrieval.service.ts</code></td><td>新建</td><td>编排 embed → hybrid → rerank</td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>新建</td><td>LLM + 引用溯源</td></tr>
+            <tr><td><code>src/ai/dto/rag-search.dto.ts</code></td><td>新建</td><td></td></tr>
+            <tr><td><code>src/ai/dto/chat.dto.ts</code></td><td>新建</td><td></td></tr>
+            <tr><td><code>src/ai/ai.controller.ts</code></td><td>新建</td><td><code>/rag/search</code>、<code>/ai/chat</code></td></tr>
+            <tr><td><code>src/ai/ai.module.ts</code></td><td>新建</td><td></td></tr>
+            <tr><td><code>src/app.module.ts</code></td><td>改</td><td><code>imports: [AiModule]</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+
+          <li>
+            <h4>ChunkHit 类型</h4>
+            <p class="file-path">src/pipeline/types/pipeline.types.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** kh_chunk 检索命中（关键词 / 向量 / RRF / rerank 共用） */
+export interface ChunkHit {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  content: string;
+  heading: string | null;
+  /** 当前阶段得分：原始检索分、RRF 分或 rerank 分 */
+  score: number;
+  bm25Score?: number;
+  vectorScore?: number;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>VectorIndexService：混合检索能力</h4>
+            <p>在现有 <code>indexChunks</code> 基础上追加以下方法（v11 完整逻辑）。</p>
+            <p><strong>keywordSearch</strong> — BM25 + IK：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async keywordSearch(query: string, topK = 20): Promise&lt;ChunkHit[]&gt; {
+  if (!this.es) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const k = this.clampTopK(topK);
+  const response = await this.es.search({
+    index: CHUNK_INDEX,
+    size: k,
+    query: {
+      multi_match: {
+        query: trimmed,
+        fields: ['document_title^2', 'content'],
+        analyzer: 'ik_smart',
+      },
+    },
+    _source: ['chunk_id', 'document_id', 'document_title', 'content', 'heading'],
+  });
+  return this.mapHits(response.hits.hits);
+}</code></pre>
+            </div>
+            <p><strong>knnSearch</strong> — 向量近邻：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async knnSearch(queryVector: number[], topK = 20): Promise&lt;ChunkHit[]&gt; {
+  if (!this.es || !queryVector.length) return [];
+  const k = this.clampTopK(topK);
+  const response = await this.es.search({
+    index: CHUNK_INDEX,
+    size: k,
+    knn: {
+      field: 'embedding',
+      query_vector: queryVector,
+      k,
+      num_candidates: Math.max(k * 10, 50),
+    },
+    _source: ['chunk_id', 'document_id', 'document_title', 'content', 'heading'],
+  });
+  return this.mapHits(response.hits.hits);
+}</code></pre>
+            </div>
+            <p><strong>mapHits + clampTopK</strong> — 上面两路检索都依赖它，把 ES 原始 hit 转成 <code>ChunkHit</code>（课 14 之前若没写过，必须补）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">private clampTopK(topK: number): number {
+  return Math.min(Math.max(topK, 1), 50);
+}
+
+/** ES _source（snake_case）→ ChunkHit */
+private mapHits(
+  hits: Array&lt;{
+    _id?: string;
+    _score?: number | null;
+    _source?: unknown;
+  }&gt;,
+): ChunkHit[] {
+  return hits.map((hit) =&gt; {
+    const src = (hit._source ?? {}) as Record&lt;string, unknown&gt;;
+    return {
+      chunkId: String(src.chunk_id ?? hit._id),
+      documentId: String(src.document_id ?? ''),
+      documentTitle: String(src.document_title ?? ''),
+      content: String(src.content ?? ''),
+      heading: (src.heading as string | null) ?? null,
+      score: hit._score ?? 0,
+    };
+  });
+}</code></pre>
+            </div>
+            <div class="callout-info">
+              <code>mapHits</code> 是 <code>VectorIndexService</code> 的<strong>私有方法</strong>，只在
+              <code>keywordSearch</code> / <code>knnSearch</code> 末尾调用；不会在 Controller 里直接暴露。
+              对照 origin：<code>src/pipeline/vector-index.service.ts</code> 约 297–319 行。
+            </div>
+            <p><strong>searchHybrid + rrfFuse</strong>：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async searchHybrid(params: {
+  query: string;
+  queryVector?: number[] | null;
+  hybridTopK?: number;
+  rrfC?: number;
+}): Promise&lt;ChunkHit[]&gt; {
+  const hybridTopK = this.clampTopK(params.hybridTopK ?? 20);
+  const rrfC = params.rrfC &amp;&amp; params.rrfC &gt; 0 ? params.rrfC : 60;
+  const [keywordHits, vectorHits] = await Promise.all([
+    this.keywordSearch(params.query, hybridTopK),
+    params.queryVector?.length
+      ? this.knnSearch(params.queryVector, hybridTopK)
+      : Promise.resolve([] as ChunkHit[]),
+  ]);
+  return this.rrfFuse(keywordHits, vectorHits, rrfC);
+}
+
+/** Reciprocal Rank Fusion：score(d) = Σ 1 / (C + rank(d)) */
+private rrfFuse(keywordHits: ChunkHit[], vectorHits: ChunkHit[], rrfC: number): ChunkHit[] {
+  const fused = new Map&lt;string, ChunkHit&gt;();
+  const addChannel = (hits: ChunkHit[], channel: 'keyword' | 'vector') =&gt; {
+    const sorted = [...hits].sort((a, b) =&gt; b.score - a.score);
+    sorted.forEach((hit, rank) =&gt; {
+      const rrf = 1 / (rrfC + rank + 1);
+      const existing = fused.get(hit.chunkId);
+      if (!existing) {
+        fused.set(hit.chunkId, {
+          ...hit,
+          score: rrf,
+          bm25Score: channel === 'keyword' ? hit.score : 0,
+          vectorScore: channel === 'vector' ? hit.score : 0,
+        });
+        return;
+      }
+      existing.score += rrf;
+      if (channel === 'keyword') existing.bm25Score = hit.score;
+      if (channel === 'vector') existing.vectorScore = hit.score;
+    });
+  };
+  addChannel(keywordHits, 'keyword');
+  addChannel(vectorHits, 'vector');
+  return [...fused.values()].sort((a, b) =&gt; b.score - a.score);
+}</code></pre>
+            </div>
+            <p>
+              <strong>createIndexIfNotExists（完整）</strong> — 写在<strong>同一个文件</strong>
+              <code>src/pipeline/vector-index.service.ts</code> 的 <code>VectorIndexService</code> 类里，
+              与 <code>mapHits</code> / <code>rrfFuse</code> 同级（<code>private</code> 方法）。
+              第 6 课若已有基础版，用下面 v11 版<strong>整段替换</strong>。
+            </p>
+            <p>调用点（同文件，不用改）：</p>
+            <ul>
+              <li><code>onModuleInit()</code> — 启动连 ES 后</li>
+              <li><code>indexChunks()</code> — bulk 写入前</li>
+            </ul>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/**
+ * 创建 kh_chunk 索引（dense_vector + IK）。
+ * document_id 用 keyword：雪花 ID 以字符串传递，避免 JS long 精度问题。
+ */
+private async createIndexIfNotExists() {
+  if (!this.es) return;
+
+  const exists = await this.es.indices.exists({ index: CHUNK_INDEX });
+  if (exists) return;
+
+  try {
+    await this.es.indices.create({
+      index: CHUNK_INDEX,
+      settings: {
+        number_of_shards: 1,
+        number_of_replicas: 0,
+        refresh_interval: '5s',
+      },
+      mappings: {
+        properties: {
+          chunk_id: { type: 'keyword' },
+          document_id: { type: 'keyword' },
+          document_title: {
+            type: 'text',
+            analyzer: 'ik_max_word',
+            search_analyzer: 'ik_smart',
+            fields: { keyword: { type: 'keyword' } },
+          },
+          content: {
+            type: 'text',
+            analyzer: 'ik_max_word',
+            search_analyzer: 'ik_smart',
+          },
+          heading: { type: 'keyword' },
+          chunk_index: { type: 'integer' },
+          total_chunks: { type: 'integer' },
+          category_id: { type: 'keyword' },
+          author_id: { type: 'keyword' },
+          team_id: { type: 'keyword' },
+          doc_status: { type: 'integer' },
+          publish_time: { type: 'date' },
+          indexed_at: { type: 'date' },
+          embedding: {
+            type: 'dense_vector',
+            dims: this.embeddingDims,
+            index: true,
+            similarity: 'cosine',
+          },
+        },
+      },
+    });
+    this.logger.log(
+      `ES 索引创建成功：index=${CHUNK_INDEX}, dims=${this.embeddingDims}`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('resource_already_exists')) {
+      return;
+    }
+    this.logger.error(`ES 索引创建失败：${message}`);
+    throw error;
+  }
+}</code></pre>
+            </div>
+            <p>依赖：文件顶部常量 <code>const CHUNK_INDEX = 'kh_chunk';</code>；constructor 里
+              <code>this.embeddingDims = Number(config.get('EMBEDDING_DIMENSION', 1024));</code>（第 6 课通常已有）。</p>
+            <div class="callout-warning">
+              若本地 <code>kh_chunk</code> 已存在且无 IK，改这个方法<strong>不会自动生效</strong>（<code>exists</code> 为 true 就直接 return）。
+              需删索引后重启再发文档：
+              <code>curl -X DELETE http://localhost:9200/kh_chunk</code>
+            </div>
+          </li>
+
+          <li>
+            <h4>RerankerService（完整）</h4>
+            <p class="file-path">src/ai/reranker.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChunkHit } from '../pipeline/types/pipeline.types';
+
+@Injectable()
+export class RerankerService {
+  private readonly logger = new Logger(RerankerService.name);
+  private readonly enabled: boolean;
+  private readonly apiKey?: string;
+  private readonly model: string;
+  private readonly endpoint: string;
+
+  constructor(config: ConfigService) {
+    this.enabled = config.get('RAG_RERANK_ENABLED', 'true') !== 'false';
+    this.apiKey =
+      config.get('RERANK_API_KEY') ||
+      config.get('DASHSCOPE_API_KEY') ||
+      config.get('OPENAI_API_KEY') ||
+      undefined;
+    this.model = config.get('RAG_RERANK_MODEL', 'qwen3-rerank');
+    const host = config.get('RERANK_BASE_URL', 'https://dashscope.aliyuncs.com');
+    this.endpoint = `${host.replace(/\/$/, '')}/api/v1/services/rerank/text-rerank/text-rerank`;
+  }
+
+  isEnabled() {
+    return this.enabled &amp;&amp; Boolean(this.apiKey);
+  }
+
+  async rerank(query: string, candidates: ChunkHit[], topN: number): Promise&lt;ChunkHit[] | null&gt; {
+    if (!candidates.length) return [];
+    if (!this.isEnabled()) {
+      this.logger.warn('Reranker 未启用或未配置 Key，跳过重排');
+      return null;
+    }
+    const documents = candidates.map((hit) =&gt; {
+      const heading = hit.heading ? `${hit.heading}\n` : '';
+      const text = `${hit.documentTitle}\n${heading}${hit.content}`.trim();
+      return text.length &gt; 2000 ? `${text.slice(0, 2000)}...` : text;
+    });
+    try {
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: { query, documents },
+          parameters: { return_documents: false, top_n: Math.min(topN, candidates.length) },
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.logger.warn(`Rerank 调用失败：status=${response.status}`);
+        return null;
+      }
+      const results = body.output?.results ?? [];
+      if (!results.length) return null;
+      return results
+        .filter((item: { index: number }) =&gt; item.index &gt;= 0 &amp;&amp; item.index &lt; candidates.length)
+        .map((item: { index: number; relevance_score: number }) =&gt; ({
+          ...candidates[item.index],
+          score: item.relevance_score,
+        }));
+    } catch (error) {
+      this.logger.warn(`Rerank 异常，降级为 RRF：${error}`);
+      return null;
+    }
+  }
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>HybridRetrievalService（完整）</h4>
+            <p class="file-path">src/ai/hybrid-retrieval.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EmbeddingService } from '../pipeline/embedding.service';
+import { VectorIndexService } from '../pipeline/vector-index.service';
+import { ChunkHit } from '../pipeline/types/pipeline.types';
+import { RerankerService } from './reranker.service';
+
+@Injectable()
+export class HybridRetrievalService {
+  private readonly logger = new Logger(HybridRetrievalService.name);
+  private readonly hybridTopK: number;
+  private readonly rrfC: number;
+
+  constructor(
+    config: ConfigService,
+    private readonly embedding: EmbeddingService,
+    private readonly vectorIndex: VectorIndexService,
+    private readonly reranker: RerankerService,
+  ) {
+    this.hybridTopK = Number(config.get('RAG_HYBRID_TOP_K', 20));
+    this.rrfC = Number(config.get('RAG_RRF_C', 60));
+  }
+
+  async retrieve(query: string, topK = 5): Promise&lt;ChunkHit[]&gt; {
+    const queryVector = await this.embedQuery(query);
+    const fused = await this.vectorIndex.searchHybrid({
+      query,
+      queryVector,
+      hybridTopK: this.hybridTopK,
+      rrfC: this.rrfC,
+    });
+    if (!fused.length) return [];
+
+    const reranked = await this.reranker.rerank(query, fused, topK);
+    if (reranked?.length) return reranked.slice(0, topK);
+    return fused.slice(0, topK);
+  }
+
+  private async embedQuery(query: string): Promise&lt;number[] | null&gt; {
+    try {
+      return await this.embedding.embed(query);
+    } catch (error) {
+      this.logger.warn(`查询向量化失败，仅走关键词：${error}`);
+      return null;
+    }
+  }
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>AiChatService：LLM + 引用溯源（v11 完整）</h4>
+            <p class="file-path">src/ai/ai-chat.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatOpenAI } from '@langchain/openai';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HybridRetrievalService } from './hybrid-retrieval.service';
+import { ChunkHit } from '../pipeline/types/pipeline.types';
+
+const EXCERPT_LEN = 200;
+const CITATION_RE = /\[(\d+)\]/g;
+
+export interface ChatSource {
+  index: number;
+  documentId: string;
+  documentTitle: string;
+  heading: string | null;
+  excerpt: string;
+  score: number;
+}
+
+@Injectable()
+export class AiChatService {
+  private readonly logger = new Logger(AiChatService.name);
+  private readonly llm?: ChatOpenAI;
+
+  constructor(
+    config: ConfigService,
+    private readonly retrieval: HybridRetrievalService,
+  ) {
+    const apiKey =
+      config.get('OPENAI_API_KEY') ||
+      config.get('DASHSCOPE_API_KEY') ||
+      undefined;
+    if (!apiKey) return;
+    this.llm = new ChatOpenAI({
+      apiKey,
+      model: config.get('MODEL_NAME', 'qwen-plus'),
+      temperature: 0.2,
+      timeout: Number(config.get('AI_CHAT_TIMEOUT_MS', 60000)),
+      configuration: {
+        baseURL: config.get(
+          'OPENAI_BASE_URL',
+          'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        ),
+      },
+    });
+  }
+
+  async chat(question: string, topK = 5) {
+    const trimmed = question.trim();
+    if (!trimmed) return { answer: '请输入问题。', sources: [] as ChatSource[] };
+
+    const hits = await this.retrieval.retrieve(trimmed, topK);
+    if (!hits.length) {
+      return { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+    }
+    if (!this.llm) {
+      throw new ServiceUnavailableException('未配置 LLM API Key');
+    }
+
+    const context = this.buildContext(hits);
+    const response = await this.llm.invoke([
+      new SystemMessage(
+        '你是企业知识库助手。只根据「检索到的资料」回答。' +
+          '依据某条资料必须在句末标注 [1]、[2]。' +
+          '编号与资料列表一致，不要编造标题或链接。',
+      ),
+      new HumanMessage(`检索到的资料：\n${context}\n\n用户问题：${trimmed}`),
+    ]);
+
+    const answer =
+      typeof response.content === 'string'
+        ? response.content
+        : JSON.stringify(response.content);
+    const sources = this.toCitedSources(answer, hits);
+    return { answer, sources };
+  }
+
+  private toCitedSources(answer: string, hits: ChunkHit[]): ChatSource[] {
+    const cited = new Set&lt;number&gt;();
+    for (const match of answer.matchAll(CITATION_RE)) {
+      const n = Number(match[1]);
+      if (n &gt;= 1 &amp;&amp; n &lt;= hits.length) cited.add(n);
+    }
+    const indexes =
+      cited.size &gt; 0 ? [...cited].sort((a, b) =&gt; a - b) : hits.map((_, i) =&gt; i + 1);
+    return indexes.map((index) =&gt; ({
+      index,
+      documentId: hits[index - 1].documentId,
+      documentTitle: hits[index - 1].documentTitle,
+      heading: hits[index - 1].heading,
+      excerpt: this.excerpt(hits[index - 1].content),
+      score: hits[index - 1].score,
+    }));
+  }
+
+  private excerpt(content: string) {
+    const text = content.replace(/\s+/g, ' ').trim();
+    return text.length &lt;= EXCERPT_LEN ? text : `${text.slice(0, EXCERPT_LEN)}...`;
+  }
+
+  private buildContext(hits: ChunkHit[]) {
+    return hits
+      .map((src, i) =&gt; {
+        const heading = src.heading ? ` / ${src.heading}` : '';
+        const snippet = src.content.length &gt; 800 ? `${src.content.slice(0, 800)}...` : src.content;
+        return `[${i + 1}] ${src.documentTitle}${heading}\n${snippet}`;
+      })
+      .join('\n\n');
+  }
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>DTO + Controller + Module</h4>
+            <p class="file-path">src/ai/dto/rag-search.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class RagSearchDto {
+  @IsString() @IsNotEmpty() query: string;
+  @IsOptional() @Type(() =&gt; Number) @IsInt() @Min(1) @Max(20) topK?: number = 5;
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/dto/chat.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export class ChatDto {
+  @IsString() @IsNotEmpty() content: string;
+  @IsOptional() @Type(() =&gt; Number) @IsInt() @Min(1) @Max(10) topK?: number = 5;
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/ai.controller.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Controller()
+export class AiController {
+  constructor(
+    private readonly aiChat: AiChatService,
+    private readonly retrieval: HybridRetrievalService,
+  ) {}
+
+  @Post('rag/search')
+  @RequirePermission(PermissionCode.search)
+  search(@Body() dto: RagSearchDto) {
+    return this.retrieval.retrieve(dto.query.trim(), dto.topK ?? 5);
+  }
+
+  @Post('ai/chat')
+  @RequirePermission(PermissionCode.search)
+  chat(@Body() dto: ChatDto) {
+    return this.aiChat.chat(dto.content, dto.topK ?? 5);
+  }
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/ai.module.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Module({
+  imports: [PipelineModule],
+  controllers: [AiController],
+  providers: [AiChatService, HybridRetrievalService, RerankerService],
+})
+export class AiModule {}</code></pre>
+            </div>
+            <p><code>AppModule.imports</code> 加 <code>AiModule</code>。</p>
+          </li>
+
+          <li>
+            <h4>多文档测例（origin test-files）</h4>
+            <p>从 origin 复制四篇 JSON 到练习仓 <code>test-files/</code>：</p>
+            <ul>
+              <li><code>rag-canary.json</code> — 灰度发布 / 李明</li>
+              <li><code>rag-onboarding.json</code> — 新员工入职 / VPN</li>
+              <li><code>rag-incident.json</code> — 故障应急 / 王芳</li>
+              <li><code>rag-visibility.json</code> — 可见性说明</li>
+            </ul>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">export BASE=http://localhost:3000
+TOKEN=$(curl -s -X POST "$BASE/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"user","password":"123456"}' | jq -r '.accessToken')
+
+# 免审直发四篇（-d @文件 避免 shell 折行截断 content）
+for f in rag-canary rag-onboarding rag-incident rag-visibility; do
+  curl -s -X POST "$BASE/documents" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d @./test-files/${f}.json | jq '{id, title, status}'
+done
+sleep 20
+
+# 只测召回：换说法，应命中「生产灰度发布…」
+curl -s -X POST "$BASE/rag/search" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"上线前如何做金丝雀或小流量验证？","topK":8}' | jq '.[].documentTitle'
+
+# 跨文档：应同时出现灰度 SOP 与故障手册
+curl -s -X POST "$BASE/rag/search" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"生产出故障是找李明还是找值班经理？","topK":8}' \
+  | jq '[.[].documentTitle] | unique'
+
+# 对话 + 溯源
+curl -s -X POST "$BASE/ai/chat" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"P0 故障谁指挥？和日常发布的李明是不是同一人？","topK":5}' \
+  | jq '{answer, sources}'</code></pre>
+            </div>
+            <p>完整命令见 origin <code>curl-rag.md</code>。</p>
+          </li>
+
+        </ol>
+      </section>
+
+      <section id="citation">
+        <h2>引用溯源详解</h2>
+        <h3>三层编号如何对齐</h3>
+        <table>
+          <thead><tr><th>层</th><th>编号</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>Prompt 上下文</td><td><code>[1] 标题 / 章节\n正文…</code></td><td>最多 800 字/块，供 LLM 阅读</td></tr>
+            <tr><td>LLM 回答</td><td>句末 <code>[1]</code>、<code>[2]</code></td><td>system 强制要求标注</td></tr>
+            <tr><td>API 响应 sources</td><td><code>index: 1</code></td><td>200 字 excerpt，给前端展示「引用自哪篇」</td></tr>
+          </tbody>
+        </table>
+
+        <h3>toCitedSources 的两条规则</h3>
+        <ol>
+          <li><strong>有标注</strong>：只返回回答里实际出现过的 <code>[n]</code>（去掉 LLM 乱标的编号）</li>
+          <li><strong>无标注</strong>：降级返回全部召回块的 sources（避免前端空白，但质量依赖 LLM 听话程度）</li>
+        </ol>
+
+        <h3>前端可怎么用</h3>
+        <ul>
+          <li>渲染 answer 时把 <code>[1]</code> 变成可点击角标，点击滚动到 source 卡片</li>
+          <li>用 <code>documentId</code> 跳文档详情；<code>heading</code> 可做锚点</li>
+          <li><code>score</code> 在 v11 里是 rerank 后的 relevance_score（或 RRF 分）</li>
+        </ul>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么要 BM25 + 向量，而不是只走向量？</h3>
+        <p>
+          企业文档里常有<strong>专有名词、人名、编号</strong>（如「李明」「P0」），纯向量对精确词匹配弱；
+          BM25 补关键词路。RRF 不依赖两路分数尺度，只融合排名，工程上稳。
+        </p>
+        <h3>为什么 RRF 之后还要 rerank？</h3>
+        <p>
+          RRF 只是「两路都排进前列」的粗融合；cross-encoder / text-rerank 用 query 与全文做细粒度相关性，
+          对「换说法提问」和跨段落综合更有效。失败返回 <code>null</code> 显式降级，不拖垮主链路。
+        </p>
+        <h3>为什么 /rag/search 与 /ai/chat 拆开？</h3>
+        <p>
+          检索调试不需要每次调 LLM（省钱、快）；前端也可只做「引用列表」不自建生成。
+          共用 <code>HybridRetrievalService.retrieve</code> 保证行为一致。
+        </p>
+        <h3>引用为什么用 [n] 而不是 inline link？</h3>
+        <p>
+          LLM 对短编号标注稳定；链接 URL 容易幻觉。后端用正则抽取再映射到结构化 <code>ChatSource</code>，前端好渲染。
+        </p>
+        <h3>对照 origin v11 阅读顺序</h3>
+        <ol>
+          <li><code>src/pipeline/vector-index.service.ts</code> — hybrid 三件套</li>
+          <li><code>src/ai/hybrid-retrieval.service.ts</code></li>
+          <li><code>src/ai/reranker.service.ts</code></li>
+          <li><code>src/ai/ai-chat.service.ts</code> — 溯源</li>
+          <li><code>src/ai/ai.controller.ts</code></li>
+          <li>origin <code>curl-rag.md</code></li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与第 6 课差异</h2>
+        <table>
+          <thead><tr><th>维度</th><th>第 6 课</th><th>本课（v11）</th></tr></thead>
+          <tbody>
+            <tr><td>检索</td><td>单向量 kNN 或 mock</td><td>BM25 + kNN + RRF + rerank</td></tr>
+            <tr><td>接口</td><td><code>/search/semantic</code> 等练习路由</td><td><code>/rag/search</code>、<code>/ai/chat</code></td></tr>
+            <tr><td>生成</td><td>无 LLM 问答</td><td>LangChain ChatOpenAI + sources</td></tr>
+            <tr><td>溯源</td><td>无</td><td><code>[n]</code> + <code>ChatSource</code></td></tr>
+            <tr><td>中文分词</td><td>可选</td><td><code>kh_chunk</code> 字段 IK 必配</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          origin <code>main</code> 在 v11 之后还加了会话记忆、流式、检索可见性 filter 等；本课<strong>只对齐 v11 子集</strong>。
+        </div>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td><code>hits=[]</code></td><td>文档是否 <code>status=1</code>；MQ 是否跑完；日志「ES 批量索引成功」；<code>kh_chunk</code> 是否有数据</td></tr>
+            <tr><td>召回全是同一篇</td><td>只发了一篇测例；用四篇 JSON；看 <code>documentTitle</code> 不要只看条数</td></tr>
+            <tr><td>换说法搜不到</td><td>Embedding Key 是否有效；向量路是否为空；BM25 是否缺 IK</td></tr>
+            <tr><td>503 未配置 LLM Key</td><td><code>OPENAI_API_KEY</code> / <code>DASHSCOPE_API_KEY</code></td></tr>
+            <tr><td>回答无 [n]</td><td>调低 temperature；加强 system prompt；sources 会降级返回全部 hits</td></tr>
+            <tr><td>李明 / 王芳搞混</td><td>提高 topK；开 rerank；检查 incident vs canary 文档是否都索引成功</td></tr>
+            <tr><td>403 search</td><td>用户需权限码 <code>search</code>（课 09 RBAC）</td></tr>
+            <tr><td>curl 卡在 <code>quote&gt;</code></td><td>JSON 正文太长，改用 <code>-d @test-files/xxx.json</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐 origin v11 检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>origin 位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>ChunkHit</code> 类型</td><td><code>pipeline/types/pipeline.types.ts</code></td></tr>
+            <tr><td><code>mapHits</code> / <code>clampTopK</code></td><td><code>vector-index.service.ts</code>（私有，供 keyword/knn 调用）</td></tr>
+            <tr><td><code>keywordSearch</code> / <code>knnSearch</code> / <code>searchHybrid</code></td><td><code>vector-index.service.ts</code></td></tr>
+            <tr><td>RRF 融合 <code>rrfFuse</code></td><td>同上</td></tr>
+            <tr><td><code>createIndexIfNotExists</code> 完整（dense_vector + IK）</td><td><code>vector-index.service.ts</code></td></tr>
+            <tr><td><code>RerankerService</code> + 降级 null</td><td><code>ai/reranker.service.ts</code></td></tr>
+            <tr><td><code>HybridRetrievalService.retrieve</code></td><td><code>ai/hybrid-retrieval.service.ts</code></td></tr>
+            <tr><td><code>AiChatService</code> + <code>toCitedSources</code></td><td><code>ai/ai-chat.service.ts</code></td></tr>
+            <tr><td><code>POST /rag/search</code>、<code>POST /ai/chat</code></td><td><code>ai/ai.controller.ts</code></td></tr>
+            <tr><td><code>AiModule</code> 注册</td><td><code>ai.module.ts</code>、<code>app.module.ts</code></td></tr>
+            <tr><td>四文档测例</td><td><code>curl-rag.md</code>、<code>test-files/rag-*.json</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          第 6 课入门 + 本课 v11 = 完整 RAG 问答链路；后续 origin 还有会话、流式等可另开进阶。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
