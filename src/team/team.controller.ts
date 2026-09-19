@@ -1,34 +1,48 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { TeamService } from './team.service';
-import { CreateTeamDto } from './dto/create-team.dto';
-import { UpdateTeamDto } from './dto/update-team.dto';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 
-@Controller('team')
+import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RoleCode } from '../common/constant/roles';
+import { CreateTeamDto, QueryTeamDto, UpdateTeamDto } from './dto/team.dto';
+import { TeamService } from './team.service';
+
+@Controller('teams')
 export class TeamController {
   constructor(private readonly teamService: TeamService) {}
 
   @Post()
-  create(@Body() createTeamDto: CreateTeamDto) {
-    return this.teamService.create(createTeamDto);
+  @Roles(RoleCode.ADMIN)
+  create(@Body() dto: CreateTeamDto) {
+    return this.teamService.create(dto);
   }
 
-  @Get()
-  findAll() {
-    return this.teamService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.teamService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTeamDto: UpdateTeamDto) {
-    return this.teamService.update(+id, updateTeamDto);
+  @Put(':id')
+  @Roles(RoleCode.ADMIN)
+  update(@Param('id') id: string, @Body() dto: UpdateTeamDto) {
+    return this.teamService.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.teamService.remove(+id);
+  @Roles(RoleCode.ADMIN)
+  delete(@Param('id') id: string) {
+    return this.teamService.delete(id);
+  }
+
+  @Get('page')
+  @Roles(RoleCode.ADMIN)
+  page(@Query() query: QueryTeamDto) {
+    return this.teamService.page(query);
+  }
+
+  @Public()
+  @Get('tree')
+  getTree(@Query('rootOnly') rootOnly?: string) {
+    return this.teamService.getTree(rootOnly === 'true');
+  }
+
+  @Get(':id')
+  @Roles(RoleCode.ADMIN)
+  getDetail(@Param('id') id: string) {
+    return this.teamService.getDetail(id);
   }
 }
