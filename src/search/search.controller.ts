@@ -1,8 +1,11 @@
 import { Controller, Get, Query } from '@nestjs/common';
+
+import { RagService } from 'src/pipeline/rag.service';
 import { SearchIndexService } from '../pipeline/search-index.service';
 import { SearchDocumentsDto } from './dto/search.dto';
+import { SearchDocumentsResultDto } from './dto/search-result.dto';
+import { SemanticSearchHitDto } from './dto/semantic-hit.dto';
 import { SemanticSearchDto } from './dto/semantic-search.dto';
-import { RagService } from 'src/pipeline/rag.service';
 
 @Controller('search')
 export class SearchController {
@@ -12,7 +15,7 @@ export class SearchController {
   ) {}
 
   @Get()
-  search(@Query() params: SearchDocumentsDto) {
+  search(@Query() params: SearchDocumentsDto): Promise<SearchDocumentsResultDto> {
     return this.searchIndex.searchDocuments({
       keyword: params.keyword,
       page: params.page || 1,
@@ -21,7 +24,7 @@ export class SearchController {
   }
 
   @Get('semantic')
-  semanticSearch(@Query() params: SemanticSearchDto) {
+  semanticSearch(@Query() params: SemanticSearchDto): Promise<SemanticSearchHitDto[]> {
     return this.ragService.semanticSearch(params.query, params.topK ?? 5);
   }
 }

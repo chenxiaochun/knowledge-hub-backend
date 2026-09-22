@@ -11,6 +11,7 @@ import {
 import { ChunkingService } from './chunking.service';
 import { EmbeddingService } from './embedding.service';
 import { VectorIndexService } from './vector-index.service';
+import type { SemanticSearchHitDto } from '../search/dto/semantic-hit.dto';
 
 /**
  * RAG 编排：读库 → 分块 → Embedding → 写 kh_chunk。
@@ -81,7 +82,7 @@ export class RagService {
     this.logger.log(`Reindexed document ${documentId}`);
   }
 
-  async semanticSearch(query: string, topK: number = 5) {
+  async semanticSearch(query: string, topK: number = 5): Promise<SemanticSearchHitDto[]> {
     const [vec] = await this.embedding.embedBatch([query]);
     return this.vectorIndex.knnSearch(vec, topK);
   }

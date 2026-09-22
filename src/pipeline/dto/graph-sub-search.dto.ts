@@ -1,20 +1,29 @@
-/** 图谱检索子图：供 ECharts graph 系列直接使用 */
-export type GraphSubgraphNode = {
-  id: string; // 稳定 key：doc:{uuid} / entity:{name}
-  name: string; // 展示名
-  label: string; // KnowledgeDocument | KnowledgeEntity
-  type?: string | null; // 实体类型 PERSON / ORGANIZATION …
-  documentId?: string; // 仅文档节点，供前端 openDetail
-};
+/** 图谱检索子图节点：供 ECharts graph 系列直接使用 */
+export class GraphSubgraphNodeDto {
+  /** 稳定 key：doc:{uuid} / entity:{name} */
+  id!: string;
+  /** 展示名 */
+  name!: string;
+  /** KnowledgeDocument | KnowledgeEntity */
+  label!: string;
+  /** 实体类型 PERSON / ORGANIZATION 等 */
+  type?: string | null;
+  /** 仅文档节点，供前端 openDetail */
+  documentId?: string;
+}
 
-export type GraphSubgraphEdge = {
-  source: string; // 对应 node.id
-  target: string;
-  relation: string; // RELATED_TO 边属性 relation（或 MENTIONS）
+/** 图谱检索子图边 */
+export class GraphSubgraphEdgeDto {
+  /** 对应 node.id */
+  source!: string;
+  target!: string;
+  /** RELATED_TO 边属性 relation（或 MENTIONS） */
+  relation!: string;
   weight?: number;
-};
+}
 
-export type GraphSubgraphResult = {
-  nodes: GraphSubgraphNode[];
-  edges: GraphSubgraphEdge[];
-};
+/** 图谱检索子图结果 */
+export class GraphSubgraphResultDto {
+  nodes!: GraphSubgraphNodeDto[];
+  edges!: GraphSubgraphEdgeDto[];
+}

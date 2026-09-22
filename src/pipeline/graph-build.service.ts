@@ -8,10 +8,11 @@ import neo4j, { Driver } from 'neo4j-driver';
 import { Repository } from 'typeorm';
 
 import type {
-  GraphSubgraphNode,
-  GraphSubgraphEdge,
-  GraphSubgraphResult,
+  GraphSubgraphEdgeDto,
+  GraphSubgraphNodeDto,
+  GraphSubgraphResultDto,
 } from './dto/graph-sub-search.dto';
+import type { GraphNodeHitDto } from './dto/graph-node-hit.dto';
 
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
@@ -174,7 +175,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async searchGraph(keyword: string, limit = 50) {
+  async searchGraph(keyword: string, limit = 50): Promise<GraphNodeHitDto[]> {
     if (!this.driver) return [];
     const session = this.driver.session();
     try {
@@ -187,15 +188,15 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         { kw: keyword, limit: neo4j.int(limit) },
       );
       return res.records.map((r) => ({
-        labels: r.get('labels'),
-        props: r.get('props'),
+        labels: r.get('labels') as string[],
+        props: r.get('props') as Record<string, unknown>,
       }));
     } finally {
       await session.close();
     }
   }
 
-  async searchGraphSubgraph(keyword: string, limit = 50): Promise<GraphSubgraphResult> {
+  async searchGraphSubgraph(keyword: string, limit = 50): Promise<GraphSubgraphResultDto> {
     if (!this.driver) return { nodes: [], edges: [] };
     const kw = keyword.trim();
     if (!kw) return { nodes: [], edges: [] };
@@ -219,7 +220,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       }));
       if (hits.length === 0) return { nodes: [], edges: [] };
 
-      const nodes: GraphSubgraphNode[] = hits.map((h) => {
+      const nodes: GraphSubgraphNodeDto[] = hits.map((h) => {
         const label = h.labels[0] ?? 'Unknown';
         const id = this.nodeKey(h.labels, h.props);
         const name = String(h.props.title ?? h.props.name ?? id);
@@ -241,7 +242,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         nodes.filter((n) => n.label === 'KnowledgeEntity').map((n) => [n.name, n.id]),
       );
 
-      const edges: GraphSubgraphEdge[] = [];
+      const edges: GraphSubgraphEdgeDto[] = [];
 
       // ② 实体间 RELATED_TO（只取命中集合内部的边，避免边爆炸）
       if (entityNames.length >= 2) {

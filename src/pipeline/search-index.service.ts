@@ -13,6 +13,7 @@ import {
   DocumentContent,
   DocumentContentDocument,
 } from '../document/schemas/document-content.schema';
+import type { SearchDocumentsResultDto } from '../search/dto/search-result.dto';
 
 const ES_INDEX = 'kh_document';
 
@@ -137,7 +138,11 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async searchDocuments(params: { keyword: string; page: number; pageSize: number }) {
+  async searchDocuments(params: {
+    keyword: string;
+    page: number;
+    pageSize: number;
+  }): Promise<SearchDocumentsResultDto> {
     const page = params.page || 1;
     const pageSize = Math.min(params.pageSize || 10, 50);
     const from = (page - 1) * pageSize;
@@ -175,14 +180,34 @@ export class SearchIndexService implements OnModuleInit, OnModuleDestroy {
     const totalRaw = response.hits.total;
     const total = typeof totalRaw === 'number' ? totalRaw : (totalRaw?.value ?? 0);
 
-    // 下面这段代码是什么意思？
-    // 这段代码是将 Elasticsearch 的搜索结果转换为数组，其中 h._id 是文档 ID，h._score 是文档得分，h._source 是文档内容，h.highlight 是文档高亮部分
-    const items = response.hits.hits.map((h) => ({
-      id: h._id,
-      score: h._score,
-      ...(h._source as object),
-      highlight: h.highlight,
-    }));
+    const items = response.hits.hits.map((h) => {
+      const source = (h._source ?? {}) as {
+        title?: string;
+        summary?: string;
+        authorId?: string | null;
+        status?: number;
+        publishTime?: string | null;
+        indexedAt?: string | null;
+        tags?: string | null;
+      };
+      return {
+        id: String(h._id ?? source.title ?? ''),
+        score: h._score ?? null,
+        title: source.title ?? '',
+        summary: source.summary,
+        authorId: source.authorId ?? null,
+        status: source.status ?? 0,
+        publishTime: source.publishTime ?? null,
+        indexedAt: source.indexedAt ?? null,
+        tags: source.tags ?? null,
+        highlight: h.highlight
+          ? {
+              title: h.highlight.title,
+              content: h.highlight.content,
+            }
+          : undefined,
+      };
+    });
     return { items, total, page, pageSize };
   }
 }
