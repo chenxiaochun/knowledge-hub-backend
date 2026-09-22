@@ -111,7 +111,7 @@
         <li><a href="#steps">逐步实现</a></li>
         <li><a href="#design">设计决策</a></li>
         <li><a href="#deep-graph">深度：建图与检索</a></li>
-        <li><a href="#frontend">前端对接</a></li>
+        <li><a href="#frontend">前端：ECharts 关系图</a></li>
         <li><a href="#diff">与 origin 差异</a></li>
         <li><a href="#align">教你怎么补齐（v5）</a></li>
         <li><a href="#errors">常见报错</a></li>
@@ -785,7 +785,12 @@ curl -s 'http://localhost:3000/graph/search?keyword=知识' \
             <tr><td><code>GET /graph/edges?limit=</code></td><td>列出 <code>RELATED_TO</code>（source / target / relation / weight）</td></tr>
           </tbody>
         </table>
-        <p>练习版最小闭环只需 <code>/graph/search</code>；要做力导向图可视化时，再补 nodes/edges（对照 origin <code>graph.controller.ts</code>）。</p>
+        <p>
+          练习版最小闭环只需 <code>/graph/search</code>；
+          要做 ECharts 关系图见本节
+          <a href="#frontend">前端：ECharts 关系图</a>（推荐 <code>/graph/search/subgraph</code> 返回 nodes+edges；
+          调试也可用 origin 的 <code>/graph/nodes</code> + <code>/graph/edges</code>）。
+        </p>
 
         <h3>性能与坑</h3>
         <ul>
@@ -802,13 +807,403 @@ RETURN a.name, r, b.name LIMIT 25</code></pre></div>
       </section>
 
       <section id="frontend">
-        <h2>前端对接（短）</h2>
+        <h2>前端对接：图谱检索 + ECharts 关系图</h2>
+        <div class="callout-info">
+          练习仓前端（<code>knowledge-hub-frontend</code>）已有「图谱检索」Tab，但默认只渲染<strong>节点列表</strong>。
+          本节补齐：<strong>后端返回 nodes + edges 子图</strong> → <strong>ECharts 力导向图</strong> 展示命中节点及其关系。
+          全景图（文档 / 标签粒度）见进阶 <a href="./15-kg-overview-v12.html">课 15 · overview API</a>。
+        </div>
+
+        <h3>目标布局</h3>
+        <div class="flow">搜索页 · 图谱检索 Tab
+├─ ECharts graph（力导向，可拖拽 / 缩放）
+│    节点：KnowledgeDocument（蓝）/ KnowledgeEntity（按 type 着色）
+│    边：RELATED_TO.relation 或 MENTIONS
+└─ 节点 List（保留现有列表，点击文档仍开 DetailDrawer）</div>
+
+        <h3>Step 1 · 后端：子图 API（<code>nodes + edges</code>）</h3>
+        <p>
+          现有 <code>searchGraph</code> 只返回节点，ECharts 画不出边。
+          在 <code>GraphBuildService</code> 新增 <code>searchGraphSubgraph</code>，或在 Controller 增加路由
+          <code>GET /graph/search/subgraph</code>（与 flat 列表并存，避免破坏已有前端类型）。
+        </p>
+
+        <h4>响应 DTO（建议）</h4>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">/** 图谱检索子图：供 ECharts graph 系列直接使用 */
+export type GraphSubgraphNode = {
+  id: string;          // 稳定 key：doc:{uuid} / entity:{name}
+  name: string;        // 展示名
+  label: string;       // KnowledgeDocument | KnowledgeEntity
+  type?: string | null; // 实体类型 PERSON / ORGANIZATION …
+  documentId?: string; // 仅文档节点，供前端 openDetail
+};
+
+export type GraphSubgraphEdge = {
+  source: string;      // 对应 node.id
+  target: string;
+  relation: string;    // RELATED_TO 边属性 relation（或 MENTIONS）
+  weight?: number;
+};
+
+export type GraphSubgraphResult = {
+  nodes: GraphSubgraphNode[];
+  edges: GraphSubgraphEdge[];
+};</code></pre></div>
+
+        <h4><code>nodeKey</code>：前后端统一的节点 id</h4>
+        <p class="file-path">src/pipeline/graph-build.service.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">private nodeKey(labels: string[], props: Record&lt;string, unknown&gt;): string {
+  const primary = labels[0] ?? 'Unknown';
+  if (primary === 'KnowledgeDocument') return `doc:${String(props.id ?? '')}`;
+  if (primary === 'KnowledgeEntity') return `entity:${String(props.name ?? '')}`;
+  return `${primary}:${String(props.id ?? props.name ?? '')}`;
+}
+
+private toNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' &amp;&amp; Number.isFinite(value)) return value;
+  if (neo4j.isInt(value)) return value.toNumber();
+  return fallback;
+}</code></pre></div>
+
+        <h4><code>searchGraphSubgraph</code>（完整可复制）</h4>
+        <p class="file-path">src/pipeline/graph-build.service.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">async searchGraphSubgraph(keyword: string, limit = 50): Promise&lt;GraphSubgraphResult&gt; {
+  if (!this.driver) return { nodes: [], edges: [] };
+  const kw = keyword.trim();
+  if (!kw) return { nodes: [], edges: [] };
+
+  const cap = Math.min(Math.max(limit, 1), 100);
+  const session = this.driver.session();
+  try {
+    // ① 命中节点（与 searchGraph 条件一致，可逐步扩展到 Chunk）
+    const nodeRes = await session.run(
+      `MATCH (n)
+       WHERE (n:KnowledgeEntity OR n:KnowledgeDocument)
+         AND toLower(coalesce(n.name, n.title, '')) CONTAINS toLower($kw)
+       RETURN labels(n) AS labels, properties(n) AS props
+       LIMIT $limit`,
+      { kw, limit: neo4j.int(cap) },
+    );
+
+    const hits = nodeRes.records.map((r) =&gt; ({
+      labels: r.get('labels') as string[],
+      props: r.get('props') as Record&lt;string, unknown&gt;,
+    }));
+    if (hits.length === 0) return { nodes: [], edges: [] };
+
+    const nodes: GraphSubgraphNode[] = hits.map((h) =&gt; {
+      const label = h.labels[0] ?? 'Unknown';
+      const id = this.nodeKey(h.labels, h.props);
+      const name = String(h.props.title ?? h.props.name ?? id);
+      return {
+        id,
+        name,
+        label,
+        type: (h.props.type as string) ?? null,
+        documentId: label === 'KnowledgeDocument' ? String(h.props.id ?? '') : undefined,
+      };
+    });
+
+    const entityNames = hits
+      .filter((h) =&gt; h.labels.includes('KnowledgeEntity'))
+      .map((h) =&gt; String(h.props.name ?? ''))
+      .filter(Boolean);
+
+    const idByEntityName = new Map(
+      nodes.filter((n) =&gt; n.label === 'KnowledgeEntity').map((n) =&gt; [n.name, n.id]),
+    );
+
+    const edges: GraphSubgraphEdge[] = [];
+
+    // ② 实体间 RELATED_TO（只取命中集合内部的边，避免边爆炸）
+    if (entityNames.length &gt;= 2) {
+      const relRes = await session.run(
+        `MATCH (a:KnowledgeEntity)-[r:RELATED_TO]-&gt;(b:KnowledgeEntity)
+         WHERE a.name IN $names AND b.name IN $names
+         RETURN a.name AS sourceName, b.name AS targetName,
+                coalesce(r.relation, r.type, 'RELATED_TO') AS relation,
+                r.weight AS weight`,
+        { names: entityNames },
+      );
+      for (const rec of relRes.records) {
+        const source = idByEntityName.get(rec.get('sourceName') as string);
+        const target = idByEntityName.get(rec.get('targetName') as string);
+        if (!source || !target) continue;
+        edges.push({
+          source,
+          target,
+          relation: (rec.get('relation') as string) ?? 'RELATED_TO',
+          weight: this.toNumber(rec.get('weight'), 0.5),
+        });
+      }
+    }
+
+    // ③ 文档 → 实体 MENTIONS（1 跳，让文档节点也连上实体）
+    const docIds = hits
+      .filter((h) =&gt; h.labels.includes('KnowledgeDocument'))
+      .map((h) =&gt; String(h.props.id ?? ''))
+      .filter(Boolean);
+
+    if (docIds.length &gt; 0 &amp;&amp; entityNames.length &gt; 0) {
+      const mentionRes = await session.run(
+        `MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]-&gt;(:DocumentChunk)-[:MENTIONS]-&gt;(e:KnowledgeEntity)
+         WHERE d.id IN $docIds AND e.name IN $entityNames
+         RETURN DISTINCT d.id AS docId, e.name AS entityName`,
+        { docIds, entityNames },
+      );
+      for (const rec of mentionRes.records) {
+        const source = `doc:${rec.get('docId') as string}`;
+        const target = idByEntityName.get(rec.get('entityName') as string);
+        if (!target) continue;
+        edges.push({ source, target, relation: 'MENTIONS' });
+      }
+    }
+
+    return { nodes, edges };
+  } finally {
+    await session.close();
+  }
+}</code></pre></div>
+
+        <h4>Controller 路由</h4>
+        <p class="file-path">src/pipeline/graph.controller.ts（或 origin 的 <code>src/graph/graph.controller.ts</code>）</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">@Get('search/subgraph')
+searchSubgraph(
+  @Query('keyword') keyword: string,
+  @Query('limit') limit?: string,
+) {
+  return this.graph.searchGraphSubgraph(keyword, limit ? Number(limit) : 50);
+}</code></pre></div>
+
+        <h4>（可选）origin v5 的 nodes / edges 只读 API</h4>
+        <p>开发调试时可单独拉全库实体边，对照 origin <code>graph.controller.ts</code>：</p>
+        <table>
+          <thead><tr><th>接口</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /graph/nodes?type=&amp;limit=</code></td><td>列出 <code>KnowledgeEntity</code></td></tr>
+            <tr><td><code>GET /graph/edges?limit=</code></td><td>列出 <code>RELATED_TO</code>（source / target / relation / weight）</td></tr>
+          </tbody>
+        </table>
+
+        <h4>curl 自测</h4>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">curl -s --get 'http://localhost:3000/graph/search/subgraph' \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'keyword=知识' \
+  --data-urlencode 'limit=20' | jq '{nodeCount: (.nodes|length), edgeCount: (.edges|length), sample: .edges[0]}'</code></pre></div>
+
+        <h3>Step 2 · 前端：安装 ECharts</h3>
+        <p class="file-path">knowledge-hub-frontend/package.json</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">cd knowledge-hub-frontend
+yarn add echarts</code></pre></div>
+        <p>跑 <code>yarn tsg</code> 重新生成 API 客户端（后端 Swagger 需包含新路由），或临时手写 fetch 包装。</p>
+
+        <h3>Step 3 · 数据转换：<code>GraphSubgraphResult</code> → ECharts option</h3>
+        <p class="file-path">knowledge-hub-frontend/src/pages/Search/graphChartOption.ts</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">const ENTITY_COLORS: Record&lt;string, string&gt; = {
+  PERSON: '#f59e0b',
+  ORGANIZATION: '#8b5cf6',
+  CONCEPT: '#06b6d4',
+  DOCUMENT: '#64748b',
+  PROCESS: '#10b981',
+  PRODUCT: '#3b82f6',
+};
+
+export type GraphSubgraph = {
+  nodes: Array&lt;{
+    id: string;
+    name: string;
+    label: string;
+    type?: string | null;
+    documentId?: string;
+  }&gt;;
+  edges: Array&lt;{
+    source: string;
+    target: string;
+    relation: string;
+    weight?: number;
+  }&gt;;
+};
+
+export function buildGraphChartOption(data: GraphSubgraph) {
+  const categories = [
+    { name: '文档' },
+    { name: '实体' },
+  ];
+
+  const nodes = data.nodes.map((n) =&gt; ({
+    id: n.id,
+    name: n.name,
+    category: n.label === 'KnowledgeDocument' ? 0 : 1,
+    symbolSize: n.label === 'KnowledgeDocument' ? 42 : 28,
+    itemStyle: {
+      color:
+        n.label === 'KnowledgeDocument'
+          ? '#3b82f6'
+          : (ENTITY_COLORS[(n.type ?? '').toUpperCase()] ?? '#06b6d4'),
+    },
+    // 自定义字段，点击事件用
+    documentId: n.documentId,
+    nodeLabel: n.label,
+  }));
+
+  const links = data.edges.map((e) =&gt; ({
+    source: e.source,
+    target: e.target,
+    label: { show: true, formatter: e.relation, fontSize: 10 },
+    lineStyle: { width: Math.max(1, (e.weight ?? 0.5) * 3), curveness: 0.15 },
+  }));
+
+  return {
+    tooltip: {
+      formatter: (p: { dataType?: string; data?: { name?: string; documentId?: string } }) =&gt;
+        p.dataType === 'edge'
+          ? '关系边'
+          : `${p.data?.name ?? ''}${p.data?.documentId ? '（文档，可点击）' : ''}`,
+    },
+    legend: [{ data: categories.map((c) =&gt; c.name) }],
+    series: [
+      {
+        type: 'graph',
+        layout: 'force',
+        roam: true,
+        draggable: true,
+        categories,
+        data: nodes,
+        links,
+        label: { show: true, position: 'right', fontSize: 11 },
+        force: { repulsion: 280, edgeLength: [80, 160], gravity: 0.08 },
+        emphasis: { focus: 'adjacency', lineStyle: { width: 4 } },
+      },
+    ],
+  };
+}</code></pre></div>
+
+        <h3>Step 4 · <code>GraphChart</code> 组件</h3>
+        <p class="file-path">knowledge-hub-frontend/src/components/GraphChart/index.tsx</p>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">import { useEffect, useRef } from 'react';
+import * as echarts from 'echarts';
+
+import { buildGraphChartOption, type GraphSubgraph } from '@/pages/Search/graphChartOption';
+
+type Props = {
+  data: GraphSubgraph | null;
+  loading?: boolean;
+  height?: number;
+  onDocumentClick?: (documentId: string) =&gt; void;
+};
+
+export default function GraphChart({ data, loading, height = 420, onDocumentClick }: Props) {
+  const hostRef = useRef&lt;HTMLDivElement&gt;(null);
+  const chartRef = useRef&lt;echarts.ECharts | null&gt;(null);
+
+  useEffect(() =&gt; {
+    if (!hostRef.current) return;
+    const chart = echarts.init(hostRef.current);
+    chartRef.current = chart;
+    const ro = new ResizeObserver(() =&gt; chart.resize());
+    ro.observe(hostRef.current);
+    return () =&gt; {
+      ro.disconnect();
+      chart.dispose();
+      chartRef.current = null;
+    };
+  }, []);
+
+  useEffect(() =&gt; {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (loading) {
+      chart.showLoading('default', { text: '加载图谱…' });
+      return;
+    }
+    chart.hideLoading();
+    if (!data || data.nodes.length === 0) {
+      chart.clear();
+      return;
+    }
+    chart.setOption(buildGraphChartOption(data), true);
+  }, [data, loading]);
+
+  useEffect(() =&gt; {
+    const chart = chartRef.current;
+    if (!chart || !onDocumentClick) return;
+    const handler = (params: { dataType?: string; data?: { documentId?: string } }) =&gt; {
+      if (params.dataType === 'node' &amp;&amp; params.data?.documentId) {
+        onDocumentClick(params.data.documentId);
+      }
+    };
+    chart.on('click', handler);
+    return () =&gt; chart.off('click', handler);
+  }, [onDocumentClick, data]);
+
+  return (
+    &lt;div
+      ref={hostRef}
+      style={{
+        width: '100%',
+        height,
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        background: '#fff',
+      }}
+    /&gt;
+  );
+}</code></pre></div>
+
+        <h3>Step 5 · 搜索页接入</h3>
+        <p class="file-path">knowledge-hub-frontend/src/pages/Search/index.tsx</p>
+        <ol>
+          <li>图谱模式改调 <code>GET /api/graph/search/subgraph</code>，state 存 <code>GraphSubgraphResult</code>（不再只用 flat 的 <code>GraphHit[]</code>）。</li>
+          <li>在 List 上方渲染 <code>&lt;GraphChart data={graphSubgraph} loading={loading} onDocumentClick={openDetail} /&gt;</code>。</li>
+          <li>List 的 <code>dataSource</code> 仍用 <code>graphSubgraph.nodes</code> 映射回现有卡片（<code>label === 'KnowledgeDocument'</code> 时展示可点标题）。</li>
+          <li>无命中时：图表区 <code>Empty</code>，与列表 empty 文案一致。</li>
+        </ol>
+        <div class="code-block"><button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">{activeMode === 'graph' ? (
+  &lt;&gt;
+    &lt;GraphChart
+      data={graphSubgraph}
+      loading={loading}
+      onDocumentClick={(id) =&gt; void openDetail(id)}
+    /&gt;
+    &lt;List
+      loading={loading}
+      dataSource={graphSubgraph?.nodes ?? []}
+      locale={{ emptyText: &lt;Empty description="未找到匹配的图谱节点" /&gt; }}
+      renderItem={(node) =&gt; (/* 按 node.label / node.documentId 渲染 */)}
+    /&gt;
+  &lt;/&gt;
+) : null}</code></pre></div>
+
+        <h3>Step 6 · 权限与联调注意</h3>
         <ul>
-          <li><code>/graph/nodes</code> + <code>/graph/edges</code> 可直接喂力导向图（<code>source</code> / <code>target</code> / 关系名 / weight）</li>
-          <li><code>/graph/search</code> 结果建议按 <code>label</code>（或 <code>labels[0]</code>）分组：Document / Chunk / Entity</li>
-          <li><code>snippet</code> 多为截断纯文本，一般不必当 HTML 渲染</li>
-          <li>勿假设「有 search 权限才能打 /graph」——以本仓 Guard 装饰器为准</li>
+          <li>Graph 接口是否需 <code>search</code> 权限以本仓 Guard 为准；前端 axios 已带 Bearer，401 走现有拦截器。</li>
+          <li>边属性字段：练习仓若写 <code>SET rel.type = $type</code>，Cypher 里用 <code>coalesce(r.relation, r.type)</code> 兼容 origin 的 <code>relation</code>。</li>
+          <li>节点过多（<code>limit &gt; 50</code>）时力导向图会糊成一团，建议 UI 默认 20，上限 100。</li>
+          <li>仅实体边、无 RELATED_TO 时图表仍可用（散点节点）；检查 LLM 是否抽到关系、Neo4j Browser 验证 <code>MATCH ()-[r:RELATED_TO]-&gt;() RETURN r LIMIT 10</code>。</li>
         </ul>
+
+        <h3>与课 15 overview 的分工</h3>
+        <table>
+          <thead><tr><th>场景</th><th>接口</th><th>前端</th></tr></thead>
+          <tbody>
+            <tr><td>关键词检索 + 看命中子图</td><td><code>/graph/search/subgraph</code></td><td>搜索页 ECharts（本节）</td></tr>
+            <tr><td>无关键词、浏览知识库全景</td><td><code>/graph/overview</code></td><td>独立「图谱全景」页或侧栏（课 15）</td></tr>
+            <tr><td>调试实体边是否写入</td><td><code>/graph/nodes</code> + <code>/graph/edges</code></td><td>Postman / jq，不必上 ECharts</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout-tip">
+          <strong>验收</strong>：发布一篇含实体与关系的文档 → 图谱检索关键词 → 上方 ECharts 出现节点与带标签的边 → 点击蓝色文档节点打开详情 Drawer。
+        </div>
       </section>
 
       <section id="diff">

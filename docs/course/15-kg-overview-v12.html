@@ -121,6 +121,7 @@
         <li><a href="#files">文件清单</a></li>
         <li><a href="#steps">逐步实现</a></li>
         <li><a href="#design">设计决策</a></li>
+        <li><a href="#frontend">前端：ECharts 全景图</a></li>
         <li><a href="#diff">与课 7 差异</a></li>
         <li><a href="#errors">常见报错</a></li>
         <li><a href="#align">对齐 v12 检查表</a></li>
@@ -651,6 +652,95 @@ export class GraphController {
         <p>用户搜「李明」时，标题不含李明但正文提及的文档也应出现在画布，否则全景图漏节点。</p>
         <h3>stats 与画布 nodes 为何分开？</h3>
         <p><code>stats</code> 反映全库规模；<code>nodes/edges</code> 受 keyword / docLimit 过滤，供当前视图渲染。</p>
+      </section>
+
+      <section id="frontend">
+        <h2>前端：ECharts 全景图</h2>
+        <div class="callout-info">
+          搜索页「关键词子图」见
+          <a href="./07-pipeline-kg.html#frontend">第 7 课 · 图谱检索 + ECharts</a>（<code>/graph/search/subgraph</code>）。
+          本课 overview 复用同一套 <code>GraphChart</code> 组件，仅换数据源与 categories。
+        </div>
+
+        <h3>overview → ECharts 字段映射</h3>
+        <table>
+          <thead><tr><th>overview 字段</th><th>ECharts graph</th></tr></thead>
+          <tbody>
+            <tr><td><code>nodes[].id</code>（<code>doc:</code> / <code>entity:</code> / <code>tag:</code>）</td><td><code>series.data[].id</code></td></tr>
+            <tr><td><code>nodes[].label</code> 或 <code>kind</code></td><td><code>category</code>：文档 / 实体 / 标签</td></tr>
+            <tr><td><code>edges[].source</code> / <code>target</code></td><td><code>links[].source</code> / <code>target</code></td></tr>
+            <tr><td><code>edges[].kind</code>（mentions / related / tagged）</td><td>边标签 <code>formatter</code></td></tr>
+            <tr><td><code>stats</code>、<code>topEntities</code></td><td>侧栏 Statistic / List，不必画进图</td></tr>
+          </tbody>
+        </table>
+
+        <h3><code>buildOverviewChartOption</code>（复用课 7 组件）</h3>
+        <p class="file-path">knowledge-hub-frontend/src/pages/GraphOverview/overviewChartOption.ts</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">type OverviewPayload = {
+  nodes: Array&lt;{ id: string; label: string; name: string; entityType?: string | null }&gt;;
+  edges: Array&lt;{ source: string; target: string; kind: string }&gt;;
+};
+
+const KIND_COLOR: Record&lt;string, string&gt; = {
+  doc: '#3b82f6',
+  entity: '#06b6d4',
+  tag: '#a855f7',
+};
+
+export function buildOverviewChartOption(data: OverviewPayload) {
+  const categories = [{ name: '文档' }, { name: '实体' }, { name: '标签' }];
+  const catIndex = (id: string) =&gt;
+    id.startsWith('doc:') ? 0 : id.startsWith('tag:') ? 2 : 1;
+
+  return {
+    tooltip: { trigger: 'item' },
+    legend: [{ data: categories.map((c) =&gt; c.name) }],
+    series: [{
+      type: 'graph',
+      layout: 'force',
+      roam: true,
+      draggable: true,
+      categories,
+      data: data.nodes.map((n) =&gt; ({
+        id: n.id,
+        name: n.name,
+        category: catIndex(n.id),
+        symbolSize: n.id.startsWith('doc:') ? 44 : 26,
+        itemStyle: { color: KIND_COLOR[n.id.split(':')[0]] ?? '#64748b' },
+        documentId: n.id.startsWith('doc:') ? n.id.slice(4) : undefined,
+      })),
+      links: data.edges.map((e) =&gt; ({
+        source: e.source,
+        target: e.target,
+        label: { show: true, formatter: e.kind, fontSize: 10 },
+        lineStyle: {
+          curveness: 0.12,
+          color: e.kind === 'related' ? '#94a3b8' : '#cbd5e1',
+        },
+      })),
+      label: { show: true, position: 'right', fontSize: 11 },
+      force: { repulsion: 320, edgeLength: [90, 180], gravity: 0.06 },
+      emphasis: { focus: 'adjacency' },
+    }],
+  };
+}</code></pre>
+        </div>
+
+        <h3>页面骨架</h3>
+        <div class="flow">pages/GraphOverview/index.tsx
+├─ 筛选：keyword / entityType / docLimit（对应 GraphOverviewDto）
+├─ GET /graph/overview → overview state
+├─ 左：GraphChart（option 来自 buildOverviewChartOption）
+└─ 右：stats + topEntities + recentNodes 侧栏</div>
+
+        <h3>联调要点</h3>
+        <ul>
+          <li>overview 的 <code>nodes[].id</code> 已带前缀，<strong>不要</strong>再套课 7 的 <code>nodeKey</code>。</li>
+          <li><code>docLimit</code> 过小会导致 related 边偏少（实体不在同一画布）；调大或换 keyword。</li>
+          <li>路由需 <code>search</code> 权限；403 时检查 RBAC（课 9）。</li>
+        </ul>
       </section>
 
       <section id="diff">
