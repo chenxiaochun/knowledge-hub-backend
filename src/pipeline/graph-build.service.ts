@@ -7,6 +7,12 @@ import { Model } from 'mongoose';
 import neo4j, { Driver } from 'neo4j-driver';
 import { Repository } from 'typeorm';
 
+import type {
+  GraphSubgraphNode,
+  GraphSubgraphEdge,
+  GraphSubgraphResult,
+} from './dto/graph-sub-search.dto';
+
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
   DocumentContent,
@@ -187,5 +193,116 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     } finally {
       await session.close();
     }
+  }
+
+  async searchGraphSubgraph(keyword: string, limit = 50): Promise<GraphSubgraphResult> {
+    if (!this.driver) return { nodes: [], edges: [] };
+    const kw = keyword.trim();
+    if (!kw) return { nodes: [], edges: [] };
+
+    const cap = Math.min(Math.max(limit, 1), 100);
+    const session = this.driver.session();
+    try {
+      // ① 命中节点（与 searchGraph 条件一致，可逐步扩展到 Chunk）
+      const nodeRes = await session.run(
+        `MATCH (n)
+         WHERE (n:KnowledgeEntity OR n:KnowledgeDocument)
+           AND toLower(coalesce(n.name, n.title, '')) CONTAINS toLower($kw)
+         RETURN labels(n) AS labels, properties(n) AS props
+         LIMIT $limit`,
+        { kw, limit: neo4j.int(cap) },
+      );
+
+      const hits = nodeRes.records.map((r) => ({
+        labels: r.get('labels') as string[],
+        props: r.get('props') as Record<string, unknown>,
+      }));
+      if (hits.length === 0) return { nodes: [], edges: [] };
+
+      const nodes: GraphSubgraphNode[] = hits.map((h) => {
+        const label = h.labels[0] ?? 'Unknown';
+        const id = this.nodeKey(h.labels, h.props);
+        const name = String(h.props.title ?? h.props.name ?? id);
+        return {
+          id,
+          name,
+          label,
+          type: (h.props.type as string) ?? null,
+          documentId: label === 'KnowledgeDocument' ? String(h.props.id ?? '') : undefined,
+        };
+      });
+
+      const entityNames = hits
+        .filter((h) => h.labels.includes('KnowledgeEntity'))
+        .map((h) => String(h.props.name ?? ''))
+        .filter(Boolean);
+
+      const idByEntityName = new Map(
+        nodes.filter((n) => n.label === 'KnowledgeEntity').map((n) => [n.name, n.id]),
+      );
+
+      const edges: GraphSubgraphEdge[] = [];
+
+      // ② 实体间 RELATED_TO（只取命中集合内部的边，避免边爆炸）
+      if (entityNames.length >= 2) {
+        const relRes = await session.run(
+          `MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
+           WHERE a.name IN $names AND b.name IN $names
+           RETURN a.name AS sourceName, b.name AS targetName,
+                  coalesce(r.relation, r.type, 'RELATED_TO') AS relation,
+                  r.weight AS weight`,
+          { names: entityNames },
+        );
+        for (const rec of relRes.records) {
+          const source = idByEntityName.get(rec.get('sourceName') as string);
+          const target = idByEntityName.get(rec.get('targetName') as string);
+          if (!source || !target) continue;
+          edges.push({
+            source,
+            target,
+            relation: (rec.get('relation') as string) ?? 'RELATED_TO',
+            weight: this.toNumber(rec.get('weight'), 0.5),
+          });
+        }
+      }
+
+      // ③ 文档 → 实体 MENTIONS（1 跳，让文档节点也连上实体）
+      const docIds = hits
+        .filter((h) => h.labels.includes('KnowledgeDocument'))
+        .map((h) => String(h.props.id ?? ''))
+        .filter(Boolean);
+
+      if (docIds.length > 0 && entityNames.length > 0) {
+        const mentionRes = await session.run(
+          `MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e:KnowledgeEntity)
+           WHERE d.id IN $docIds AND e.name IN $entityNames
+           RETURN DISTINCT d.id AS docId, e.name AS entityName`,
+          { docIds, entityNames },
+        );
+        for (const rec of mentionRes.records) {
+          const source = `doc:${rec.get('docId') as string}`;
+          const target = idByEntityName.get(rec.get('entityName') as string);
+          if (!target) continue;
+          edges.push({ source, target, relation: 'MENTIONS' });
+        }
+      }
+
+      return { nodes, edges };
+    } finally {
+      await session.close();
+    }
+  }
+
+  private nodeKey(labels: string[], props: Record<string, unknown>): string {
+    const primary = labels[0] ?? 'Unknown';
+    if (primary === 'KnowledgeDocument') return `doc:${String(props.id ?? '')}`;
+    if (primary === 'KnowledgeEntity') return `entity:${String(props.name ?? '')}`;
+    return `${primary}:${String(props.id ?? props.name ?? '')}`;
+  }
+
+  private toNumber(value: unknown, fallback: number): number {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (neo4j.isInt(value)) return value.toNumber();
+    return fallback;
   }
 }

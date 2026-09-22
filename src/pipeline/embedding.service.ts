@@ -38,7 +38,7 @@ export class EmbeddingService {
     return all;
   }
 
-  private async embedOnce(texts: string[]): Promise<number[][]> {
+  async embedOnce(texts: string[]): Promise<number[][]> {
     const res = await fetch(`${this.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {

@@ -45,7 +45,8 @@ export class HybridRetrievalService {
 
   private async embedQuery(query: string): Promise<number[] | null> {
     try {
-      return await this.embedding.embed(query);
+      const vectors = await this.embedding.embedOnce([query]);
+      return vectors[0] ?? null;
     } catch (error) {
       this.logger.warn(`查询向量化失败，仅走关键词：${error}`);
       return null;
