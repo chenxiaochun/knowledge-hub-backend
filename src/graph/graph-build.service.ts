@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Model } from 'mongoose';
 import neo4j, { Driver } from 'neo4j-driver';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import type { GraphNodeHitDto } from './dto/graph-node-hit.dto';
 import type {
@@ -358,6 +358,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         name: string;
         kind: string;
         updatedAt: string | null;
+        fileExt: string | null;
       }>,
       entityTypes: [] as string[],
     };
@@ -437,7 +438,20 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         name: String(record.get('name') ?? ''),
         kind: 'document',
         updatedAt: (record.get('updatedAt') as string) ?? null,
+        fileExt: null as string | null,
       }));
+
+      const recentDocIds = recentNodes.map((node) => node.id.replace(/^doc:/, ''));
+      if (recentDocIds.length > 0) {
+        const recentDocs = await this.docRepo.find({
+          where: { id: In(recentDocIds), deleted: false },
+          select: { id: true, fileExt: true },
+        });
+        const fileExtById = new Map(recentDocs.map((doc) => [doc.id, doc.fileExt ?? null]));
+        for (const node of recentNodes) {
+          node.fileExt = fileExtById.get(node.id.replace(/^doc:/, '')) ?? null;
+        }
+      }
 
       // 主查询：按标题/摘要/标签 + 时间筛文档，LIMIT 后挂上 MENTIONS 实体（可按 entityType 再筛）
       const docRows = await session.run(
