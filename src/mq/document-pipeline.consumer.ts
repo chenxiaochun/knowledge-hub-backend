@@ -5,7 +5,7 @@ import { SEARCH_INDEX_QUEUE, RAG_REINDEX_QUEUE, KG_GRAPH_QUEUE } from './mq.cons
 import { KgBuildMessage, ReindexMessage, SearchIndexMessage } from './messages/pipeline.messages';
 import { RabbitMQService } from './rabbitmq.service';
 import { RagService } from '../pipeline/rag.service';
-import { GraphBuildService } from '../pipeline/graph-build.service';
+import { GraphBuildService } from '../graph/graph-build.service';
 
 /** 消费 Search / RAG / KG 三类队列消息 */
 @Injectable()

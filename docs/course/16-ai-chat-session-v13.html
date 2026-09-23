@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 16 · AI 问答对话历史（origin v13）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block { border-left: 4px solid #3b82f6; padding-left: 1rem; }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 16 · AI 问答对话历史 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./14-rag-hybrid-citation-v11.html">课 14</a> ·
+      对照 origin 分支 <code>v13</code> · <code>src/ai/</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念与数据模型</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#wire">接入 /ai/chat</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 14 / origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐 v13 检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          在课 14「混合检索 + LLM 作答 + <code>sources</code>」之上，按 origin <code>v13</code> 补齐
+          <strong>多轮对话历史</strong>：会话表 + 消息表、本人可见的会话 CRUD、
+          每次问答落库一对 <code>user</code>/<code>assistant</code> 消息。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：在练习仓自己改 <code>src/ai/</code>；对照答案看
+          <code>knowledge-hub-backend-origin</code> 分支 <code>v13</code>。
+          <strong>不替你改业务代码。</strong>
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li>不带 <code>sessionId</code> 调 <code>POST /ai/chat</code>：返回新 <code>sessionId</code>；库表 <code>kh_ai_session</code> / <code>kh_ai_message</code> 各有记录</li>
+            <li>带同一 <code>sessionId</code> 再问一轮：消息按时间递增；会话 <code>updatedAt</code> 更新；标题若仍是「新对话」会被首问覆盖</li>
+            <li><code>GET /ai/sessions</code> 只看到<strong>当前用户</strong>的会话；别人的 id 返回 404</li>
+            <li><code>GET /ai/sessions/:id/messages</code> 能回放完整对话；assistant 行可带 <code>sources</code> JSON</li>
+            <li>重命名、删除会话（删会话时级联删消息）成功</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：
+          <a href="./14-rag-hybrid-citation-v11.html">课 14</a> 已通（至少能 <code>POST /ai/chat</code> 拿到 answer + sources）；
+          JWT 登录可用（要有 <code>userId</code>）；Postgres 可写表。
+          权限可用课 09 的 <code>@RequirePermission(search)</code>，或临时 <code>@Roles(ADMIN)</code>。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与数据模型</h2>
+        <div class="flow">用户提问
+  →（可选）带 sessionId
+  → 检索 + LLM（课 14 已有）
+  → ChatSessionService.appendTurn
+       · 无 sessionId → 新建会话（标题=首问截断）
+       · 有 sessionId → 校验归属
+       · 写 user 消息 + assistant 消息（sources JSONB）
+       · 刷新 session.updatedAt
+  → 响应 { sessionId, answer, sources }
+
+侧栏：GET /ai/sessions（按 updatedAt 倒序）
+点开：GET /ai/sessions/:id/messages（按 createdAt 正序）</div>
+
+        <table>
+          <thead><tr><th>表</th><th>职责</th><th>关键字段</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>kh_ai_session</code></td>
+              <td>一次「对话线程」</td>
+              <td><code>id</code>、<code>user_id</code>、<code>title</code>、<code>updated_at</code></td>
+            </tr>
+            <tr>
+              <td><code>kh_ai_message</code></td>
+              <td>一轮里的一条消息</td>
+              <td><code>session_id</code>、<code>role</code>（user/assistant）、<code>content</code>、<code>sources</code>（仅助手）</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>归属</strong>：所有读改删都带 <code>where: { id, userId }</code>，避免越权看别人历史。
+          <strong>不在本课做</strong>：把历史消息再喂回 LLM 当多轮上下文（那是后续增强）；本课只做<strong>持久化与回放</strong>。
+        </p>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>init-scripts/.../init.sql</code> 或迁移</td><td>建 <code>kh_ai_session</code> / <code>kh_ai_message</code></td></tr>
+            <tr><td><code>src/ai/entities/ai-session.entity.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/ai/entities/ai-message.entity.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/ai/chat.types.ts</code></td><td>新建（或从 chat.service 抽出 <code>ChatSource</code>）</td></tr>
+            <tr><td><code>src/ai/dto/session.dto.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/ai/dto/chat.dto.ts</code></td><td>增加可选 <code>sessionId</code></td></tr>
+            <tr><td><code>src/ai/chat-session.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>注入 Session；chat 末尾 <code>appendTurn</code></td></tr>
+            <tr><td><code>src/ai/ai.controller.ts</code></td><td>会话 CRUD + CurrentUser</td></tr>
+            <tr><td><code>src/ai/ai.module.ts</code> / <code>app.module.ts</code></td><td>注册 Entity + Provider</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+          <li>
+            <h4>建表（SQL）</h4>
+            <p>对齐 origin <code>v13</code> 的 <code>init.sql</code>。开发若开了 <code>synchronize: true</code>，Entity 也可自动建表，但仍建议 SQL 与对照库一致。</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-sql">CREATE TABLE IF NOT EXISTS kh_ai_session (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(80) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_session_user_updated
+    ON kh_ai_session(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS kh_ai_message (
+    id BIGINT PRIMARY KEY,
+    session_id BIGINT NOT NULL REFERENCES kh_ai_session(id) ON DELETE CASCADE,
+    role VARCHAR(16) NOT NULL,
+    content TEXT NOT NULL,
+    sources JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_message_session_id
+    ON kh_ai_message(session_id, created_at);</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>Entity</h4>
+            <p class="file-path">src/ai/entities/ai-session.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+
+@Entity('kh_ai_session')
+export class AiSessionEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id!: string;
+
+  @Column({
+    name: 'user_id',
+    type: 'bigint',
+    transformer: bigintTransformer,
+  })
+  userId!: string;
+
+  @Column({ type: 'varchar', length: 80 })
+  title!: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
+  updatedAt!: Date;
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/entities/ai-message.entity.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
+import { bigintTransformer } from '../../common/transformers/bigint.transformer';
+import type { ChatSource } from '../chat.types';
+
+@Entity('kh_ai_message')
+export class AiMessageEntity {
+  @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
+  id!: string;
+
+  @Column({
+    name: 'session_id',
+    type: 'bigint',
+    transformer: bigintTransformer,
+  })
+  sessionId!: string;
+
+  @Column({ type: 'varchar', length: 16 })
+  role!: 'user' | 'assistant';
+
+  @Column({ type: 'text' })
+  content!: string;
+
+  /** 仅 assistant：引用溯源列表；user 行一般为 null */
+  @Column({ type: 'jsonb', nullable: true })
+  sources?: ChatSource[] | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
+  createdAt!: Date;
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/chat.types.ts</p>
+            <p>若课 14 把 <code>ChatSource</code> 写在 <code>ai-chat.service.ts</code> 里，请抽到独立文件，供 Entity / Session 共用：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export interface ChatSource {
+  index: number;
+  documentId: string;
+  documentTitle: string;
+  heading: string | null;
+  excerpt: string;
+  score: number;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>DTO</h4>
+            <p class="file-path">src/ai/dto/session.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import {
+  IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength,
+} from 'class-validator';
+
+export class QuerySessionDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number = 1;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  pageSize?: number = 20;
+}
+
+export class CreateSessionDto {
+  @IsOptional() @IsString() @MaxLength(80)
+  title?: string;
+}
+
+export class UpdateSessionDto {
+  @IsString() @MinLength(1) @MaxLength(80)
+  title!: string;
+}</code></pre>
+            </div>
+            <p class="file-path">src/ai/dto/chat.dto.ts（增量）</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export class ChatDto {
+  /** 已有会话；不传则新建 */
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  content!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  topK?: number = 5;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>ChatSessionService（核心）</h4>
+            <p class="file-path">src/ai/chat-session.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectEntityManager } from '@nestjs/typeorm';
+import { EntityManager } from 'typeorm';
+import { nextSnowflakeId } from '../common/snowflake-id';
+import { AiSessionEntity } from './entities/ai-session.entity';
+import { AiMessageEntity } from './entities/ai-message.entity';
+import type { ChatSource } from './chat.types';
+import {
+  CreateSessionDto,
+  QuerySessionDto,
+  UpdateSessionDto,
+} from './dto/session.dto';
+
+const DEFAULT_TITLE = '新对话';
+
+@Injectable()
+export class ChatSessionService {
+  constructor(
+    @InjectEntityManager()
+    private readonly em: EntityManager,
+  ) {}
+
+  async pageMine(userId: string, query: QuerySessionDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [items, total] = await this.em.findAndCount(AiSessionEntity, {
+      where: { userId },
+      order: { updatedAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { items, total, page, pageSize };
+  }
+
+  async create(userId: string, dto: CreateSessionDto) {
+    const title = dto.title?.trim() || DEFAULT_TITLE;
+    const session = this.em.create(AiSessionEntity, {
+      id: nextSnowflakeId(),
+      userId,
+      title: title.slice(0, 80),
+    });
+    return this.em.save(session);
+  }
+
+  async rename(userId: string, id: string, dto: UpdateSessionDto) {
+    const session = await this.getOwned(userId, id);
+    session.title = dto.title.trim().slice(0, 80);
+    return this.em.save(session);
+  }
+
+  async remove(userId: string, id: string) {
+    await this.getOwned(userId, id);
+    // 即使库有 ON DELETE CASCADE，也显式删消息更清晰
+    await this.em.delete(AiMessageEntity, { sessionId: id });
+    await this.em.delete(AiSessionEntity, { id });
+    return { message: '已删除' };
+  }
+
+  async listMessages(userId: string, sessionId: string) {
+    await this.getOwned(userId, sessionId);
+    return this.em.find(AiMessageEntity, {
+      where: { sessionId },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+  }
+
+  /**
+   * 问答落库：无 sessionId 则新建；标题仍为默认名时用首问覆盖。
+   */
+  async appendTurn(
+    userId: string,
+    sessionId: string | undefined,
+    question: string,
+    answer: string,
+    sources: ChatSource[],
+  ) {
+    const session = sessionId
+      ? await this.getOwned(userId, sessionId)
+      : await this.create(userId, { title: titleFromQuestion(question) });
+
+    if (session.title === DEFAULT_TITLE) {
+      session.title = titleFromQuestion(question);
+    }
+    session.updatedAt = new Date();
+    await this.em.save(session);
+
+    const userMsg = this.em.create(AiMessageEntity, {
+      id: nextSnowflakeId(),
+      sessionId: session.id,
+      role: 'user',
+      content: question,
+    });
+    const assistantMsg = this.em.create(AiMessageEntity, {
+      id: nextSnowflakeId(),
+      sessionId: session.id,
+      role: 'assistant',
+      content: answer,
+      sources: sources.length ? sources : null,
+    });
+    await this.em.save([userMsg, assistantMsg]);
+    return session;
+  }
+
+  private async getOwned(userId: string, id: string) {
+    const session = await this.em.findOne(AiSessionEntity, {
+      where: { id, userId },
+    });
+    if (!session) {
+      throw new NotFoundException('会话不存在');
+    }
+    return session;
+  }
+}
+
+function titleFromQuestion(question: string) {
+  const text = question.replace(/\s+/g, ' ').trim();
+  if (!text) return DEFAULT_TITLE;
+  return text.length > 30 ? `${text.slice(0, 30)}…` : text;
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              练习仓若习惯 <code>@InjectRepository</code>，可改成双 Repository 注入，逻辑不变；
+              origin v13 用 <code>EntityManager</code>。
+            </div>
+          </li>
+
+          <li>
+            <h4>注册 Module / Entity</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// ai.module.ts
+providers: [
+  AiChatService,
+  ChatSessionService,
+  HybridRetrievalService,
+  RerankerService, // 若课 14 有
+],
+
+// app.module.ts TypeORM entities 追加：
+AiSessionEntity,
+AiMessageEntity,</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="wire">
+        <h2>接入 <code>/ai/chat</code></h2>
+
+        <h3>1. 改 AiChatService.chat 签名</h3>
+        <p>
+          在已有检索 + LLM 逻辑<strong>之后</strong>调用 <code>appendTurn</code>；
+          「无召回」「空问题」也建议落库，方便侧栏回放（与 v13 一致）。
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">constructor(
+  config: ConfigService,
+  private readonly retrieval: HybridRetrievalService,
+  private readonly sessions: ChatSessionService, // 新增
+) { … }
+
+async chat(
+  question: string,
+  topK = 5,
+  user?: AuthUser,
+  sessionId?: string,
+) {
+  const trimmed = question.trim();
+  if (!trimmed) {
+    return {
+      sessionId: sessionId ?? null,
+      answer: '请输入问题。',
+      sources: [] as ChatSource[],
+    };
+  }
+
+  const hits = await this.retrieval.retrieve(trimmed, topK);
+  if (!hits.length) {
+    const empty = {
+      answer: '知识库里没有相关内容。',
+      sources: [] as ChatSource[],
+    };
+    const session = user
+      ? await this.sessions.appendTurn(
+          user.userId,
+          sessionId,
+          trimmed,
+          empty.answer,
+          empty.sources,
+        )
+      : null;
+    return { sessionId: session?.id ?? sessionId ?? null, ...empty };
+  }
+
+  // … 原有 LLM invoke + toCitedSources …
+
+  const session = user
+    ? await this.sessions.appendTurn(
+        user.userId,
+        sessionId,
+        trimmed,
+        answer,
+        sources,
+      )
+    : null;
+
+  return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
+}</code></pre>
+        </div>
+
+        <h3>2. Controller：CurrentUser + 会话路由</h3>
+        <div class="callout-warning">
+          <strong>路径前缀</strong>：origin 用 <code>@Controller()</code>，路由是
+          <code>POST /ai/chat</code>、<code>GET /ai/sessions</code>。
+          若你练习仓是 <code>@Controller('ai')</code>，请把方法路径改成
+          <code>chat</code> / <code>sessions</code>（避免变成 <code>/ai/ai/chat</code>），
+          或改成与 origin 一样的空前缀。下面按 <strong>origin 路径</strong>写。
+        </div>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">@Controller()
+export class AiController {
+  constructor(
+    private readonly aiChat: AiChatService,
+    private readonly retrieval: HybridRetrievalService,
+    private readonly sessions: ChatSessionService,
+  ) {}
+
+  @Post('rag/search')
+  @RequirePermission(PermissionCode.search)
+  search(@Body() dto: RagSearchDto) {
+    return this.retrieval.retrieve(dto.query.trim(), dto.topK ?? 5);
+  }
+
+  @Post('ai/chat')
+  @RequirePermission(PermissionCode.search)
+  chat(@Body() dto: ChatDto, @CurrentUser() user: AuthUser) {
+    return this.aiChat.chat(
+      dto.content,
+      dto.topK ?? 5,
+      user,
+      dto.sessionId,
+    );
+  }
+
+  @Get('ai/sessions')
+  @RequirePermission(PermissionCode.search)
+  listSessions(
+    @Query() query: QuerySessionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sessions.pageMine(user.userId, query);
+  }
+
+  @Post('ai/sessions')
+  @RequirePermission(PermissionCode.search)
+  createSession(
+    @Body() dto: CreateSessionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sessions.create(user.userId, dto);
+  }
+
+  // 静态段 messages 在 :id 之后没关系；注意不要用会吞掉 sessions 的路由
+  @Get('ai/sessions/:id/messages')
+  @RequirePermission(PermissionCode.search)
+  listMessages(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.sessions.listMessages(user.userId, id);
+  }
+
+  @Patch('ai/sessions/:id')
+  @RequirePermission(PermissionCode.search)
+  renameSession(
+    @Param('id') id: string,
+    @Body() dto: UpdateSessionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.sessions.rename(user.userId, id, dto);
+  }
+
+  @Delete('ai/sessions/:id')
+  @RequirePermission(PermissionCode.search)
+  removeSession(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.sessions.remove(user.userId, id);
+  }
+}</code></pre>
+        </div>
+
+        <h3>3. 自测 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">BASE=http://localhost:3000
+TOKEN=…   # 登录 JWT
+
+# ① 首问：不传 sessionId → 新建会话
+curl -s -X POST "$BASE/ai/chat" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"差旅报销需要哪些材料？","topK":5}' \
+  | jq '{sessionId, answer: .answer[0:80], sources: [.sources[].documentTitle]}'
+
+SID='替换成返回的 sessionId'
+
+# ② 同会话追问
+curl -s -X POST "$BASE/ai/chat" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"content\":\"发票丢失怎么办？\",\"sessionId\":\"$SID\",\"topK\":5}" \
+  | jq '{sessionId, answer: .answer[0:80]}'
+
+# ③ 会话列表（应看到 SID，title 接近首问）
+curl -s "$BASE/ai/sessions?page=1&pageSize=10" \
+  -H "Authorization: Bearer $TOKEN" | jq
+
+# ④ 消息回放（应有 4 条：user/assistant × 2）
+curl -s "$BASE/ai/sessions/$SID/messages" \
+  -H "Authorization: Bearer $TOKEN" \
+  | jq '[.[] | {role, content: .content[0:40], hasSources: (.sources != null)}]'
+
+# ⑤ 重命名 / 删除
+curl -s -X PATCH "$BASE/ai/sessions/$SID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"差旅咨询"}' | jq '{id, title}'
+
+# curl -s -X DELETE "$BASE/ai/sessions/$SID" -H "Authorization: Bearer $TOKEN"
+
+# ⑥ 库表核对
+# psql: SELECT id, title FROM kh_ai_session;
+#        SELECT role, left(content,40) FROM kh_ai_message WHERE session_id=…;</code></pre>
+        </div>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么拆 Session / Message 两张表？</h3>
+        <p>
+          侧栏只要会话列表（轻）；点开再拉消息（重）。一条问答写成两条消息，方便前端按聊天气泡渲染，
+          也方便以后只把最近 N 条 user/assistant 拼进 LLM 上下文。
+        </p>
+        <h3>为什么标题用首问截断？</h3>
+        <p>
+          空会话默认「新对话」；第一次真正提问后用问题前 30 字当标题，侧栏可扫读。
+          用户仍可 <code>PATCH</code> 重命名。
+        </p>
+        <h3>为什么 sources 只挂在 assistant？</h3>
+        <p>
+          溯源是「回答依据了哪些块」；用户问题本身没有 sources。JSONB 存摘录即可，不必再查 ES。
+        </p>
+        <h3>对照 origin <code>v13</code> 阅读顺序</h3>
+        <ol>
+          <li><code>init.sql</code> 两张表</li>
+          <li><code>entities/ai-session.entity.ts</code>、<code>ai-message.entity.ts</code></li>
+          <li><code>chat-session.service.ts</code>（尤其 <code>appendTurn</code> / <code>getOwned</code>）</li>
+          <li><code>ai-chat.service.ts</code> 如何在 chat 末尾落库</li>
+          <li><code>ai.controller.ts</code> 会话路由</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与课 14 / origin 差异</h2>
+        <table>
+          <thead><tr><th>点</th><th>课 14（至 v11）</th><th>本课（v13）</th></tr></thead>
+          <tbody>
+            <tr><td>chat 响应</td><td><code>{ answer, sources }</code></td><td>多 <code>sessionId</code></td></tr>
+            <tr><td>持久化</td><td>无</td><td>Postgres 会话 + 消息</td></tr>
+            <tr><td>多用户</td><td>无状态</td><td>按 <code>userId</code> 隔离</td></tr>
+            <tr><td>多轮给 LLM</td><td>—</td><td><strong>本课不做</strong>（只存历史；上下文拼接可另开课）</td></tr>
+            <tr><td>流式 SSE</td><td>—</td><td>origin 更后分支才有；本课不对齐</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          练习仓若还没有课 14 的 Hybrid / Chat，请先完成
+          <a href="./14-rag-hybrid-citation-v11.html">课 14</a>；本课假定 <code>AiChatService.chat</code> 已能返回答案。
+        </div>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>401 / 无 userId</td><td>chat 是否注入 <code>@CurrentUser()</code>；JWT 是否带用户</td></tr>
+            <tr><td>会话 404</td><td>是否用了别人的 sessionId；或删过后还在用</td></tr>
+            <tr><td>有 answer 无落库</td><td>是否忘了 <code>appendTurn</code>；user 是否 undefined</td></tr>
+            <tr><td>表不存在</td><td>跑 init.sql；AppModule entities 是否注册</td></tr>
+            <tr><td><code>/ai/ai/chat</code> 404</td><td>Controller 前缀重复；对照「路径前缀」警告</td></tr>
+            <tr><td>标题一直「新对话」</td><td><code>create</code> 时已用首问作 title，不会进 DEFAULT 分支；或比较字符串不全等</td></tr>
+            <tr><td>删除会话后消息还在</td><td>是否只删了 session；应先删 message 或依赖 CASCADE</td></tr>
+            <tr><td>sources 列类型错</td><td>Postgres 用 <code>jsonb</code>；TypeORM <code>type: 'jsonb'</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐 origin v13 检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>origin 位置</th></tr></thead>
+          <tbody>
+            <tr><td>建表 SQL + 索引</td><td><code>init-scripts/postgresql/init.sql</code></td></tr>
+            <tr><td><code>AiSessionEntity</code> / <code>AiMessageEntity</code></td><td><code>src/ai/entities/</code></td></tr>
+            <tr><td><code>ChatSource</code> 类型</td><td><code>src/ai/chat.types.ts</code></td></tr>
+            <tr><td><code>ChatSessionService.appendTurn</code></td><td><code>chat-session.service.ts</code></td></tr>
+            <tr><td><code>getOwned</code> 归属校验</td><td>同上</td></tr>
+            <tr><td><code>ChatDto.sessionId</code></td><td><code>dto/chat.dto.ts</code></td></tr>
+            <tr><td>会话 CRUD DTO</td><td><code>dto/session.dto.ts</code></td></tr>
+            <tr><td>chat 末尾落库 + 返回 sessionId</td><td><code>ai-chat.service.ts</code></td></tr>
+            <tr><td><code>GET/POST/PATCH/DELETE /ai/sessions…</code></td><td><code>ai.controller.ts</code></td></tr>
+            <tr><td>Module 注册 ChatSessionService</td><td><code>ai.module.ts</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>建议动手顺序</h3>
+        <ol>
+          <li>建表 + Entity + 注册</li>
+          <li>实现 <code>ChatSessionService</code>（先测 create / pageMine / appendTurn）</li>
+          <li>改 <code>chat</code> 落库并返回 <code>sessionId</code></li>
+          <li>补会话列表 / 消息 / 重命名 / 删除 API</li>
+          <li>用 curl 验收清单自测一遍</li>
+        </ol>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          若还要「把历史消息拼进下一次 LLM prompt」，那是多轮上下文增强，可另开一课，不要和本课持久化混在一起。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) {
+          if (s.el.offsetTop <= y) current = s;
+        });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

@@ -60,7 +60,7 @@
 | 4 | `04-review-mq.html` | 审核发布后发 MQ；消费者处理 | RabbitMQ | `src/mq/`、document 审核 |
 | 5 | `05-pipeline-search-index.html` | ES 全文索引 + 简单搜索 API | Elasticsearch | `pipeline/search-index`、`search/` |
 | 6 | `06-pipeline-rag.html` | 分块→Embedding→向量检索 | OpenAI（或 mock） | `chunking`、`embedding`、`vector-index` |
-| 7 | `07-pipeline-kg.html` | 抽实体关系→Neo4j + 图查询 API | Neo4j | `extraction`、`graph-build`、`graph/` |
+| 7 | `07-pipeline-kg.html` | 抽实体关系→Neo4j + 图查询 API | Neo4j | `src/graph/`（extraction、graph-build、controller） |
 | 8 | `08-team-mail-align.html` | Team、邮件激活/重置等收尾对齐 | Mailer | `team/`、auth 邮件相关 |
 
 **顺序**：串行；未完成 N 不建议跳到 N+2。课 0 若脚手架已熟可略读。课 6 正文同时给真实 Embedding 与 mock 两套。

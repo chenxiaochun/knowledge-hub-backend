@@ -101,7 +101,7 @@
 <body>
   <header class="header">
     <h1>第 7 课 · 知识图谱 Neo4j</h1>
-    <p><a href="./index.html">← 课程目录</a> · 上接 <a href="./06-pipeline-rag.html">第 6 课</a> · 对照 origin <code>extraction</code> / <code>graph-build</code> / <code>graph/</code></p>
+    <p><a href="./index.html">← 课程目录</a> · 上接 <a href="./06-pipeline-rag.html">第 6 课</a> · 练习仓路径 <code>src/graph/</code>（对照 origin <code>extraction</code> / <code>graph-build</code>）</p>
   </header>
   <div class="layout">
     <nav id="nav"><ul>
@@ -166,10 +166,10 @@ DocumentChunk-[:MENTIONS]-&gt;(KnowledgeEntity)
           <thead><tr><th>路径</th><th>动作</th></tr></thead>
           <tbody>
             <tr><td><code>src/mq/mq.constants.ts</code></td><td>追加 KG 常量</td></tr>
-            <tr><td><code>src/pipeline/kg-extraction.schema.ts</code></td><td>新建（zod + system prompt）</td></tr>
-            <tr><td><code>src/pipeline/extraction.service.ts</code></td><td>新建（mock / llm）</td></tr>
-            <tr><td><code>src/pipeline/graph-build.service.ts</code></td><td>新建</td></tr>
-            <tr><td><code>src/graph/graph.controller.ts</code> 等</td><td>查询 API</td></tr>
+            <tr><td><code>src/graph/kg-extraction.schema.ts</code></td><td>新建（zod + system prompt）</td></tr>
+            <tr><td><code>src/graph/extraction.service.ts</code></td><td>新建（mock / llm）</td></tr>
+            <tr><td><code>src/graph/graph-build.service.ts</code></td><td>新建</td></tr>
+            <tr><td><code>src/graph/graph.controller.ts</code> / dto / module</td><td>查询 API 与模块接线</td></tr>
             <tr><td>Publisher / Consumer</td><td>投递与处理 KG 消息</td></tr>
           </tbody>
         </table>
@@ -215,7 +215,7 @@ export const KG_RK_DELETE = 'kg.graph.delete';</code></pre></div>
               <code>ChatOpenAI.withStructuredOutput(kgExtractionResultSchema)</code>；
               失败或未配 Key 自动回退 mock。
             </div>
-            <p class="file-path">src/pipeline/kg-extraction.schema.ts</p>
+            <p class="file-path">src/graph/kg-extraction.schema.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">/**
  * 通用知识图谱抽取 Schema（练习版，对齐 origin）
@@ -352,7 +352,7 @@ export function buildExtractionSystemPrompt(
 只返回 JSON，不要 markdown 或其它说明。关系对象的字段名是 relation（不要写成 type）。示例：
 {"entities":[{"name":"财务部","type":"ORGANIZATION","description":"","aliases":[]}],"relations":[{"source":"财务部","target":"差旅报销","relation":"RESPONSIBLE_FOR","weight":0.8}]}`;
 }</code></pre></div>
-            <p class="file-path">src/pipeline/extraction.service.ts</p>
+            <p class="file-path">src/graph/extraction.service.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -552,18 +552,18 @@ export class ExtractionService {
   }
 }</code></pre></div>
             <p>
-              记得在 <code>PipelineModule</code> 的 providers/exports 里加上
-              <code>ExtractionService</code>。
+              抽取与建图放在 <code>GraphModule</code>（providers：<code>ExtractionService</code>、<code>GraphBuildService</code>）；
+              <code>ChunkingService</code> 仍由 <code>PipelineModule</code> 导出，供 RAG 与建图共用。
             </p>
           </li>
           <li>
             <h4>GraphBuildService（完整要点）</h4>
-            <p class="file-path">src/pipeline/graph-build.service.ts</p>
+            <p class="file-path">src/graph/graph-build.service.ts</p>
             <div class="code-block"><button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import neo4j, { Driver } from 'neo4j-driver';
-import { ChunkingService } from './chunking.service';
+import { ChunkingService } from '../pipeline/chunking.service';
 import { ExtractionService } from './extraction.service';
 
 @Injectable()
@@ -740,9 +740,9 @@ curl -s 'http://localhost:3000/graph/search?keyword=知识' \
         <p>重复发布同一文档若不删旧图，会边/节点翻倍。origin 的 <code>deleteForDocument</code> 还会清掉无人 <code>MENTIONS</code> 的孤儿实体，避免图膨胀。</p>
         <h3>对照 origin 建议阅读顺序</h3>
         <ol>
-          <li><code>src/pipeline/graph-build.service.ts</code>（建图 + <code>searchGraph</code> / <code>listNodes</code> / <code>listEdges</code>）</li>
-          <li><code>extraction</code> / structured output schema</li>
-          <li><code>src/graph/</code> Controller 与 DTO</li>
+          <li><code>src/graph/graph-build.service.ts</code>（建图 + <code>searchGraph</code> / <code>listNodes</code> / <code>listEdges</code>）</li>
+          <li><code>src/graph/extraction.service.ts</code> / <code>kg-extraction.schema.ts</code></li>
+          <li><code>src/graph/</code> Controller、DTO、<code>graph.module.ts</code></li>
           <li>发布后触发 KG 的 MQ 与 Orchestrator 分支</li>
         </ol>
       </section>
@@ -852,7 +852,7 @@ export type GraphSubgraphResult = {
 };</code></pre></div>
 
         <h4><code>nodeKey</code>：前后端统一的节点 id</h4>
-        <p class="file-path">src/pipeline/graph-build.service.ts</p>
+        <p class="file-path">src/graph/graph-build.service.ts</p>
         <div class="code-block"><button type="button" class="copy-btn">复制</button>
           <pre><code class="lang-ts">private nodeKey(labels: string[], props: Record&lt;string, unknown&gt;): string {
   const primary = labels[0] ?? 'Unknown';
@@ -868,7 +868,7 @@ private toNumber(value: unknown, fallback: number): number {
 }</code></pre></div>
 
         <h4><code>searchGraphSubgraph</code>（完整可复制）</h4>
-        <p class="file-path">src/pipeline/graph-build.service.ts</p>
+        <p class="file-path">src/graph/graph-build.service.ts</p>
         <div class="code-block"><button type="button" class="copy-btn">复制</button>
           <pre><code class="lang-ts">async searchGraphSubgraph(keyword: string, limit = 50): Promise&lt;GraphSubgraphResult&gt; {
   if (!this.driver) return { nodes: [], edges: [] };
@@ -969,7 +969,7 @@ private toNumber(value: unknown, fallback: number): number {
 }</code></pre></div>
 
         <h4>Controller 路由</h4>
-        <p class="file-path">src/pipeline/graph.controller.ts（或 origin 的 <code>src/graph/graph.controller.ts</code>）</p>
+        <p class="file-path">src/graph/graph.controller.ts</p>
         <div class="code-block"><button type="button" class="copy-btn">复制</button>
           <pre><code class="lang-ts">@Get('search/subgraph')
 searchSubgraph(

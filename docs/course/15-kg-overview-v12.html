@@ -219,7 +219,7 @@ getOverview 输出（给前端 ECharts / D3 / G6）：
         <table>
           <thead><tr><th>路径</th><th>动作</th></tr></thead>
           <tbody>
-            <tr><td><code>src/pipeline/graph-build.service.ts</code></td><td>改：文档 MERGE 写 tags；新增 getOverview、toNumber</td></tr>
+            <tr><td><code>src/graph/graph-build.service.ts</code></td><td>改：文档 MERGE 写 tags；新增 getOverview、toNumber</td></tr>
             <tr><td><code>src/graph/dto/graph-query.dto.ts</code></td><td>改：新增 GraphOverviewDto</td></tr>
             <tr><td><code>src/graph/graph.controller.ts</code></td><td>改：overview 路由 + 类级权限</td></tr>
             <tr><td><code>src/main.ts</code></td><td>可选：enableCors</td></tr>
@@ -233,7 +233,7 @@ getOverview 输出（给前端 ECharts / D3 / G6）：
 
           <li>
             <h4>文档节点写入 tags（buildForDocument 内 MERGE）</h4>
-            <p class="file-path">src/pipeline/graph-build.service.ts</p>
+            <p class="file-path">src/graph/graph-build.service.ts</p>
             <p>在创建 <code>KnowledgeDocument</code> 的 Cypher 里追加 <code>d.tags</code>：</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
@@ -302,7 +302,7 @@ export class GraphController {
 
           <li>
             <h4>getOverview（完整 · origin v12）</h4>
-            <p class="file-path">src/pipeline/graph-build.service.ts</p>
+            <p class="file-path">src/graph/graph-build.service.ts</p>
             <p>下面为 origin v12 <strong>完整可复制</strong> 的 <code>getOverview</code>（~320 行；粘贴进 <code>GraphBuildService</code>，放在 <code>searchGraph</code> 等方法之后）：</p>
             <div class="code-block">
               <button type="button" class="copy-btn">复制</button>

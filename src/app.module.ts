@@ -11,7 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { DocumentReviewEntity } from './document/entities/document-review.entity';
 import { DocumentEntity } from './document/entities/document.entity';
-import { GraphModule } from './pipeline/graph.module';
+import { GraphModule } from './graph/graph.module';
 import { RedisModule } from './redis/redis.module';
 import { SearchModule } from './search/search.module';
 import { StorageModule } from './storage/storage.module';

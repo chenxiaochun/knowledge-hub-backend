@@ -8,8 +8,6 @@ import {
 } from '../document/schemas/document-content.schema';
 import { ChunkingService } from './chunking.service';
 import { EmbeddingService } from './embedding.service';
-import { ExtractionService } from './extraction.service';
-import { GraphBuildService } from './graph-build.service';
 import { RagService } from './rag.service';
 import { SearchIndexService } from './search-index.service';
 import { VectorIndexService } from './vector-index.service';
@@ -27,8 +25,6 @@ import { VectorIndexService } from './vector-index.service';
     EmbeddingService,
     VectorIndexService,
     RagService,
-    ExtractionService,
-    GraphBuildService,
   ],
   exports: [
     SearchIndexService,
@@ -36,8 +32,6 @@ import { VectorIndexService } from './vector-index.service';
     EmbeddingService,
     VectorIndexService,
     RagService,
-    ExtractionService,
-    GraphBuildService,
   ],
 })
 export class PipelineModule {}

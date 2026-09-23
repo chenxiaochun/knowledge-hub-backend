@@ -7,19 +7,20 @@ import { Model } from 'mongoose';
 import neo4j, { Driver } from 'neo4j-driver';
 import { Repository } from 'typeorm';
 
+import type { GraphNodeHitDto } from './dto/graph-node-hit.dto';
 import type {
   GraphSubgraphEdgeDto,
   GraphSubgraphNodeDto,
   GraphSubgraphResultDto,
 } from './dto/graph-sub-search.dto';
-import type { GraphNodeHitDto } from './dto/graph-node-hit.dto';
 
+import { DocumentStatus } from '../document/document-status';
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
   DocumentContent,
   DocumentContentDocument,
 } from '../document/schemas/document-content.schema';
-import { ChunkingService } from './chunking.service';
+import { ChunkingService } from '../pipeline/chunking.service';
 import { ExtractionService } from './extraction.service';
 
 @Injectable()
@@ -93,7 +94,14 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`正文为空，跳过 KG：documentId=${documentId}`);
       return;
     }
-    await this.buildForDocument({ id: doc.id, title: doc.title, content });
+    await this.buildForDocument({
+      id: doc.id,
+      title: doc.title,
+      content,
+      tags: doc.tags ?? '',
+      authorId: doc.authorId ?? '',
+      status: doc.status,
+    });
   }
 
   async deleteForDocument(documentId: string) {
@@ -119,7 +127,14 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async buildForDocument(doc: { id: string; title: string; content: string }) {
+  async buildForDocument(doc: {
+    id: string;
+    title: string;
+    content: string;
+    tags: string;
+    authorId: string;
+    status: DocumentStatus;
+  }) {
     if (!this.driver) {
       this.logger.warn(`Neo4j 未连接，跳过 KG 构建：documentId=${doc.id}`);
       return;
@@ -127,10 +142,16 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     await this.deleteForDocument(doc.id);
     const session = this.driver.session();
     try {
-      await session.run(`MERGE (d:KnowledgeDocument {id: $id}) SET d.title = $title`, {
-        id: doc.id,
-        title: doc.title,
-      });
+      await session.run(
+        `MERGE (d:KnowledgeDocument {id: $id}) SET d.title = $title, d.summary = $summary, d.categoryId = $categoryId,
+        d.authorId = $authorId, d.status = $status, d.tags = $tags,
+        d.updatedAt = $now, d.createdAt = coalesce(d.createdAt, $now)`,
+        {
+          id: doc.id,
+          title: doc.title,
+          tags: doc.tags ?? '',
+        },
+      );
       const chunks = this.chunking.chunk({
         content: doc.content,
         documentId: doc.id,
