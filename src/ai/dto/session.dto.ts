@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
+import { AiSessionEntity } from '../entities/ai-session.entity';
+
 export class QuerySessionDto {
   @IsOptional()
   @Type(() => Number)
@@ -28,4 +30,12 @@ export class UpdateSessionDto {
   @MinLength(1)
   @MaxLength(80)
   title!: string;
+}
+
+/** GET /ai/sessions 分页结果 */
+export class SessionPageDto {
+  items!: AiSessionEntity[];
+  total!: number;
+  page!: number;
+  pageSize!: number;
 }

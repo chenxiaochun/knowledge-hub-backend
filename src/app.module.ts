@@ -5,6 +5,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 
+import { AiModule } from './ai/ai.module';
+import { AiMessageEntity } from './ai/entities/ai-message.entity';
+import { AiSessionEntity } from './ai/entities/ai-session.entity';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -43,6 +46,8 @@ import { UserModule } from './user/user.module';
           RolePermissionEntity,
           DocumentEntity,
           DocumentReviewEntity,
+          AiSessionEntity,
+          AiMessageEntity,
         ],
         synchronize: true,
       }),
@@ -78,6 +83,7 @@ import { UserModule } from './user/user.module';
         },
       }),
     }),
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

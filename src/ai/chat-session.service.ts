@@ -3,10 +3,15 @@ import { InjectEntityManager } from '@nestjs/typeorm';
 
 import { EntityManager } from 'typeorm';
 
-import type { ChatSource } from './chat.types';
+import type { ChatSourceDto } from './dto/chat-response.dto';
 
 import { nextSnowflakeId } from '../common/snowflake-id';
-import { CreateSessionDto, QuerySessionDto, UpdateSessionDto } from './dto/session.dto';
+import {
+  CreateSessionDto,
+  QuerySessionDto,
+  SessionPageDto,
+  UpdateSessionDto,
+} from './dto/session.dto';
 import { AiMessageEntity } from './entities/ai-message.entity';
 import { AiSessionEntity } from './entities/ai-session.entity';
 
@@ -16,7 +21,7 @@ const DEFAULT_TITLE = '新对话';
 export class ChatSessionService {
   constructor(@InjectEntityManager() private readonly em: EntityManager) {}
 
-  async pageMine(userId: string, query: QuerySessionDto) {
+  async pageMine(userId: string, query: QuerySessionDto): Promise<SessionPageDto> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const [items, total] = await this.em.findAndCount(AiSessionEntity, {
@@ -68,7 +73,7 @@ export class ChatSessionService {
     sessionId: string | undefined,
     question: string,
     answer: string,
-    sources: ChatSource[],
+    sources: ChatSourceDto[],
   ) {
     const session = sessionId
       ? await this.getOwned(userId, sessionId)

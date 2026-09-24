@@ -7,19 +7,11 @@ import { AuthUser } from 'src/auth/auth-user.interface';
 
 import { ChunkHit } from '../pipeline/types/pipeline.types';
 import { ChatSessionService } from './chat-session.service';
+import { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 
 const EXCERPT_LEN = 200;
 const CITATION_RE = /\[(\d+)\]/g;
-
-export interface ChatSource {
-  index: number;
-  documentId: string;
-  documentTitle: string;
-  heading: string | null;
-  excerpt: string;
-  score: number;
-}
 
 @Injectable()
 export class AiChatService {
@@ -44,13 +36,18 @@ export class AiChatService {
     });
   }
 
-  async chat(question: string, topK = 5, user?: AuthUser, sessionId?: string) {
+  async chat(
+    question: string,
+    topK = 5,
+    user?: AuthUser,
+    sessionId?: string,
+  ): Promise<ChatResponseDto> {
     const trimmed = question.trim();
-    if (!trimmed) return { answer: '请输入问题。', sources: [] as ChatSource[] };
+    if (!trimmed) return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
 
     const hits = await this.retrieval.retrieve(trimmed, topK);
     if (!hits.length) {
-      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSourceDto[] };
       const session = user
         ? await this.sessions.appendTurn(
             user.userId,
@@ -91,7 +88,7 @@ export class AiChatService {
    * 从回答中解析 [n] 引用，映射为命中块来源列表。
    * 若回答里没有任何合法引用，则兜底返回全部命中块。
    */
-  private toCitedSources(answer: string, hits: ChunkHit[]): ChatSource[] {
+  private toCitedSources(answer: string, hits: ChunkHit[]): ChatSourceDto[] {
     const cited = new Set<number>();
     for (const match of answer.matchAll(CITATION_RE)) {
       const n = Number(match[1]);

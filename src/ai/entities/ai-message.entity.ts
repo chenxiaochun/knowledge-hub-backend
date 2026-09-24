@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
-import type { ChatSource } from '../chat.types';
+import type { ChatSourceDto } from '../dto/chat-response.dto';
 
 import { bigintTransformer } from '../../common/transformers/bigint.transformer';
 
@@ -24,7 +24,7 @@ export class AiMessageEntity {
 
   /** 仅 assistant：引用溯源列表；user 行一般为 null */
   @Column({ type: 'jsonb', nullable: true })
-  sources?: ChatSource[] | null;
+  sources?: ChatSourceDto[] | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt!: Date;
