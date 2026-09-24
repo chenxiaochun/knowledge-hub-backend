@@ -1,7 +1,20 @@
 import { Type } from 'class-transformer';
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min, Max } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ChatDto {
-  @IsString() @IsNotEmpty() content!: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) topK?: number = 5;
+  /** 已有会话；不传则新建 */
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  content!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  topK?: number = 5;
 }

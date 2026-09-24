@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
+import { AuthUser } from 'src/auth/auth-user.interface';
 
 import { ChunkHit } from '../pipeline/types/pipeline.types';
+import { ChatSessionService } from './chat-session.service';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 
 const EXCERPT_LEN = 200;
@@ -27,6 +29,7 @@ export class AiChatService {
   constructor(
     config: ConfigService,
     private readonly retrieval: HybridRetrievalService,
+    private readonly sessions: ChatSessionService,
   ) {
     const apiKey = config.get('OPENAI_API_KEY') || config.get('DASHSCOPE_API_KEY') || undefined;
     if (!apiKey) return;
@@ -41,13 +44,23 @@ export class AiChatService {
     });
   }
 
-  async chat(question: string, topK = 5) {
+  async chat(question: string, topK = 5, user?: AuthUser, sessionId?: string) {
     const trimmed = question.trim();
     if (!trimmed) return { answer: '请输入问题。', sources: [] as ChatSource[] };
 
     const hits = await this.retrieval.retrieve(trimmed, topK);
     if (!hits.length) {
-      return { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSource[] };
+      const session = user
+        ? await this.sessions.appendTurn(
+            user.userId,
+            sessionId,
+            trimmed,
+            empty.answer,
+            empty.sources,
+          )
+        : null;
+      return { sessionId: session?.id ?? sessionId ?? null, ...empty };
     }
     if (!this.llm) {
       throw new ServiceUnavailableException('未配置 LLM API Key');
@@ -66,7 +79,12 @@ export class AiChatService {
     const answer =
       typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
     const sources = this.toCitedSources(answer, hits);
-    return { answer, sources };
+
+    const session = user
+      ? await this.sessions.appendTurn(user.userId, sessionId, trimmed, answer, sources)
+      : null;
+
+    return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
   }
 
   /**

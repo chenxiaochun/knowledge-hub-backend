@@ -42,3 +42,25 @@ CREATE TABLE IF NOT EXISTS kh_document_review (
 CREATE INDEX IF NOT EXISTS idx_kh_document_review_document_id ON kh_document_review(document_id);
 -- 待办列表：仅 review_result IS NULL 的行
 CREATE INDEX IF NOT EXISTS idx_kh_document_review_pending ON kh_document_review(review_result) WHERE review_result IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS kh_ai_session (
+    id BIGINT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(80) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_session_user_updated
+    ON kh_ai_session(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS kh_ai_message (
+    id BIGINT PRIMARY KEY,
+    session_id BIGINT NOT NULL REFERENCES kh_ai_session(id) ON DELETE CASCADE,
+    role VARCHAR(16) NOT NULL,
+    content TEXT NOT NULL,
+    sources JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_ai_message_session_id
+    ON kh_ai_message(session_id, created_at);
