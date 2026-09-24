@@ -111,9 +111,15 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-  # docker-compose.yml 追加（开发用，无 IK）
+  # Elasticsearch 8.17.0 + IK（中文分词；检索 multi_match 依赖 ik_smart）
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+        RUN elasticsearch-plugin install --batch \
+            https://release.infinilabs.com/analysis-ik/stable/elasticsearch-analysis-ik-8.17.0.zip
+    image: knowledge-hub-elasticsearch:8.17.0-ik
     container_name: knowledge_hub_elasticsearch
     ports:
       - '9200:9200'
