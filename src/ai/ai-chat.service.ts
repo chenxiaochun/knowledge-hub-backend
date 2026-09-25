@@ -33,6 +33,9 @@ export class AiChatService {
       configuration: {
         baseURL: config.get('OPENAI_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1'),
       },
+      modelKwargs: {
+        enable_thinking: true,
+      },
     });
   }
 

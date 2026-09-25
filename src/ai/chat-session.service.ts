@@ -14,8 +14,7 @@ import {
 } from './dto/session.dto';
 import { AiMessageEntity } from './entities/ai-message.entity';
 import { AiSessionEntity } from './entities/ai-session.entity';
-
-const DEFAULT_TITLE = '新对话';
+import { DEFAULT_TITLE, titleFromQuestion } from './titleFromQuestion';
 
 @Injectable()
 export class ChatSessionService {
@@ -111,10 +110,12 @@ export class ChatSessionService {
     }
     return session;
   }
-}
 
-function titleFromQuestion(question: string) {
-  const text = question.replace(/\s+/g, ' ').trim();
-  if (!text) return DEFAULT_TITLE;
-  return text.length > 30 ? `${text.slice(0, 30)}…` : text;
+  async touchTitle(userId: string, id: string, question: string) {
+    const session = await this.getOwned(userId, id);
+    if (session.title === DEFAULT_TITLE) {
+      session.title = titleFromQuestion(question);
+    }
+    return this.em.save(session);
+  }
 }

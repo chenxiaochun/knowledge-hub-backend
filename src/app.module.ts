@@ -19,6 +19,7 @@ import { RedisModule } from './redis/redis.module';
 import { SearchModule } from './search/search.module';
 import { StorageModule } from './storage/storage.module';
 import { TeamModule } from './team/team.module';
+import { ToolsModule } from './tools/tools.module';
 import { PermissionEntity } from './user/entities/permission.entity';
 import { RolePermissionEntity } from './user/entities/role-permission.entity';
 import { RoleEntity } from './user/entities/role.entity';
@@ -84,6 +85,7 @@ import { UserModule } from './user/user.module';
       }),
     }),
     AiModule,
+    ToolsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 17 · SSE 流式问答与 UI 组件渲染（origin v14）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 260px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 920px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.8rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block { border-left: 4px solid #3b82f6; padding-left: 1rem; }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 17 · SSE 流式问答与 UI 组件渲染 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./16-ai-chat-session-v13.html">课 16</a> ·
+      对照 origin 后端 <code>v14</code> + 前端 <code>knowledge-hub-frontend-origin</code> Chat 页
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">协议与事件</a></li>
+        <li><a href="#backend">后端：完整实现</a></li>
+        <li><a href="#websearch">↳ 可选联网（后端）</a></li>
+        <li><a href="#frontend">前端：完整实现</a></li>
+        <li><a href="#parts">↳ 按 part 渲染</a></li>
+        <li><a href="#websearch-ui">↳ 可选联网卡片</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 14/16 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          把课 14/16 的「一次性 JSON 回答」升级为
+          <strong>AI SDK UI Message Stream（SSE）</strong>：
+          后端边检索边推事件，前端用 <code>useChat</code> 增量拼 <code>parts</code>，
+          用组件分别渲染<strong>状态 / 检索 / 思考 / 正文 / 引用 / 联网工具</strong>。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：后端在练习仓 <code>knowledge-hub-backend</code> 手敲；
+          UI 对照 <code>knowledge-hub-frontend-origin</code> 的
+          <code>ChatPage.tsx</code> / <code>ChatMessageParts.tsx</code>，在你的前端仓实现。
+          <strong>不替你改业务代码。</strong>
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li><code>POST /ai/chat/stream</code> 响应头含 <code>text/event-stream</code>（或 AI SDK 等价流协议）；curl 能看到多行事件</li>
+            <li>流过程中依次出现：会话 id → 检索状态 → retrieve/sources →（可选）思考 → 正文 delta → finish</li>
+            <li>前端气泡：检索卡片、思考折叠块、正文打字效果、结束后的引用列表</li>
+            <li><code>data-session</code> 能写入 URL <code>?session=</code>；结束后刷新左侧会话列表（课 16）</li>
+            <li>流式中途切换/删除会话被拦截；可点「停止」</li>
+            <li>（可选）配置 <code>BOCHA_API_KEY</code> 后，模型会调 <code>web_search</code>；气泡出现联网搜索卡片</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 14（检索+作答）+ 课 16（会话落库）已通；
+          LLM Key 可用。联网搜索（Bocha）为可选增强，不配 Key 时 tool 返回提示即可。
+          <br><strong>不需要 Redis</strong>（流式本身不依赖；会话仍在 Postgres）。
+        </div>
+        <h3>依赖增量（后端）</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">pnpm add ai @ai-sdk/langchain langchain zod
+# 若课 14 已有 @langchain/openai @langchain/core 则复用
+
+# .env
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+MODEL_NAME=qwen-plus
+AI_CHAT_TIMEOUT_MS=60000
+# 百炼思考链（可选，默认开）
+# LLM_ENABLE_THINKING=true
+# 联网（可选）
+# BOCHA_API_KEY=</code></pre>
+        </div>
+        <h3>依赖增量（前端，动手时再到前端节）</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">pnpm add ai @ai-sdk/react
+# 版本尽量与后端 ai 主版本同代（origin v14 用 ai@7）</code></pre>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>协议与事件（先懂再写）</h2>
+        <p>
+          origin v14 <strong>不是</strong>手写 <code>res.write('data: ...')</code> 的简陋 SSE，
+          而是 Vercel AI SDK 的 <strong>UI Message Stream</strong>：
+          后端 <code>createUIMessageStream</code> + <code>pipeUIMessageStreamToResponse</code>，
+          前端 <code>DefaultChatTransport</code> + <code>useChat</code> 自动解析。
+        </p>
+        <div class="flow">POST /ai/chat/stream  { messages, sessionId?, topK? }
+  │
+  ├─ writer: start
+  ├─ data-session     { sessionId }     ← 侧栏/URL
+  ├─ data-status      { stage, text }   ← 「正在检索…」
+  ├─ data-retrieve    { query, items }  ← 检索卡片
+  ├─ data-sources     ChatSource[]      ← 引用数据
+  ├─ source-document  …                 ← SDK 标准溯源 part（可选）
+  ├─ Agent.stream → toUIMessageStream
+  │     reasoning / text-delta / tool-*  ← 思考、正文、web_search
+  └─ finish
+  onFinish → appendTurn（课 16 落库）</div>
+
+        <table>
+          <thead><tr><th>part.type</th><th>含义</th><th>UI 怎么渲</th></tr></thead>
+          <tbody>
+            <tr><td><code>data-session</code></td><td>新建/确认会话</td><td>不渲染气泡；<code>onData</code> 里改路由</td></tr>
+            <tr><td><code>data-status</code></td><td>阶段提示</td><td>灰色状态行（检索完成后可隐藏 retrieve 文案）</td></tr>
+            <tr><td><code>data-retrieve</code></td><td>知识库命中列表</td><td><code>&lt;details&gt;</code> 检索卡片</td></tr>
+            <tr><td><code>data-sources</code></td><td>完整 sources</td><td>正文结束后的引用列表（流式中可暂不展示）</td></tr>
+            <tr><td><code>reasoning</code> / <code>data-think</code></td><td>思考过程</td><td>折叠「思考中…」</td></tr>
+            <tr><td><code>text</code></td><td>回答正文（增量）</td><td>Markdown；流式时隐藏底部引用</td></tr>
+            <tr><td>tool <code>web_search</code></td><td>联网结果</td><td>搜索卡片（pending / 成功 / 失败）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="backend">
+        <h2>后端：完整实现</h2>
+        <p>
+          按 <strong>1→5</strong> 做完主链路，用 curl 确认能出流；再做可选的第 6 步联网。
+          前端一节等后端 curl 通了再开始。
+        </p>
+        <ol class="step-list">
+          <li>
+            <h4>1. DTO（兼容 useChat 请求体）</h4>
+            <p class="file-path">src/ai/dto/chat-stream.dto.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Type } from 'class-transformer';
+import { Allow, IsArray, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+
+/** useChat / DefaultChatTransport 会带 messages + 若干扩展字段 */
+export class ChatStreamDto {
+  @IsArray()
+  messages!: Array&lt;{
+    role?: string;
+    parts?: Array&lt;{ type?: string; text?: string }&gt;;
+  }&gt;;
+
+  @IsOptional() @IsString()
+  sessionId?: string;
+
+  @IsOptional() @Type(() =&gt; Number) @IsInt() @Min(1) @Max(10)
+  topK?: number;
+
+  @IsOptional() @IsString()
+  id?: string;
+
+  @IsOptional() @Allow()
+  trigger?: unknown;
+
+  @IsOptional() @Allow()
+  messageId?: unknown;
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>2. 会话：touchTitle</h4>
+            <p>流式若已有 <code>sessionId</code>，不要每次新建；标题仍是「新对话」时用首问覆盖：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async touchTitle(userId: string, id: string, question: string) {
+  const session = await this.getOwned(userId, id);
+  if (session.title === DEFAULT_TITLE) {
+    session.title = titleFromQuestion(question);
+  }
+  return this.em.save(session);
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>3. AiStreamService（核心编排，完整实现）</h4>
+            <p class="file-path">src/ai/ai-stream.service.ts</p>
+            <p>
+              对齐 origin <code>v14</code> 同名文件。本步先跑通<strong>主链路</strong>
+             （会话 → 检索 → Agent 正文流 → onFinish 落库）；
+              <code>web_search</code> 留到第 6 步再挂（代码里已标注释位置）。
+            </p>
+
+            <p><strong>execute 里四段编排</strong></p>
+            <ol>
+              <li><code>data-session</code>：有 sessionId 则 <code>touchTitle</code>，否则 <code>create</code></li>
+              <li>检索：<code>data-status</code> → <code>retrieve</code> → <code>data-retrieve</code> / <code>data-sources</code> / <code>source-document</code></li>
+              <li>Agent：拼 prompt → <code>agent.stream</code> → <code>mapReasoningStream</code> → <code>toUIMessageStream</code> → <code>writer.merge</code></li>
+              <li><code>onFinish</code>：拼 text parts → 按正文 <code>[n]</code> 过滤 sources → <code>appendTurn</code></li>
+            </ol>
+
+            <div class="callout-warn">
+              <ul>
+                <li>必须 <code>pipeUIMessageStreamToResponse</code> 接管 <code>res</code>，不要再 return JSON。</li>
+                <li><code>sendStart/sendFinish: false</code>：外层已写 <code>start</code>，避免重复帧。</li>
+                <li>无 LLM Key 时构造函数不建 agent；execute 里写 <code>error</code> part 后 finish。</li>
+                <li>在 <code>AiModule</code> 的 <code>providers</code> 注册本 Service（第 6 步再注册 <code>WebSearchService</code>）。</li>
+              </ul>
+            </div>
+
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  createUIMessageStream,
+  pipeUIMessageStreamToResponse,
+  type UIMessage,
+} from 'ai';
+import { toUIMessageStream } from '@ai-sdk/langchain';
+import { ChatOpenAI } from '@langchain/openai';
+import { HumanMessage } from '@langchain/core/messages';
+import { createAgent, modelCallLimitMiddleware } from 'langchain';
+import type { Response } from 'express';
+import { HybridRetrievalService } from './hybrid-retrieval.service';
+import { ChatSessionService } from './chat-session.service';
+import type { AuthUser } from '../auth/auth-user.interface';
+import type { ChatSource } from './chat.types';
+import type { ChatStreamDto } from './dto/chat-stream.dto';
+import type { ChunkHit } from '../pipeline/types/pipeline.types';
+// 第 6 步再加：import { WebSearchService } from './web-search.service';
+// 第 6 步再加：import { tool } from 'langchain'; import { z } from 'zod';
+
+const EXCERPT_LEN = 200;
+
+const SYSTEM =
+  '你是企业知识库助手。优先根据「检索到的资料」回答。' +
+  '依据资料的陈述句末标 [n]，与资料编号一致。' +
+  '资料不够就明确说不知道。';
+// 第 6 步把「资料不足时可调用 web_search…」补进 SYSTEM
+
+type KhUIMessage = UIMessage&lt;
+  unknown,
+  {
+    status: { stage: string; text: string };
+    think: { text: string };
+    sources: ChatSource[];
+    retrieve: {
+      query: string;
+      items: Array&lt;{
+        index: number;
+        documentId: string;
+        documentTitle: string;
+        heading: string | null;
+      }&gt;;
+    };
+    session: { sessionId: string };
+  }
+&gt;;
+
+@Injectable()
+export class AiStreamService {
+  private readonly logger = new Logger(AiStreamService.name);
+  private readonly agent?: ReturnType&lt;typeof createAgent&gt;;
+
+  constructor(
+    config: ConfigService,
+    private readonly retrieval: HybridRetrievalService,
+    private readonly sessions: ChatSessionService,
+    // 第 6 步再加：private readonly webSearch: WebSearchService,
+  ) {
+    const apiKey =
+      config.get&lt;string&gt;('OPENAI_API_KEY') ||
+      config.get&lt;string&gt;('LLM_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY') ||
+      '';
+    const baseURL =
+      config.get&lt;string&gt;('OPENAI_BASE_URL') ||
+      config.get&lt;string&gt;('LLM_BASE_URL') ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const modelName =
+      config.get&lt;string&gt;('MODEL_NAME') ||
+      config.get&lt;string&gt;('LLM_MODEL') ||
+      'qwen-plus';
+    const enableThinking =
+      config.get&lt;string&gt;('LLM_ENABLE_THINKING') !== 'false';
+
+    if (!apiKey) return;
+
+    const llm = new ChatOpenAI({
+      apiKey,
+      model: modelName,
+      temperature: 0.2,
+      timeout: Number(config.get('AI_CHAT_TIMEOUT_MS', 60000)),
+      maxRetries: 0,
+      useResponsesApi: false,
+      streamUsage: false,
+      configuration: { baseURL },
+      modelKwargs: enableThinking ? { enable_thinking: true } : undefined,
+    });
+
+    this.agent = createAgent({
+      model: llm,
+      // 主链路先空；第 6 步把 web_search tool 放进数组
+      tools: [],
+      systemPrompt: SYSTEM,
+      middleware: [
+        modelCallLimitMiddleware({ runLimit: 4, exitBehavior: 'end' }),
+      ],
+    });
+  }
+
+  async streamChat(dto: ChatStreamDto, user: AuthUser, res: Response) {
+    const question = lastUserText(dto.messages);
+    const topK = dto.topK ?? 5;
+    let persistSessionId = dto.sessionId;
+    let persistSources: ChatSource[] = [];
+
+    // SDK 只管 UI Message 协议；会话 / RAG / data-* / Agent 流在 execute 里编排
+    const stream = createUIMessageStream&lt;KhUIMessage&gt;({
+      execute: async ({ writer }) =&gt; {
+        writer.write({ type: 'start' });
+
+        if (!question) {
+          writer.write({ type: 'text-start', id: 'empty' });
+          writer.write({
+            type: 'text-delta',
+            id: 'empty',
+            delta: '请输入问题。',
+          });
+          writer.write({ type: 'text-end', id: 'empty' });
+          writer.write({ type: 'finish' });
+          return;
+        }
+
+        // ——— 1) 会话 ———
+        const session = dto.sessionId
+          ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
+          : await this.sessions.create(user.userId, {
+              title: titleFromQuestion(question),
+            });
+        persistSessionId = session.id;
+        writer.write({
+          type: 'data-session',
+          data: { sessionId: session.id },
+        });
+
+        // ——— 2) 检索 ———
+        writer.write({
+          type: 'data-status',
+          data: { stage: 'retrieve', text: '正在检索知识库…' },
+        });
+
+        let hits: ChunkHit[] = [];
+        try {
+          hits = await this.retrieval.retrieve(question, topK);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`RAG 检索失败：${detail}`);
+        }
+
+        const sources = this.toSources(hits);
+        persistSources = sources;
+        writer.write({
+          type: 'data-retrieve',
+          data: {
+            query: question,
+            items: sources.map((src) =&gt; ({
+              index: src.index,
+              documentId: src.documentId,
+              documentTitle: src.documentTitle,
+              heading: src.heading,
+            })),
+          },
+        });
+        writer.write({ type: 'data-sources', data: sources });
+        for (const src of sources) {
+          writer.write({
+            type: 'source-document',
+            sourceId: src.documentId,
+            mediaType: 'text/markdown',
+            title: `[${src.index}] ${src.documentTitle}`,
+          });
+        }
+
+        if (!this.agent) {
+          writer.write({
+            type: 'error',
+            errorText: '未配置 LLM Key，无法生成回答',
+          });
+          writer.write({ type: 'finish' });
+          return;
+        }
+
+        // ——— 3) Agent 流 → UI Message 流 ———
+        const prompt = hits.length
+          ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${question}`
+          : `知识库没有召回到相关内容。\n\n用户问题：${question}`;
+
+        const langchainStream = await this.agent.stream(
+          { messages: [new HumanMessage(prompt)] },
+          // messages：token/思考；tools：tool 调用（第 6 步挂上后才有）
+          { streamMode: ['messages', 'tools'] },
+        );
+
+        writer.merge(
+          toUIMessageStream(mapReasoningStream(langchainStream) as never, {
+            // 外层已写 start；结束由 createUIMessageStream 收口
+            sendStart: false,
+            sendFinish: false,
+            onError: (error) =&gt; {
+              this.logger.warn(`LangChain 流失败：${error.message}`);
+            },
+          }) as never,
+        );
+      },
+
+      // ——— 4) 流结束后落库（课 16）———
+      onFinish: async ({ responseMessage }) =&gt; {
+        const parts = responseMessage?.parts ?? [];
+        const answer = parts
+          .filter(
+            (p): p is { type: 'text'; text: string } =&gt; p.type === 'text',
+          )
+          .map((p) =&gt; p.text)
+          .join('')
+          .trim();
+        const used = new Set(
+          [...answer.matchAll(/\[(\d+)\]/g)].map((m) =&gt; Number(m[1])),
+        );
+        const sources = used.size
+          ? persistSources.filter((s) =&gt; used.has(s.index))
+          : [];
+        if (!question || !persistSessionId) return;
+        try {
+          await this.sessions.appendTurn(
+            user.userId,
+            persistSessionId,
+            question,
+            answer || '未能生成回答。',
+            sources,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `流式对话落库失败：${
+              error instanceof Error ? error.message : error
+            }`,
+          );
+        }
+      },
+      onError: (error) =&gt;
+        error instanceof Error ? error.message : String(error),
+    });
+
+    await pipeUIMessageStreamToResponse({ response: res, stream });
+  }
+
+  private toSources(hits: ChunkHit[]): ChatSource[] {
+    return hits.map((hit, i) =&gt; ({
+      index: i + 1,
+      documentId: hit.documentId,
+      documentTitle: hit.documentTitle,
+      heading: hit.heading,
+      excerpt: excerpt(hit.content),
+      score: hit.score,
+    }));
+  }
+
+  private buildContext(hits: ChunkHit[]): string {
+    return hits
+      .map((src, i) =&gt; {
+        const heading = src.heading ? ` / ${src.heading}` : '';
+        const snippet =
+          src.content.length &gt; 800
+            ? `${src.content.slice(0, 800)}...`
+            : src.content;
+        return `[${i + 1}] ${src.documentTitle}${heading}\n${snippet}`;
+      })
+      .join('\n\n');
+  }
+}
+
+/**
+ * 百炼兼容口把思考放在 reasoning_content；
+ * @ai-sdk/langchain 只认 additional_kwargs.reasoning.summary，这里转一下。
+ */
+async function* mapReasoningStream(
+  stream: AsyncIterable&lt;unknown&gt;,
+): AsyncIterable&lt;unknown&gt; {
+  for await (const event of stream) {
+    attachDashScopeReasoning(event);
+    yield event;
+  }
+}
+
+/** 递归改写；seen 防循环引用 */
+function attachDashScopeReasoning(
+  value: unknown,
+  seen = new Set&lt;object&gt;(),
+): void {
+  if (value == null || typeof value !== 'object' || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) attachDashScopeReasoning(item, seen);
+    return;
+  }
+  const obj = value as Record&lt;string, unknown&gt;;
+  const kwargs = obj.additional_kwargs as Record&lt;string, unknown&gt; | undefined;
+  if (
+    typeof kwargs?.reasoning_content === 'string' &amp;&amp;
+    kwargs.reasoning_content
+  ) {
+    kwargs.reasoning = {
+      summary: [{ type: 'summary_text', text: kwargs.reasoning_content }],
+    };
+  }
+  attachDashScopeReasoning(obj.chunk, seen);
+  attachDashScopeReasoning(obj.data, seen);
+  attachDashScopeReasoning(obj.kwargs, seen);
+  attachDashScopeReasoning(obj.messages, seen);
+}
+
+function lastUserText(
+  messages: ChatStreamDto['messages'] | undefined,
+): string {
+  if (!messages?.length) return '';
+  for (let i = messages.length - 1; i &gt;= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg.role !== 'user') continue;
+    const text = (msg.parts ?? [])
+      .filter((p) =&gt; p.type === 'text' &amp;&amp; p.text)
+      .map((p) =&gt; p.text)
+      .join('');
+    return text.trim();
+  }
+  return '';
+}
+
+function titleFromQuestion(question: string) {
+  const text = question.replace(/\s+/g, ' ').trim();
+  return text.length &gt; 30 ? `${text.slice(0, 30)}…` : text;
+}
+
+function excerpt(content: string) {
+  const text = content.replace(/\s+/g, ' ').trim();
+  if (text.length &lt;= EXCERPT_LEN) return text;
+  return `${text.slice(0, EXCERPT_LEN)}...`;
+}
+</code></pre>
+            </div>
+
+            <div class="callout-tip">
+              <strong>百炼思考链</strong>：模型把思考放在
+              <code>additional_kwargs.reasoning_content</code>，适配包认
+              <code>reasoning.summary</code>。
+              <code>mapReasoningStream</code> + <code>attachDashScopeReasoning</code> 不要漏，
+              否则前端没有「思考」块。可用 env <code>LLM_ENABLE_THINKING=false</code> 关掉。
+            </div>
+
+            <div class="callout-ok">
+              本步自检：Service 能注入；空问题返回「请输入问题。」；
+              有 Key 时 <code>streamChat</code> 能走到 <code>pipeUIMessageStreamToResponse</code>
+              （完整冒烟见第 5 步 curl）。
+            </div>
+          </li>
+
+          <li>
+            <h4>4. Controller：POST /ai/chat/stream</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Post('ai/chat/stream')
+@RequirePermission(PermissionCode.search)
+streamChat(
+  @Body() dto: ChatStreamDto,
+  @CurrentUser() user: AuthUser,
+  @Res() res: Response, // 注意：接管响应，不要再 return JSON
+) {
+  return this.aiStream.streamChat(dto, user, res);
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              保留课 14 的 <code>POST /ai/chat</code>（非流式）便于调试；流式走新路由。
+              前端代理把 <code>/api/ai/chat/stream</code> 转到后端（与 frontend-origin 一致）。
+            </div>
+          </li>
+
+          <li>
+            <h4>5. curl 冒烟（主链路，先不测联网）</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">curl -N -X POST "$BASE/ai/chat/stream" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/event-stream' \
+  -d '{
+    "messages":[{"role":"user","parts":[{"type":"text","text":"差旅报销材料？"}]}],
+    "topK": 5
+  }'</code></pre>
+            </div>
+            <p>应陆续看到 JSON 行/事件（具体编码由 AI SDK 版本决定）。卡死无输出：查 LLM Key、代理缓冲、Nest 是否误用拦截器缓冲 body。</p>
+          </li>
+
+          <li id="websearch">
+            <h4>6.（可选）联网工具后端：WebSearchService + web_search</h4>
+            <p>
+              <strong>主链路 curl 通后再做。</strong>不配 <code>BOCHA_API_KEY</code> 也能交课。
+              本步只做后端；前端搜索卡片在「前端」一节最后一步。
+              在第 3 步已标的注释处补：注入 <code>WebSearchService</code>、改 SYSTEM、把 tool 放进
+              <code>createAgent({ tools })</code>（origin 内联，无单独 tools/ 文件）。
+            </p>
+            <div class="callout-warn">
+              <strong>本步目标</strong>：curl 流里能看到 tool / web_search 相关事件；
+              Agent 能调 Bocha；无 Key 时返回带 <code>error</code> 的空结果、不抛崩。
+            </div>
+
+            <p><strong>① 环境变量</strong></p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># .env（勿提交真实 Key）
+BOCHA_API_KEY=sk-xxxxxxxx</code></pre>
+            </div>
+            <p>origin 把 URL 写死为 <code>https://api.bochaai.com/v1/web-search</code>；只需配 Key。</p>
+
+            <p><strong>② WebSearchService</strong> · <span class="file-path">src/ai/web-search.service.ts</span></p>
+<div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+export interface WebSearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+  siteName?: string;
+}
+
+export interface WebSearchResult {
+  query: string;
+  items: WebSearchHit[];
+  error?: string;
+}
+
+/** Bocha Web Search */
+@Injectable()
+export class WebSearchService {
+  private readonly logger = new Logger(WebSearchService.name);
+
+  constructor(private readonly config: ConfigService) {}
+
+  async search(query: string, count = 5): Promise&lt;WebSearchResult&gt; {
+    const apiKey = this.config.get&lt;string&gt;('BOCHA_API_KEY');
+    if (!apiKey) {
+      return {
+        query,
+        items: [],
+        error: '未配置 BOCHA_API_KEY，无法联网搜索',
+      };
+    }
+
+    const response = await fetch('https://api.bochaai.com/v1/web-search', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        freshness: 'noLimit',
+        summary: true,
+        count: Math.min(Math.max(count, 1), 10),
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      this.logger.warn(`Bocha 搜索失败：status=${response.status}`);
+      return {
+        query,
+        items: [],
+        error: `搜索失败（${response.status}）${detail.slice(0, 120)}`,
+      };
+    }
+
+    const json = (await response.json()) as {
+      code?: number;
+      msg?: string;
+      data?: {
+        webPages?: {
+          value?: Array&lt;{
+            name?: string;
+            url?: string;
+            summary?: string;
+            snippet?: string;
+            siteName?: string;
+          }&gt;;
+        };
+      };
+    };
+
+    if (json.code !== 200 || !json.data) {
+      return {
+        query,
+        items: [],
+        error: json.msg ?? '搜索接口返回异常',
+      };
+    }
+
+    const items = (json.data.webPages?.value ?? [])
+      .filter((page) =&gt; page.url &amp;&amp; page.name)
+      .map((page) =&gt; ({
+        title: page.name as string,
+        url: page.url as string,
+        snippet: (page.summary || page.snippet || '').trim(),
+        siteName: page.siteName,
+      }));
+
+    return { query, items };
+  }
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              <strong>设计要点</strong>：失败用 <code>error</code> 字段返回，不要抛到 Agent 把整轮打挂；
+              映射读 <code>data.webPages.value</code>（Bocha 当前结构），字段变了只改这一层。
+            </div>
+
+            <p><strong>③ AiModule 注册</strong></p>
+<div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// ai.module.ts
+providers: [
+  // ...
+  WebSearchService,
+  AiStreamService,
+],</code></pre>
+            </div>
+
+            <p><strong>④ 在第 3 步的 createAgent 处挂 tool</strong>（替换原来的 <code>tools: []</code>）</p>
+<div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { createAgent, modelCallLimitMiddleware, tool } from 'langchain';
+import { z } from 'zod';
+import { WebSearchService } from './web-search.service';
+
+const SYSTEM =
+  '你是企业知识库助手。优先根据「检索到的资料」回答。' +
+  '资料不足、需要时效性或外部公开信息时，调用 web_search。' +
+  '依据资料的陈述句末标 [n]，与资料编号一致。' +
+  '联网结果用标题+链接说明，不要编造。资料不够就明确说不知道。';
+
+// constructor 注入 private readonly webSearch: WebSearchService
+const search = this.webSearch;
+this.agent = createAgent({
+  model: llm,
+  tools: [
+    tool(
+      async (input: { query: string; count?: number }) =&gt;
+        search.search(input.query, input.count ?? 5),
+      {
+        name: 'web_search', // 必须与前端 getToolName 约定一致
+        description:
+          '联网搜索（Bocha）。知识库不足、需要最新公开信息或外部资料时再调用。' +
+          '不要用它替代知识库已有内容。',
+        schema: z.object({
+          query: z.string().min(1).describe('搜索关键词'),
+          count: z
+            .number()
+            .int()
+            .min(1)
+            .max(10)
+            .optional()
+            .describe('条数，默认 5'),
+        }),
+      },
+    ),
+  ],
+  systemPrompt: SYSTEM,
+  middleware: [
+    // 单次最多调 4 次模型，避免 web_search 循环打爆；超限正常结束
+    modelCallLimitMiddleware({ runLimit: 4, exitBehavior: 'end' }),
+  ],
+});</code></pre>
+            </div>
+<div class="callout-warn">
+              tool 的返回值是 <code>WebSearchResult</code> 对象；经 LangChain → AI SDK 适配后，
+              前端 <code>part.output</code> 可能是对象，也可能是 JSON 字符串——卡片里要用
+              <code>parseToolPayload</code> 兜底（见下一步）。
+            </div>
+
+            <p><strong>⑤ 流式侧</strong>：确保 <code>toUIMessageStream</code> 消费 Agent 流且打开 tools 通道；
+            tool 名固定 <code>web_search</code>。不要自拼 SSE 事件名。</p>
+            <div class="callout-tip">
+              本步用 curl 验证即可。前端永远看不到卡片时：先确认流里有 tool chunk，再查系统提示 / tool-calling。
+            </div>
+
+            <p><strong>⑥ curl（迫使调 web_search）</strong></p>
+<div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 1) 无 Key：应返回 error 文案、items=[]，进程不崩
+# 2) 有 Key：故意问时效问题，迫使调 web_search
+curl -N -X POST "$BASE/ai/chat/stream" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/event-stream' \
+  -d '{
+    "messages":[{"role":"user","parts":[{"type":"text","text":"今天有什么值得关注的科技新闻？请先联网搜索再回答"}]}],
+    "topK": 5
+  }'
+
+# 流里应出现 tool / web_search；前端应出现「正在搜索」→「已搜索」卡片</code></pre>
+            </div>
+
+            <ul>
+              <li>□ <code>web-search.service.ts</code> 已注册；无 Key 降级带 <code>error</code></li>
+              <li>□ tool 名 <code>web_search</code> + <code>modelCallLimitMiddleware({ runLimit: 4 })</code></li>
+              <li>□ 系统提示：KB 优先，不足再搜网</li>
+              <li>□ curl 流可见 tool 相关事件</li>
+            </ul>
+          </li>
+
+        </ol>
+      </section>
+
+      <section id="frontend">
+        <h2>前端：完整实现</h2>
+        <p>
+          <strong>前置：后端第 5 步 curl 已能出流。</strong>
+          对照 <code>knowledge-hub-frontend-origin</code> 的
+          <code>ChatPage.tsx</code>、<code>ChatMessageParts.tsx</code>。
+          顺序：能打字 → 接会话 → 按 part 渲卡片 →（可选）联网卡片。
+        </p>
+        <div class="callout-info">
+          前端依赖：<code>pnpm add ai @ai-sdk/react</code>（与后端 <code>ai</code> 主版本同代，origin v14 用 ai@7）。
+        </div>
+        <ol class="step-list">
+          <li>
+            <h4>1. 定义与后端一致的消息类型</h4>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">import type { UIMessage } from 'ai'
+
+export type KhUIMessage = UIMessage&lt;
+  unknown,
+  {
+    status: { stage: string; text: string }
+    think: { text: string }
+    sources: ChatSource[]
+    retrieve: {
+      query: string
+      items: Array&lt;{
+        index: number
+        documentId: string
+        documentTitle: string
+        heading: string | null
+      }&gt;
+    }
+    session: { sessionId: string }
+  }
+&gt;</code></pre>
+        </div>
+          </li>
+
+          <li>
+            <h4>2. Transport + useChat</h4>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+
+const transport = useMemo(
+  () =&gt;
+    new DefaultChatTransport&lt;KhUIMessage&gt;({
+      api: '/api/ai/chat/stream',
+      headers: () =&gt; {
+        const token = getAccessToken()
+        const headers: Record&lt;string, string&gt; = {}
+        if (token) headers.Authorization = `Bearer ${token}`
+        return headers
+      },
+    }),
+  [],
+)
+
+const { messages, sendMessage, setMessages, status, stop, error } =
+  useChat&lt;KhUIMessage&gt;({
+    id: 'kh-chat',
+    transport,
+    onData: (part) =&gt; {
+      // 自定义 data-* 在 onData 也能收到；用它更新 URL
+      if (part.type !== 'data-session') return
+      const nextId = part.data.sessionId
+      if (nextId) navigate(`/chat?session=${nextId}`, { replace: true })
+    },
+    onFinish: () =&gt; { void loadSessions() },
+    onError: (err) =&gt; message.error(err.message || '请求失败'),
+  })
+
+const streaming = status === 'submitted' || status === 'streaming'
+
+async function send() {
+  const text = input.trim()
+  if (!text || streaming) return
+  setInput('')
+  await sendMessage({ text }, { body: { sessionId } })
+}</code></pre>
+        </div>
+          </li>
+
+          <li>
+            <h4>3. 历史回放 → UIMessage</h4>
+        <p>课 16 的 <code>GET /ai/sessions/:id/messages</code> 返回行数据，转成 parts 才能复用同一套组件：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-ts">export function historyToUIMessages(rows: ChatMessage[]): KhUIMessage[] {
+  return rows.map((row) =&gt; {
+    if (row.role === 'user') {
+      return {
+        id: row.id,
+        role: 'user',
+        parts: [{ type: 'text', text: row.content }],
+      }
+    }
+    const parts: KhUIMessage['parts'] = []
+    if (row.sources?.length) {
+      parts.push({ type: 'data-sources', data: row.sources })
+    }
+    parts.push({ type: 'text', text: row.content })
+    return { id: row.id, role: 'assistant', parts }
+  })
+}</code></pre>
+        </div>
+          </li>
+
+          <li>
+            <h4>4. 气泡列表（流式时隐藏引用）</h4>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">{messages.map((m, i) =&gt; {
+  const liveAssistant =
+    streaming &amp;&amp; m.role === 'assistant' &amp;&amp; i === messages.length - 1
+  return (
+    &lt;div key={m.id} className={`kh-bubble ${m.role}`}&gt;
+      &lt;ChatMessageParts
+        messageId={m.id}
+        parts={m.parts}
+        role={m.role}
+        showSources={!liveAssistant}  {/* 打字时不闪引用区 */}
+      /&gt;
+    &lt;/div&gt;
+  )
+})}
+{streaming ? &lt;Button onClick={() =&gt; void stop()}&gt;停止&lt;/Button&gt; : …}</code></pre>
+        </div>
+          </li>
+
+          <li id="parts">
+            <h4>5. 按 part 类型渲染（ChatMessageParts）</h4>
+            <p class="file-path">ChatMessageParts.tsx — 思路对齐 frontend-origin</p>
+            <p class="file-path">ChatMessageParts.tsx — 思路对齐 frontend-origin</p>
+
+        <p><strong>助手气泡渲染顺序</strong></p>
+        <ol>
+          <li><strong>过程区</strong>：status / retrieve / reasoning / tool（<code>renderProcessParts</code>）</li>
+          <li><strong>正文</strong>：所有 <code>type==='text'</code> 拼起来，Markdown + 角标引用</li>
+          <li><strong>引用区</strong>：从 <code>data-sources</code> 取 sources，再按正文里的 <code>[n]</code> 过滤</li>
+        </ol>
+
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">export function ChatMessageParts({ messageId, parts, role, showSources = true }) {
+  const sources = citedSources(sourcesFromParts(parts), textFromParts(parts))
+  const texts = parts.filter((p) =&gt; p.type === 'text' &amp;&amp; p.text)
+
+  if (role === 'user') {
+    return texts.map((p, i) =&gt;
+      p.type === 'text' ? &lt;div key={i} className="kh-bubble-text"&gt;{p.text}&lt;/div&gt; : null,
+    )
+  }
+
+  const hasRetrieve = parts.some((p) =&gt; p.type === 'data-retrieve')
+
+  return (
+    &lt;&gt;
+      {renderProcessParts(parts, hasRetrieve)}
+      {texts.map((p, i) =&gt;
+        p.type === 'text' ? (
+          &lt;div key={`text-${i}`} className="kh-bubble-md"&gt;
+            &lt;AnswerMarkdown text={p.text} sources={sources} scope={messageId} /&gt;
+          &lt;/div&gt;
+        ) : null,
+      )}
+      {showSources &amp;&amp; sources.length ? (
+        &lt;SourceCiteList items={sources} scope={messageId} /&gt;
+      ) : null}
+    &lt;/&gt;
+  )
+}</code></pre>
+        </div>
+
+        <p><strong>过程区：合并 reasoning，分发其它 part</strong></p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-tsx">function renderProcessParts(parts, hasRetrieve) {
+  const nodes = []
+  let reasoningBuf = []
+  let reasoningStreaming = false
+
+  const flushReasoning = () =&gt; {
+    if (!reasoningBuf.length) return
+    nodes.push(
+      &lt;ThinkBlock
+        text={reasoningBuf.join('\n\n')}
+        streaming={reasoningStreaming}
+      /&gt;,
+    )
+    reasoningBuf = []
+    reasoningStreaming = false
+  }
+
+  parts.forEach((part, i) =&gt; {
+    if (part.type === 'reasoning' || part.type === 'data-think') {
+      if (part.text) reasoningBuf.push(part.text)
+      if (part.state === 'streaming') reasoningStreaming = true
+      return
+    }
+    flushReasoning()
+
+    // 这些留给正文/引用区或完全不展示
+    if (['step-start', 'data-session', 'data-sources', 'source-document', 'text'].includes(part.type)) {
+      return
+    }
+
+    if (part.type === 'data-status') {
+      if (part.data.stage === 'retrieve' &amp;&amp; hasRetrieve) return // 有卡片就别重复灰字
+      nodes.push(&lt;div key={i} className="kh-chat-status"&gt;{part.data.text}&lt;/div&gt;)
+      return
+    }
+
+    if (part.type === 'data-retrieve') {
+      nodes.push(&lt;RetrieveCard key={i} query={part.data.query} items={part.data.items} /&gt;)
+      return
+    }
+
+    if (isToolUIPart(part) &amp;&amp; getToolName(part) === 'web_search') {
+      nodes.push(&lt;WebSearchCard key={i} part={part} /&gt;)
+    }
+  })
+
+  flushReasoning()
+  return nodes
+}</code></pre>
+        </div>
+
+        <p><strong>小组件职责</strong></p>
+        <table>
+          <thead><tr><th>组件</th><th>做什么</th></tr></thead>
+          <tbody>
+            <tr><td><code>ThinkBlock</code></td><td><code>&lt;details open&gt;</code>；streaming 时 summary 为「思考中…」</td></tr>
+            <tr><td><code>RetrieveCard</code></td><td>展示 query + <code>[n] 标题 / 章节</code> 列表</td></tr>
+            <tr><td><code>WebSearchCard</code></td><td>读 tool part 的 <code>state</code>/<code>input</code>/<code>output</code>；pending/失败样式</td></tr>
+            <tr><td><code>AnswerMarkdown</code></td><td>渲染 <code>[n]</code> 为可点击角标，联动下方引用</td></tr>
+            <tr><td><code>SourceCiteList</code></td><td>只展示正文实际引用到的 sources</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout-tip">
+          <strong>交互细节（origin 前端已做）</strong>：
+          流式中禁止切换/删除会话；日志区贴底滚动（用户上滚则暂停）；
+          <code>onFinish</code> 刷新会话列表。这些体验比「能出字」更重要。
+        </div>
+            
+            <div class="callout-tip">
+              <code>web_search</code> 分支先写上；卡片组件实现见下一步「联网搜索卡片」。
+            </div>
+
+          </li>
+
+          <li id="websearch-ui">
+            <h4>6.（可选）联网搜索卡片 WebSearchCard</h4>
+            <p>
+              origin <strong>没有</strong>单独的 <code>WebSearchCard.tsx</code>，卡片函数就在
+              <code>ChatMessageParts.tsx</code>。对照同文件的 <code>RetrieveCard</code> 样式类名
+              （<code>kh-web</code> / <code>pending</code> / <code>failed</code>）。
+            </p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-tsx">import { getToolName, isToolUIPart } from 'ai'
+import { SearchOutlined } from '@ant-design/icons'
+
+type WebSearchHit = {
+  title: string
+  url: string
+  snippet: string
+  siteName?: string
+}
+
+type WebSearchResult = {
+  query: string
+  items: WebSearchHit[]
+  error?: string
+}
+
+// 在 map parts 时：
+if (isToolUIPart(part) &amp;&amp; getToolName(part) === 'web_search') {
+  nodes.push(&lt;WebSearchCard key={i} part={part} /&gt;)
+}
+
+function WebSearchCard({
+  part,
+}: {
+  part: {
+    state: string
+    input?: unknown
+    output?: unknown
+    errorText?: string
+  }
+}) {
+  const input = asRecord(part.input)
+  const query = typeof input.query === 'string' ? input.query : ''
+  const pending =
+    part.state === 'input-streaming' || part.state === 'input-available'
+  const output = asWebSearchResult(part.output)
+  const failed = part.state === 'output-error' || Boolean(output?.error)
+  const count = output?.items?.length ?? 0
+  const label = pending ? '正在搜索' : failed ? '搜索失败' : '已搜索'
+
+  return (
+    &lt;details className={`kh-web${pending ? ' pending' : ''}${failed ? ' failed' : ''}`}&gt;
+      &lt;summary&gt;
+        &lt;SearchOutlined /&gt;
+        &lt;span className="kh-web-label"&gt;{label}&lt;/span&gt;
+        {query ? &lt;span className="kh-web-q"&gt;{query}&lt;/span&gt; : null}
+        {!pending &amp;&amp; count ? &lt;span className="kh-web-n"&gt;{count}&lt;/span&gt; : null}
+      &lt;/summary&gt;
+      {failed ? (
+        &lt;div className="kh-web-err"&gt;{output?.error || part.errorText}&lt;/div&gt;
+      ) : count ? (
+        &lt;ul className="kh-web-list"&gt;
+          {output?.items.map((hit) =&gt; (
+            &lt;li key={hit.url}&gt;
+              &lt;a href={hit.url} target="_blank" rel="noreferrer"&gt;
+                {hit.title}
+              &lt;/a&gt;
+            &lt;/li&gt;
+          ))}
+        &lt;/ul&gt;
+      ) : null}
+    &lt;/details&gt;
+  )
+}
+
+function asRecord(value: unknown): Record&lt;string, unknown&gt; {
+  if (value &amp;&amp; typeof value === 'object') return value as Record&lt;string, unknown&gt;
+  return {}
+}
+
+function asWebSearchResult(value: unknown): WebSearchResult | null {
+  const rec = parseToolPayload(value)
+  if (!rec) return null
+  return {
+    query: typeof rec.query === 'string' ? rec.query : '',
+    items: Array.isArray(rec.items) ? (rec.items as WebSearchHit[]) : [],
+    error: typeof rec.error === 'string' ? rec.error : undefined,
+  }
+}
+
+/** LangChain tool 结果经常是 JSON 字符串或带 content 的消息对象 */
+function parseToolPayload(value: unknown): Record&lt;string, unknown&gt; | null {
+  if (typeof value === 'string') {
+    try {
+      return parseToolPayload(JSON.parse(value))
+    } catch {
+      return null
+    }
+  }
+  if (!value || typeof value !== 'object') return null
+  const rec = value as Record&lt;string, unknown&gt;
+  if (typeof rec.content === 'string') {
+    const nested = parseToolPayload(rec.content)
+    if (nested) return nested
+  }
+  return rec
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              优先用 <code>isToolUIPart</code> + <code>getToolName</code>，不要写死
+              <code>part.type === 'tool-web_search'</code>（SDK 小版本 type 字符串可能变化，helper 更稳）。
+            </div>
+            <div class="callout-ok">
+              后端已挂 <code>web_search</code> 后：问时效问题 → 出现「正在搜索 / 已搜索」卡片 →
+              拔掉 Key 显示失败文案、不白屏。
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么用 UI Message Stream，而不是手写 SSE？</h3>
+        <p>
+          手写 SSE 要自己定义事件名、前端解析、重连、tool 状态机。
+          AI SDK 把「消息 = parts 数组」做成协议，前后端共用类型，工具调用/思考链有现成 part。
+        </p>
+        <h3>为什么检索用自定义 data-*，正文用标准 text？</h3>
+        <p>
+          检索/会话是业务扩展，塞进 <code>data-retrieve</code> / <code>data-session</code>；
+          模型输出走标准 <code>text</code>/<code>reasoning</code>，才能用 <code>toUIMessageStream</code> 适配 LangChain。
+        </p>
+        <h3>为什么流式中不展示引用列表？</h3>
+        <p>
+          正文还在增长，<code>[n]</code> 未稳定，提前渲染会闪烁。
+          <code>showSources={!liveAssistant}</code>：结束后再展示。
+        </p>
+        <h3>对照阅读顺序</h3>
+        <ol>
+          <li>先后端 <code>origin/v14</code>：DTO → <code>ai-stream.service.ts</code> → controller → curl</li>
+          <li>可选后端：<code>web-search.service.ts</code> + Agent 内联 <code>web_search</code></li>
+          <li>再前端 origin：<code>ChatPage.tsx</code> → <code>ChatMessageParts.tsx</code></li>
+          <li>可选前端：同文件内 <code>WebSearchCard</code></li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与课 14 / 16 差异</h2>
+        <table>
+          <thead><tr><th>点</th><th>课 14/16</th><th>本课（v14）</th></tr></thead>
+          <tbody>
+            <tr><td>接口</td><td><code>POST /ai/chat</code> JSON</td><td><code>POST /ai/chat/stream</code> UI Message Stream</td></tr>
+            <tr><td>前端</td><td><code>fetch</code> 等完整结果</td><td><code>useChat</code> + parts 增量渲染</td></tr>
+            <tr><td>过程可视化</td><td>无</td><td>status / retrieve / reasoning / tool</td></tr>
+            <tr><td>落库时机</td><td>chat 返回前</td><td>流 <code>onFinish</code> 后 <code>appendTurn</code></td></tr>
+            <tr><td>Agent / 联网</td><td>无</td><td>可选 web_search（Bocha）</td></tr>
+            <tr><td>Redis</td><td>不需要</td><td>不需要</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>前端一直 pending、无字</td><td>代理是否缓冲 SSE；后端是否 <code>@Res()</code> 且 pipe 成功；CORS</td></tr>
+            <tr><td>403 / 401</td><td>Transport <code>headers</code> 是否带 Bearer</td></tr>
+            <tr><td>有正文无思考</td><td><code>mapReasoningStream</code> / <code>LLM_ENABLE_THINKING</code>；模型是否返回 reasoning_content</td></tr>
+            <tr><td>有检索无卡片</td><td>是否写了 <code>data-retrieve</code>；前端是否过滤掉该 type</td></tr>
+            <tr><td>会话未进 URL</td><td><code>onData</code> 是否处理 <code>data-session</code></td></tr>
+            <tr><td>流结束后无历史</td><td><code>onFinish</code> 落库是否抛错；权限与 session 归属</td></tr>
+            <tr><td>tool 卡片空白</td><td>output 可能是 JSON 字符串，需 <code>parseToolPayload</code></td></tr>
+            <tr><td>从不出现联网卡片</td><td>后端见 <a href="#websearch">#websearch</a>；前端见 <a href="#websearch-ui">#websearch-ui</a></td></tr>
+            <tr><td>Bocha 401 / 空结果</td><td><code>BOCHA_API_KEY</code>；Service 是否把 HTTP 错误写成 <code>error</code> 字段</td></tr>
+            <tr><td>web_search 死循环</td><td><code>modelCallLimitMiddleware({ runLimit: 4 })</code></td></tr>
+            <tr><td>Nest 返回空对象</td><td>用了 <code>@Res()</code> 又 return 了别的；或拦截器当 JSON 处理</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐检查表</h2>
+        <h3>后端（origin <code>v14</code>）</h3>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>ai</code> / <code>@ai-sdk/langchain</code> / <code>langchain</code> 依赖</td><td><code>package.json</code></td></tr>
+            <tr><td><code>ChatStreamDto</code></td><td><code>dto/chat-stream.dto.ts</code></td></tr>
+            <tr><td><code>AiStreamService.streamChat</code></td><td><code>ai-stream.service.ts</code></td></tr>
+            <tr><td><code>createUIMessageStream</code> + <code>pipeUIMessageStreamToResponse</code></td><td>同上</td></tr>
+            <tr><td><code>data-session/status/retrieve/sources</code></td><td>同上 execute</td></tr>
+            <tr><td><code>toUIMessageStream</code> + reasoning 适配</td><td>同上</td></tr>
+            <tr><td><code>onFinish</code> → <code>appendTurn</code></td><td>同上</td></tr>
+            <tr><td><code>POST /ai/chat/stream</code></td><td><code>ai.controller.ts</code></td></tr>
+            <tr><td><code>WebSearchService</code> + <code>BOCHA_API_KEY</code>（可选）</td><td><code>web-search.service.ts</code></td></tr>
+            <tr><td>内联 tool <code>web_search</code> + <code>modelCallLimitMiddleware</code></td><td><code>ai-stream.service.ts</code> 构造函数</td></tr>
+            <tr><td><code>touchTitle</code></td><td><code>chat-session.service.ts</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>前端（frontend-origin）</h3>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>DefaultChatTransport</code> + Bearer</td><td><code>ChatPage.tsx</code></td></tr>
+            <tr><td><code>useChat</code> + <code>onData(data-session)</code></td><td>同上</td></tr>
+            <tr><td><code>sendMessage(..., { body: { sessionId } })</code></td><td>同上</td></tr>
+            <tr><td><code>ChatMessageParts</code> / process / cite</td><td><code>ChatMessageParts.tsx</code></td></tr>
+            <tr><td><code>getToolName === 'web_search'</code> → <code>WebSearchCard</code></td><td>同上</td></tr>
+            <tr><td><code>parseToolPayload</code>（JSON 字符串 / content 嵌套）</td><td>同上</td></tr>
+            <tr><td><code>historyToUIMessages</code></td><td>同上</td></tr>
+            <tr><td>流式中 <code>showSources={false}</code> + stop</td><td><code>ChatPage.tsx</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>建议动手顺序</h3>
+        <ol>
+          <li>后端 1→5：DTO → touchTitle → AiStreamService → Controller → curl 出流</li>
+          <li>（可选）后端第 6 步：WebSearchService + <code>web_search</code> tool</li>
+          <li>前端 1→4：类型 → useChat → 历史回放 → 气泡列表（先只渲 text）</li>
+          <li>前端第 5 步：ChatMessageParts（status / retrieve / reasoning / sources）</li>
+          <li>（可选）前端第 6 步：WebSearchCard</li>
+        </ol>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          课 16 文末曾说「流式另开课」——就是本课。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) {
+          if (s.el.offsetTop <= y) current = s;
+        });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

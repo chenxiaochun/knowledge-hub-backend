@@ -753,7 +753,7 @@ curl -s -X PATCH "$BASE/ai/sessions/$SID" \
             <tr><td>持久化</td><td>无</td><td>Postgres 会话 + 消息</td></tr>
             <tr><td>多用户</td><td>无状态</td><td>按 <code>userId</code> 隔离</td></tr>
             <tr><td>多轮给 LLM</td><td>—</td><td><strong>本课不做</strong>（只存历史；上下文拼接可另开课）</td></tr>
-            <tr><td>流式 SSE</td><td>—</td><td>origin 更后分支才有；本课不对齐</td></tr>
+            <tr><td>流式 SSE</td><td>—</td><td>见 <a href="./17-ai-sse-ui-stream-v14.html">课 17（origin v14）</a></td></tr>
           </tbody>
         </table>
         <div class="callout-info">
@@ -807,7 +807,8 @@ curl -s -X PATCH "$BASE/ai/sessions/$SID" \
         </ol>
         <div class="callout-tip">
           完成后回 <a href="./index.html">课程目录</a>。
-          若还要「把历史消息拼进下一次 LLM prompt」，那是多轮上下文增强，可另开一课，不要和本课持久化混在一起。
+          若还要「把历史消息拼进下一次 LLM prompt」，那是多轮上下文增强，可另开一课。
+          流式打字 + 检索/思考/工具卡片 → <a href="./17-ai-sse-ui-stream-v14.html">课 17</a>。
         </div>
       </section>
 
