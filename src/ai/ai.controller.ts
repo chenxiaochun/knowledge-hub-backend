@@ -40,13 +40,13 @@ export class AiController {
     return this.retrieval.retrieve(dto.query.trim(), dto.topK ?? 5);
   }
 
-  @Post('ai/chat')
+  @Post('chat')
   @RequirePermission(PermissionCode.search)
   chat(@Body() dto: ChatDto, @CurrentUser() user?: AuthUser): Promise<ChatResponseDto> {
     return this.aiChatService.chat(dto.content, dto.topK ?? 5, user, dto.sessionId);
   }
 
-  @Get('ai/sessions')
+  @Get('sessions')
   @RequirePermission(PermissionCode.search)
   listSessions(
     @Query() query: QuerySessionDto,
@@ -55,7 +55,7 @@ export class AiController {
     return this.sessions.pageMine(user.userId, query);
   }
 
-  @Post('ai/sessions')
+  @Post('sessions')
   @RequirePermission(PermissionCode.search)
   createSession(
     @Body() dto: CreateSessionDto,
@@ -65,13 +65,13 @@ export class AiController {
   }
 
   // 静态段 messages 在 :id 之后没关系；注意不要用会吞掉 sessions 的路由
-  @Get('ai/sessions/:id/messages')
+  @Get('sessions/:id/messages')
   @RequirePermission(PermissionCode.search)
   listMessages(@Param('id') id: string, @CurrentUser() user: AuthUser): Promise<AiMessageEntity[]> {
     return this.sessions.listMessages(user.userId, id);
   }
 
-  @Patch('ai/sessions/:id')
+  @Patch('sessions/:id')
   @RequirePermission(PermissionCode.search)
   renameSession(
     @Param('id') id: string,
@@ -81,13 +81,13 @@ export class AiController {
     return this.sessions.rename(user.userId, id, dto);
   }
 
-  @Delete('ai/sessions/:id')
+  @Delete('sessions/:id')
   @RequirePermission(PermissionCode.search)
   removeSession(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.sessions.remove(user.userId, id);
   }
 
-  @Post('ai/chat/stream')
+  @Post('chat/stream')
   @RequirePermission(PermissionCode.search)
   streamChat(
     @Body() dto: ChatStreamDto,
