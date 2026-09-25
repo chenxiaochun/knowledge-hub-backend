@@ -1,17 +1,20 @@
+import type { Response } from 'express';
 import type { AuthUser } from 'src/auth/auth-user.interface';
 
-import { Controller, Post, Body, Param, Delete, Patch, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Param, Delete, Patch, Get, Query, Res } from '@nestjs/common';
 
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { RequirePermission } from 'src/auth/decorators/require-permission.decorator';
 import { PermissionCode } from 'src/common/constant/permissions';
 
 import { AiChatService } from './ai-chat.service';
+import { AiStreamService } from './ai-stream.service';
 import { ChatSessionService } from './chat-session.service';
-import { ChatDto } from './dto/chat.dto';
 import { ChatResponseDto } from './dto/chat-response.dto';
-import { RagSearchDto } from './dto/rag-search.dto';
+import { ChatStreamDto } from './dto/chat-stream.dto';
+import { ChatDto } from './dto/chat.dto';
 import { RagChunkHitDto } from './dto/rag-hit.dto';
+import { RagSearchDto } from './dto/rag-search.dto';
 import {
   CreateSessionDto,
   QuerySessionDto,
@@ -25,9 +28,10 @@ import { HybridRetrievalService } from './hybrid-retrieval.service';
 @Controller('ai')
 export class AiController {
   constructor(
-    private readonly aiChat: AiChatService,
+    private readonly aiChatService: AiChatService,
     private readonly retrieval: HybridRetrievalService,
     private readonly sessions: ChatSessionService,
+    private readonly aiStreamService: AiStreamService,
   ) {}
 
   @Post('rag/search')
@@ -39,7 +43,7 @@ export class AiController {
   @Post('ai/chat')
   @RequirePermission(PermissionCode.search)
   chat(@Body() dto: ChatDto, @CurrentUser() user?: AuthUser): Promise<ChatResponseDto> {
-    return this.aiChat.chat(dto.content, dto.topK ?? 5, user, dto.sessionId);
+    return this.aiChatService.chat(dto.content, dto.topK ?? 5, user, dto.sessionId);
   }
 
   @Get('ai/sessions')
@@ -63,10 +67,7 @@ export class AiController {
   // 静态段 messages 在 :id 之后没关系；注意不要用会吞掉 sessions 的路由
   @Get('ai/sessions/:id/messages')
   @RequirePermission(PermissionCode.search)
-  listMessages(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthUser,
-  ): Promise<AiMessageEntity[]> {
+  listMessages(@Param('id') id: string, @CurrentUser() user: AuthUser): Promise<AiMessageEntity[]> {
     return this.sessions.listMessages(user.userId, id);
   }
 
@@ -84,5 +85,15 @@ export class AiController {
   @RequirePermission(PermissionCode.search)
   removeSession(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.sessions.remove(user.userId, id);
+  }
+
+  @Post('ai/chat/stream')
+  @RequirePermission(PermissionCode.search)
+  streamChat(
+    @Body() dto: ChatStreamDto,
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response, // 注意：接管响应，不要再 return JSON
+  ) {
+    return this.aiStreamService.streamChat(dto, user, res);
   }
 }

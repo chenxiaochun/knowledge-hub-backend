@@ -22,6 +22,6 @@ import { WebSearchService } from './web-search.service';
       inject: [LlmService],
     },
   ],
-  exports: ['WEB_SEARCH_TOOL'],
+  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL'],
 })
 export class ToolsModule {}
