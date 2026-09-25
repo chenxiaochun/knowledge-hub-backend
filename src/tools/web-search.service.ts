@@ -24,17 +24,22 @@ export class WebSearchService {
   public tool;
 
   constructor(private readonly config: ConfigService) {
-    this.tool = tool(this.search, {
+    // 必须用箭头函数包一层：tool(this.search) 会丢 this，调用时 this.config 为 undefined
+    this.tool = tool(async (input: { query: string; count?: number }) => this.search(input), {
       name: 'web_search',
-      description: '搜索互联网上的信息',
+      description:
+        '联网搜索（Bocha）。知识库不足、需要最新公开信息（如天气、新闻）或外部资料时再调用。' +
+        '不要用它替代知识库已有内容。',
       schema: z.object({
-        query: z.string().describe('搜索关键词'),
-        count: z.number().describe('搜索结果数量').optional(),
+        query: z.string().min(1).describe('搜索关键词'),
+        count: z.number().int().min(1).max(10).optional().describe('条数，默认 5'),
       }),
     });
   }
 
   async search({ query, count = 5 }: { query: string; count?: number }): Promise<WebSearchResult> {
+    this.logger.log(`web_search 被调用：query=${query}, count=${count}`);
+
     const apiKey = this.config.get<string>('BOCHA_API_KEY');
     if (!apiKey) {
       return {

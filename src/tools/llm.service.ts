@@ -19,7 +19,9 @@ export class LlmService {
       configuration: {
         baseURL: baseUrl,
       },
-      modelKwargs: { enable_thinking: true },
+      // 开启 thinking 时，部分百炼模型会倾向「口头说去搜」而不发 tool_calls
+      // 需要边想边调工具时再开；流式思考可在 ai-stream 侧单独处理
+      modelKwargs: { enable_thinking: false },
     });
   }
 }
