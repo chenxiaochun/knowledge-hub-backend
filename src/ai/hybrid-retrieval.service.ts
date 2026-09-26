@@ -11,6 +11,8 @@ export class HybridRetrievalService {
   private readonly logger = new Logger(HybridRetrievalService.name);
   private readonly hybridTopK: number;
   private readonly rrfC: number;
+  /** rerank relevance 最低分；低于此值的命中直接丢弃 */
+  private readonly minScore: number;
 
   constructor(
     config: ConfigService,
@@ -20,6 +22,7 @@ export class HybridRetrievalService {
   ) {
     this.hybridTopK = Number(config.get('RAG_HYBRID_TOP_K', 20));
     this.rrfC = Number(config.get('RAG_RRF_C', 60));
+    this.minScore = Number(config.get('RAG_MIN_SCORE', 0.4));
   }
 
   /**
@@ -39,7 +42,11 @@ export class HybridRetrievalService {
     if (!fused.length) return [];
 
     const reranked = await this.reranker.rerank(query, fused, topK);
-    if (reranked?.length) return reranked.slice(0, topK);
+    if (reranked?.length) {
+      // relevance_score 通常在 0~1；低于阈值视为不相关
+      return reranked.filter((hit) => hit.score >= this.minScore).slice(0, topK);
+    }
+    // 无 rerank 时退回 RRF 分（量纲远小于 0.4），不做同一阈值
     return fused.slice(0, topK);
   }
 
