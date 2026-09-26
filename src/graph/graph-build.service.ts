@@ -98,6 +98,8 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       id: doc.id,
       title: doc.title,
       content,
+      summary: contentDoc?.contentSummary?.trim() || content.slice(0, 200),
+      categoryId: '',
       tags: doc.tags ?? '',
       authorId: doc.authorId ?? '',
       status: doc.status,
@@ -131,6 +133,8 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     id: string;
     title: string;
     content: string;
+    summary: string;
+    categoryId: string;
     tags: string;
     authorId: string;
     status: DocumentStatus;
@@ -142,6 +146,7 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     await this.deleteForDocument(doc.id);
     const session = this.driver.session();
     try {
+      const now = new Date().toISOString();
       await session.run(
         `MERGE (d:KnowledgeDocument {id: $id}) SET d.title = $title, d.summary = $summary, d.categoryId = $categoryId,
         d.authorId = $authorId, d.status = $status, d.tags = $tags,
@@ -149,7 +154,12 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         {
           id: doc.id,
           title: doc.title,
+          summary: doc.summary ?? '',
+          categoryId: doc.categoryId ?? '',
+          authorId: doc.authorId ?? '',
+          status: doc.status,
           tags: doc.tags ?? '',
+          now,
         },
       );
       const chunks = this.chunking.chunk({

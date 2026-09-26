@@ -115,6 +115,8 @@ export class DocumentService {
       throw new BadRequestException('待审核文档不可编辑');
     }
 
+    const wasPublished = doc.status === DocumentStatus.Published;
+
     if (dto.title !== undefined) doc.title = dto.title;
     if (dto.tags !== undefined) doc.tags = dto.tags;
 
@@ -133,8 +135,20 @@ export class DocumentService {
       doc.wordCount = this.countWords(dto.content);
     }
 
-    // 已发布改正文：不在这里重建索引；应再走 submit-review → approve
-    return this.docRepo.save(doc);
+    // 编辑保存后回到草稿，需重新提交审核 / 发布
+    if (doc.status !== DocumentStatus.Draft) {
+      doc.status = DocumentStatus.Draft;
+    }
+
+    const saved = await this.docRepo.save(doc);
+    if (wasPublished) {
+      try {
+        await this.pipelinePublisher.afterUnpublish(saved.id);
+      } catch (error) {
+        this.logger.warn(`文档 ${id} 编辑后清索引失败：${error}`);
+      }
+    }
+    return saved;
   }
 
   async pageDocuments(query: QueryDocumentDto) {
