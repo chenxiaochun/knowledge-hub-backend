@@ -26,6 +26,7 @@ import { RoleEntity } from './user/entities/role.entity';
 import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
+import { SpeechModule } from './speech/speech.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { UserModule } from './user/user.module';
     }),
     AiModule,
     ToolsModule,
+    SpeechModule,
   ],
   controllers: [AppController],
   providers: [AppService],
