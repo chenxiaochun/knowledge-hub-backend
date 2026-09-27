@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
@@ -17,6 +17,8 @@ interface TokenPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly userService: UserService,
     private readonly emailActivation: EmailActivationService,
@@ -94,17 +96,26 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    const needVerify = this.requireEmailVerification();
+    this.logger.log(
+      `注册：username=${dto.username} email=${dto.email ?? '-'} needVerify=${needVerify}`,
+    );
+    if (needVerify && !dto.email) {
+      throw new BadRequestException('请填写邮箱以接收激活邮件');
+    }
+
     const result = await this.userService.register({
       ...dto,
-      requireEmailVerification: this.requireEmailVerification(),
+      requireEmailVerification: needVerify,
     });
     if (result.emailVerificationRequired && dto.email) {
       const token = await this.emailActivation.createToken(result.userId);
       try {
         await this.emailService.sendActivationEmail(dto.email, dto.username, token);
-      } catch {
+      } catch (error) {
         await this.emailActivation.deleteByToken(token);
-        throw new BadRequestException('激活邮件发送失败，请稍后再试');
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new BadRequestException(`激活邮件发送失败：${detail}`);
       }
       return {
         userId: result.userId,

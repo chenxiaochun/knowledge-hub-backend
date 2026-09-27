@@ -145,6 +145,8 @@ export class UserService {
     if (exists) {
       throw new ConflictException('用户名已存在');
     }
+
+    const needVerify = Boolean(dto.requireEmailVerification && dto.email);
     const user = this.userRepository.create({
       id: nextSnowflakeId(),
       username: dto.username,
@@ -152,13 +154,16 @@ export class UserService {
       email: dto.email,
       realName: dto.realName,
       deleted: false,
-      status: 1,
+      // 需邮箱激活：未验证且禁用，激活后再放开
+      emailVerified: needVerify ? 0 : 1,
+      status: needVerify ? 0 : 1,
       roleCodes: [RoleCode.USER],
     });
     const saved = await this.userRepository.save(user);
     return {
       userId: saved.id,
-      message: '注册成功',
+      message: needVerify ? '注册成功，请查收邮件激活账户' : '注册成功',
+      emailVerificationRequired: needVerify,
     };
   }
 

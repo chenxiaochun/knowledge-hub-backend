@@ -20,7 +20,10 @@ export class EmailService {
   }
 
   async sendActivationEmail(email: string, username: string, token: string): Promise<void> {
-    const link = `${this.publicUrl}/auth/verify-email?token=${token}`;
+    // APP_PUBLIC_URL 可为前端激活页完整路径，例如 http://localhost:5173/verify-email
+    const base = this.publicUrl.replace(/\/$/, '');
+    const sep = base.includes('?') ? '&' : '?';
+    const link = `${base}${sep}token=${encodeURIComponent(token)}`;
     const subject = '激活您的知识库账户';
     const text = `您好 ${username}，请点击链接激活（24h 内有效）：\n${link}`;
     const html = `
@@ -40,7 +43,9 @@ export class EmailService {
 
   private async dispatch(to: string, subject: string, text: string, html: string) {
     if (this.transport === 'smtp' && this.mailerService) {
+      this.logger.log(`发送邮件：to=${to} subject=${subject} transport=smtp`);
       await this.mailerService.sendMail({ to, from: this.from, subject, text, html });
+      this.logger.log(`邮件已提交 SMTP：to=${to}`);
       return;
     }
     this.logger.log(`[mail:log] to=${to} subject=${subject}\n${text}`);
