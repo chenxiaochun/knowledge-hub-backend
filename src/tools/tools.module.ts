@@ -26,7 +26,7 @@ import { WebSearchService } from './web-search.service';
     {
       provide: 'ASR_CLIENT_TOOL',
       useFactory: (asrClientService: AsrClientService) => {
-        return asrClientService.client;
+        return asrClientService;
       },
       inject: [AsrClientService],
     },
