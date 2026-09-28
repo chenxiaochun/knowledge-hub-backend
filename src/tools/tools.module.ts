@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AsrClientService } from './asr-client.service';
 import { LlmService } from './llm.service';
 import { WebSearchService } from './web-search.service';
 
@@ -21,7 +22,15 @@ import { WebSearchService } from './web-search.service';
       },
       inject: [LlmService],
     },
+    AsrClientService,
+    {
+      provide: 'ASR_CLIENT_TOOL',
+      useFactory: (asrClientService: AsrClientService) => {
+        return asrClientService.client;
+      },
+      inject: [AsrClientService],
+    },
   ],
-  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL'],
+  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'ASR_CLIENT_TOOL'],
 })
 export class ToolsModule {}

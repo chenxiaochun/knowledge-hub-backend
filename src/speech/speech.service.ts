@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AsrClientService } from './asr-client.service';
+import type { AsrClientService } from '../tools/asr-client.service';
 
 export type UploadAudio = {
   buffer: Buffer;
@@ -11,8 +11,8 @@ export type UploadAudio = {
 
 @Injectable()
 export class SpeechService {
-  @Inject(AsrClientService)
-  private readonly asrClientService!: AsrClientService;
+  @Inject('ASR_CLIENT_TOOL')
+  private readonly asrClient!: AsrClientService;
 
   /**
    * 根据音频文件的 MIME 类型和文件名，确定音频格式
@@ -38,7 +38,7 @@ export class SpeechService {
    */
   async recognizeBySentence(file: UploadAudio) {
     const audioBase64 = file.buffer.toString('base64');
-    const result = await this.asrClientService.client.SentenceRecognition({
+    const result = await this.asrClient.client.SentenceRecognition({
       EngSerViceType: '16k_zh',
       SourceType: 1,
       Data: audioBase64,
