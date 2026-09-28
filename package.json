@@ -66,6 +66,7 @@
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
     "typeorm": "^1.1.0",
+    "ws": "^8.22.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

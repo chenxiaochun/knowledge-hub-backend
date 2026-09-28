@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -17,6 +18,7 @@ import { DocumentEntity } from './document/entities/document.entity';
 import { GraphModule } from './graph/graph.module';
 import { RedisModule } from './redis/redis.module';
 import { SearchModule } from './search/search.module';
+import { SpeechModule } from './speech/speech.module';
 import { StorageModule } from './storage/storage.module';
 import { TeamModule } from './team/team.module';
 import { ToolsModule } from './tools/tools.module';
@@ -26,7 +28,6 @@ import { RoleEntity } from './user/entities/role.entity';
 import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
-import { SpeechModule } from './speech/speech.module';
 
 @Module({
   imports: [
@@ -88,6 +89,9 @@ import { SpeechModule } from './speech/speech.module';
     AiModule,
     ToolsModule,
     SpeechModule,
+    EventEmitterModule.forRoot({
+      maxListeners: 20,
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

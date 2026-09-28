@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { PipelineModule } from 'src/pipeline/pipeline.module';
+import { SpeechModule } from 'src/speech/speech.module';
 import { ToolsModule } from 'src/tools/tools.module';
 
 import { AiChatService } from './ai-chat.service';
@@ -18,6 +19,7 @@ import { RerankerService } from './reranker.service';
     PipelineModule,
     TypeOrmModule.forFeature([AiSessionEntity, AiMessageEntity]),
     ToolsModule,
+    SpeechModule,
   ],
   controllers: [AiController],
   providers: [

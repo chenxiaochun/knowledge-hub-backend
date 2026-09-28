@@ -37,15 +37,15 @@ export class TtsStreamPublisher {
   /**
    * 透传 UIMessage 流，并把 text-delta 同步发给 TTS。
    */
-  pipeUiMessageStream(
-    stream: ReadableStream<UIMessageChunk>,
+  pipeUiMessageStream<T extends UIMessageChunk>(
+    stream: ReadableStream<T>,
     sessionId: string,
     query: string,
-  ): ReadableStream<UIMessageChunk> {
+  ): ReadableStream<T> {
     this.start(sessionId, query);
 
     return stream.pipeThrough(
-      new TransformStream<UIMessageChunk, UIMessageChunk>({
+      new TransformStream<T, T>({
         transform: (chunk, controller) => {
           controller.enqueue(chunk);
           if (chunk.type === 'text-delta' && chunk.delta) {

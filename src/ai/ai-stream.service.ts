@@ -10,6 +10,7 @@ import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessage } 
 import { createAgent, HumanMessage, modelCallLimitMiddleware } from 'langchain';
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { ChunkHit } from 'src/pipeline/types/pipeline.types';
+import { TtsStreamPublisher } from 'src/speech/tts-stream.publisher';
 
 import { ChatSessionService } from './chat-session.service';
 import { ChatSourceDto } from './dto/chat-response.dto';
@@ -46,6 +47,7 @@ export class AiStreamService {
     @Inject('LLM_TOOL') private readonly llmTool: ChatOpenAI,
     private readonly sessions: ChatSessionService,
     private readonly retrieval: HybridRetrievalService,
+    private readonly ttsPublisher: TtsStreamPublisher,
   ) {
     this.agent = createAgent({
       model: this.llmTool,
@@ -61,12 +63,23 @@ export class AiStreamService {
   async streamChat(dto: ChatStreamDto, user: AuthUser, res: Response) {
     const question = lastUserText(dto.messages);
     const topK = dto.topK ?? 5;
+    const enableTts = dto.enableTts === true;
 
     let persistSessionId = dto.sessionId;
     let persistSources: ChatSourceDto[] = [];
 
+    // TTS 需前端先用同一 sessionId 连 WS；新建会话时提前落库拿到 id
+    if (enableTts && question) {
+      const session = dto.sessionId
+        ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
+        : await this.sessions.create(user.userId, {
+            title: titleFromQuestion(question),
+          });
+      persistSessionId = session.id;
+    }
+
     // SDK 只管 UI Message 协议；会话 / RAG / data-* / Agent 流在 execute 里编排
-    const stream = createUIMessageStream<KhUIMessage>({
+    let stream = createUIMessageStream<KhUIMessage>({
       execute: async ({ writer }) => {
         writer.write({ type: 'start' });
 
@@ -83,15 +96,17 @@ export class AiStreamService {
         }
 
         // ——— 1) 会话 ———
-        const session = dto.sessionId
-          ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
-          : await this.sessions.create(user.userId, {
-              title: titleFromQuestion(question),
-            });
-        persistSessionId = session.id;
+        if (!persistSessionId) {
+          const session = dto.sessionId
+            ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
+            : await this.sessions.create(user.userId, {
+                title: titleFromQuestion(question),
+              });
+          persistSessionId = session.id;
+        }
         writer.write({
           type: 'data-session',
-          data: { sessionId: session.id },
+          data: { sessionId: persistSessionId },
         });
 
         // ——— 2) 检索 ———
@@ -191,6 +206,10 @@ export class AiStreamService {
       },
       onError: (error) => (error instanceof Error ? error.message : String(error)),
     });
+
+    if (enableTts && persistSessionId && question) {
+      stream = this.ttsPublisher.pipeUiMessageStream(stream, persistSessionId, question);
+    }
 
     await pipeUIMessageStreamToResponse({ response: res, stream });
   }
