@@ -38,7 +38,10 @@ const CLASSIFIER_PROMPT =
   '1. 知识库内容永远不要写成 user 记忆\n' +
   '2. 「这次先看差旅制度第三节」→ session，不要标成 user\n' +
   '3. user 与 session 可同时为 true\n' +
-  '4. 一次性提问且未产生需跨轮记住的约定 → 均为 false';
+  '4. 一次性提问且未产生需跨轮记住的约定 → 均为 false\n' +
+  '\n' +
+  '请严格以 JSON 对象格式输出，字段：write_user（boolean）、write_session（boolean）、reason（string）。' +
+  '不要 markdown 代码块，不要额外解释。';
 
 export type LongMemoryHits = {
   user: string[];

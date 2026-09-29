@@ -21,7 +21,10 @@ const REWRITE_PROMPT =
   '- 不要复述助手给出的制度条文、时限、流程细节\n' +
   '- 当前问题已经完整、不依赖上文时，standalone_query 用原问题略作精炼即可\n' +
   '- 寒暄、致谢、与知识库无关 → need_retrieve=false，standalone_query 仍给原问题\n' +
-  '- 输出不要解释';
+  '- 输出不要解释\n' +
+  '\n' +
+  '请严格以 JSON 对象格式输出，字段：standalone_query（string）、need_retrieve（boolean）。' +
+  '不要 markdown 代码块，不要额外解释。';
 
 export type RetrieveQueryPlan = {
   query: string;
