@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 18 · 文档检索可见性（origin v15）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .callout-ok { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 18 · 文档检索可见性 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      前置 <a href="./05-pipeline-search-index.html">课 05</a> /
+      <a href="./11-team-mail-redis.html">课 11</a> /
+      <a href="./14-rag-hybrid-citation-v11.html">课 14</a> ·
+      对照 origin 分支 <code>v15</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念与规则</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#auth">1. AuthUser.teamIds</a></li>
+        <li><a href="#access">2. document-access</a></li>
+        <li><a href="#pg">3. Postgres 列表/详情/写</a></li>
+        <li><a href="#index-write">4. 索引写入可见性字段</a></li>
+        <li><a href="#query">5. 检索入口加 filter</a></li>
+        <li><a href="#sync">6. 改公开/团队刷索引</a></li>
+        <li><a href="#team-api">7. 团队 API 收口</a></li>
+        <li><a href="#verify">8. 验收 curl</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          把「谁能看见哪篇文档」贯穿到<strong>列表 / 详情 / 全文搜索 / RAG / 图谱</strong>。
+          规则与 origin <code>v15</code> 一致：普通用户只能看到
+          <strong>自己写的 ∪ 已发布且公开 ∪ 已发布且所在团队</strong>；
+          <code>ADMIN</code> / <code>REVIEWER</code> 不限制。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：在练习仓手敲；对照 origin <code>v15</code>。
+          <strong>不替你改业务代码。</strong>
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li>JWT / <code>AuthUser</code> 带 <code>teamIds</code>（成员 ∪ 负责人）</li>
+            <li>用户 A 看不到用户 B 的草稿、非公开非本团队已发布文档（列表不出现，详情 403）</li>
+            <li><code>POST /search</code>、<code>POST /ai/rag/search</code>、<code>GET /graph/*</code> 同样按可见性过滤</li>
+            <li>已发布文档只改 <code>isPublic</code> / <code>teamId</code> 时，ES / 向量 / Neo4j 立刻刷可见性字段（不必重算向量）</li>
+            <li>管理员搜得到所有已索引文档；普通用户搜不到无权文档</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 05（ES 全文）+ 课 11（团队）建议已通；课 14（混合检索）/ 课 15（图谱）若已做，本课在其上打洞。
+          需要 Postgres + ES（+ 可选 Neo4j / Embedding）。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与规则</h2>
+        <h3>可见性规则（一张表）</h3>
+        <table>
+          <thead><tr><th>角色 / 情况</th><th>能看见</th></tr></thead>
+          <tbody>
+            <tr><td><code>ADMIN</code> / <code>REVIEWER</code></td><td>全部（列表、搜索、RAG、图谱都不加 filter）</td></tr>
+            <tr><td>作者本人</td><td>自己的任意状态（含草稿 / 待审）</td></tr>
+            <tr><td>普通用户 + 已发布 + <code>isPublic</code></td><td>可见</td></tr>
+            <tr><td>普通用户 + 已发布 + <code>teamId ∈ teamIds</code></td><td>可见</td></tr>
+            <tr><td>其它</td><td>不可见</td></tr>
+          </tbody>
+        </table>
+
+        <h3>为什么要「三套索引一起管」</h3>
+        <div class="flow">Postgres 元数据（列表 / 详情）
+    │  canReadDocument / SQL WHERE
+    │
+ES kh_document（全文搜）── filter: isPublic | authorId | teamId
+ES kh_chunk（RAG）────── filter / knn.filter 同上（snake_case）
+Neo4j KnowledgeDocument ─ Cypher WHERE 同上
+    │
+改 isPublic / teamId（仍 Published）
+    └─► PipelineOrchestrator.updateVisibility
+           ├─ SearchIndex.updateVisibility
+           ├─ VectorIndex.updateVisibility
+           └─ GraphBuild.updateVisibility</div>
+
+        <div class="callout-tip">
+          <strong>关键设计</strong>：可见性放 ES <code>filter</code>，相关性放 <code>must</code>，
+          权限条件<strong>不参与打分</strong>。索引侧假定「未发布不会进索引」，
+          ES filter <strong>不再判断 status</strong>；Postgres 列表仍要判断 Published。
+        </div>
+      </section>
+
+      <section id="files">
+        <h2>文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/document/document-access.ts</code></td><td><strong>新建</strong>：规则 + ES/Neo4j 辅助</td></tr>
+            <tr><td><code>src/auth/auth-user.interface.ts</code></td><td>加 <code>teamIds</code></td></tr>
+            <tr><td><code>src/team/team.service.ts</code></td><td><code>listAccessibleTeamIds</code> / <code>listMine</code></td></tr>
+            <tr><td><code>src/team/team.controller.ts</code></td><td><code>GET /teams/mine</code>；管理接口加 <code>@Roles(ADMIN)</code></td></tr>
+            <tr><td><code>src/user/user.service.ts</code> / <code>user.module.ts</code></td><td><code>toAuthUser</code> 异步填 teamIds；import TeamModule</td></tr>
+            <tr><td><code>src/document/document.service.ts</code> / controller</td><td>列表/详情/写权限；可见性变更刷索引</td></tr>
+            <tr><td><code>src/document/document-review.service.ts</code></td><td>提交审核 <code>canWriteDocument</code></td></tr>
+            <tr><td><code>src/pipeline/*</code></td><td>写入字段 + 查询 filter + updateVisibility</td></tr>
+            <tr><td><code>src/search</code> / <code>src/ai</code> / <code>src/graph</code> controllers</td><td>传入 <code>accessFromUser(user)</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="auth">
+        <h2>1. AuthUser.teamIds</h2>
+        <p>可见性依赖「用户在哪些团队」。登录 / JWT 校验后注入的 <code>AuthUser</code> 必须带上。</p>
+        <h3>1.1 接口字段</h3>
+        <p class="file-path">src/auth/auth-user.interface.ts</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export interface AuthUser {
+  userId: string;
+  username: string;
+  realName?: string | null;
+  email?: string | null;
+  avatar?: string | null;
+  roles: string[];
+  permissions: string[];
+  /** 所在团队（含担任负责人的团队），用于文档可见性 */
+  teamIds: string[];
+}</code></pre>
+            </div>
+
+        <h3>1.2 TeamService 解析团队</h3>
+        <p class="file-path">src/team/team.service.ts</p>
+        <p>记得 <code>import { In } from 'typeorm'</code>。<code>TeamModule</code> 需 <code>exports: [TeamService]</code>。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async listAccessibleTeamIds(userId: string): Promise&lt;string[]&gt; {
+  const [memberRows, led] = await Promise.all([
+    this.memberRepo
+      .createQueryBuilder('m')
+      .select('m.team_id', 'teamId')
+      .where('m.user_id = :userId', { userId })
+      .getRawMany&lt;{ teamId: string | number }&gt;(),
+    this.teamRepo.find({
+      where: { leaderId: userId, deleted: false },
+      select: ['id'],
+    }),
+  ]);
+  const ids = [
+    ...new Set([
+      ...memberRows.map((row) =&gt; String(row.teamId)),
+      ...led.map((row) =&gt; String(row.id)),
+    ]),
+  ];
+  if (!ids.length) return [];
+  const teams = await this.teamRepo.find({
+    where: { id: In(ids), deleted: false },
+    select: ['id', 'teamName'],
+  });
+  return teams.map((row) =&gt; String(row.id));
+}
+
+async listMine(userId: string): Promise&lt;TeamEntity[]&gt; {
+  const ids = await this.listAccessibleTeamIds(userId);
+  if (!ids.length) return [];
+  return this.teamRepo.find({
+    where: { id: In(ids), deleted: false },
+    order: { sort: 'ASC', createdAt: 'ASC' },
+  });
+}</code></pre>
+            </div>
+
+        <h3>1.3 UserService.toAuthUser 改为 async</h3>
+        <p class="file-path">src/user/user.service.ts</p>
+        <p><code>UserModule</code> <code>imports: [TeamModule, …]</code>，构造函数注入 <code>TeamService</code>。
+        所有调用 <code>toAuthUser</code> 的地方加 <code>await</code>。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async toAuthUser(
+  user: UserEntity,
+  roles: string[],
+  permissions: string[],
+): Promise&lt;AuthUser&gt; {
+  const teamIds = await this.teamService.listAccessibleTeamIds(user.id);
+  return {
+    userId: user.id,
+    username: user.username,
+    realName: user.realName,
+    email: user.email,
+    avatar: user.avatar,
+    roles,
+    permissions,
+    teamIds: teamIds.map(String),
+  };
+}</code></pre>
+            </div>
+
+        <div class="callout-ok">
+          自检：登录后任意需鉴权接口，<code>request.user.teamIds</code> 应为字符串数组（可为空）。
+        </div>
+      </section>
+
+      <section id="access">
+        <h2>2. document-access（规则中枢）</h2>
+        <p class="file-path">src/document/document-access.ts（新建，完整可粘贴）</p>
+        <p>所有「能不能看 / ES filter / Cypher WHERE」集中在此，避免三套存储各写一套规则。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { RoleCode } from '../common/constants/roles';
+import type { AuthUser } from '../auth/auth-user.interface';
+import { DocumentStatus } from './document-status';
+import type { DocumentEntity } from './entities/document.entity';
+
+/** 当前用户可读哪些文档：公开 ∪ 所在团队 ∪ 自己写的；管理员/审核员不限制 */
+export type DocumentAccessScope = {
+  unrestricted: boolean;
+  userId: string;
+  teamIds: string[];
+};
+
+export function accessFromUser(user: AuthUser): DocumentAccessScope {
+  const roles = user.roles ?? [];
+  return {
+    unrestricted:
+      roles.includes(RoleCode.ADMIN) || roles.includes(RoleCode.REVIEWER),
+    userId: user.userId,
+    teamIds: user.teamIds ?? [],
+  };
+}
+
+export function canReadDocument(
+  doc: Pick&lt;DocumentEntity, 'authorId' | 'teamId' | 'isPublic' | 'status'&gt;,
+  scope: DocumentAccessScope,
+): boolean {
+  if (scope.unrestricted) return true;
+  if (doc.authorId &amp;&amp; doc.authorId === scope.userId) return true;
+  if (doc.status !== DocumentStatus.Published) return false;
+  if (doc.isPublic) return true;
+  return Boolean(doc.teamId &amp;&amp; scope.teamIds.includes(doc.teamId));
+}
+
+export function canWriteDocument(
+  doc: Pick&lt;DocumentEntity, 'authorId'&gt;,
+  user: AuthUser,
+): boolean {
+  if (user.roles?.includes(RoleCode.ADMIN)) return true;
+  return Boolean(doc.authorId &amp;&amp; doc.authorId === user.userId);
+}
+
+export const ES_CHUNK_VISIBILITY_FIELDS = {
+  isPublic: 'is_public',
+  authorId: 'author_id',
+  teamId: 'team_id',
+};
+
+export const ES_DOC_VISIBILITY_FIELDS = {
+  isPublic: 'isPublic',
+  authorId: 'authorId',
+  teamId: 'teamId',
+};
+
+/**
+ * Elasticsearch 可见性 filter（只筛不打分）。
+ * fields 区分 kh_document（camelCase）与 kh_chunk（snake_case）。
+ * 管理员/审核员返回 null，调用方不加过滤。
+ */
+export function esVisibilityFilter(
+  scope: DocumentAccessScope,
+  fields: { isPublic: string; authorId: string; teamId: string },
+): Record&lt;string, unknown&gt; | null {
+  if (scope.unrestricted) return null;
+  // 公开 ∪ 自己写的；有团队再 OR 所在团队。不判断 status，假定未发布未进索引。
+  const should: Record&lt;string, unknown&gt;[] = [
+    { term: { [fields.isPublic]: true } },
+    { term: { [fields.authorId]: scope.userId } },
+  ];
+  if (scope.teamIds.length) {
+    should.push({ terms: { [fields.teamId]: scope.teamIds } });
+  }
+  // filter 上下文中 should = 或；至少命中一条才可见
+  return { bool: { should, minimum_should_match: 1 } };
+}
+
+/** 相关性查询放 must，可见性放 filter，避免权限条件影响打分 */
+export function wrapEsQuery(
+  query: Record&lt;string, unknown&gt;,
+  filter: Record&lt;string, unknown&gt; | null,
+): Record&lt;string, unknown&gt; {
+  if (!filter) return query;
+  return {
+    bool: {
+      must: [query],
+      filter: [filter],
+    },
+  };
+}
+
+export function neo4jAccessParams(scope?: DocumentAccessScope) {
+  return {
+    unrestricted: !scope || scope.unrestricted,
+    accessUserId: scope?.userId ?? '',
+    accessTeamIds: scope?.teamIds ?? [],
+  };
+}
+
+/** Cypher：文档节点是否对当前用户可见 */
+export function neo4jDocumentAccessWhere(alias = 'd'): string {
+  return (
+    `($unrestricted OR ${alias}.authorId = $accessUserId ` +
+    `OR ${alias}.isPublic = true OR ${alias}.teamId IN $accessTeamIds)`
+  );
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="pg">
+        <h2>3. Postgres：列表 / 详情 / 写权限</h2>
+        <h3>3.1 列表 findAll</h3>
+        <p class="file-path">src/document/document.service.ts · controller 传入 <code>@CurrentUser() user</code></p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async findAll(query: QueryDocumentDto, user: AuthUser) {
+  const page = query.page ?? 1;
+  const pageSize = query.pageSize ?? 20;
+  const scope = accessFromUser(user);
+
+  const qb = this.em
+    .createQueryBuilder(DocumentEntity, 'doc')
+    .where('doc.deleted = :deleted', { deleted: false });
+
+  if (!scope.unrestricted) {
+    if (scope.teamIds.length) {
+      qb.andWhere(
+        `(doc.author_id = :me OR (doc.status = :published AND (doc.is_public = true OR doc.team_id IN (:...teamIds))))`,
+        {
+          me: scope.userId,
+          published: DocumentStatus.Published,
+          teamIds: scope.teamIds,
+        },
+      );
+    } else {
+      qb.andWhere(
+        `(doc.author_id = :me OR (doc.status = :published AND doc.is_public = true))`,
+        { me: scope.userId, published: DocumentStatus.Published },
+      );
+    }
+  }
+  // …原有 title / category / status 筛选与分页不变
+}</code></pre>
+            </div>
+
+        <h3>3.2 详情 findOne</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async findOne(id: string, withContent = true, user?: AuthUser) {
+  const doc = await this.em.findOne(DocumentEntity, {
+    where: { id, deleted: false },
+  });
+  if (!doc) throw new NotFoundException(`Document ${id} not found`);
+  if (user &amp;&amp; !canReadDocument(doc, accessFromUser(user))) {
+    throw new ForbiddenException('无权查看该文档');
+  }
+  // …原有 loadContent
+}</code></pre>
+            </div>
+
+        <h3>3.3 写操作 assertWritable</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">private assertWritable(doc: DocumentEntity, actor: AuthUser) {
+  if (!canWriteDocument(doc, actor)) {
+    throw new ForbiddenException('无权修改该文档');
+  }
+}
+// update / publish / archive / save-as-draft / softDelete / submitReview 入口调用</code></pre>
+            </div>
+        <p>Controller：<code>findAll(query, user)</code>、<code>findOne(id, true, user)</code>。
+        Review：<code>submitReview</code> 里对 <code>canWriteDocument</code> 校验。</p>
+      </section>
+
+      <section id="index-write">
+        <h2>4. 索引写入：带上可见性字段</h2>
+        <p>发布建索引时必须写入 <code>isPublic</code> / <code>authorId</code> / <code>teamId</code>，否则查询侧 filter 永远匹配不上。</p>
+        <h3>4.1 类型与分块</h3>
+        <p><code>DocumentChunk</code> / 管线 DTO 增加 <code>isPublic?: boolean</code>。
+        <code>ChunkingService</code> 透传；<code>PipelineOrchestrator</code> 从实体取 <code>doc.isPublic</code>。</p>
+        <h3>4.2 ES kh_document mapping</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// ensureEsIndex properties 增加
+isPublic: { type: 'boolean' },
+authorId: { type: 'keyword' },
+teamId: { type: 'keyword' },
+
+/** 旧索引补字段 */
+private async ensureVisibilityMapping() {
+  if (!this.es) return;
+  try {
+    await this.es.indices.putMapping({
+      index: ES_INDEX,
+      properties: {
+        isPublic: { type: 'boolean' },
+        teamId: { type: 'keyword' },
+        authorId: { type: 'keyword' },
+      },
+    });
+  } catch (error) {
+    this.logger.warn(`kh_document 可见性 mapping 更新失败：${error}`);
+  }
+}
+// onModuleInit：ensureEsIndex 之后调用 ensureVisibilityMapping</code></pre>
+            </div>
+        <h3>4.3 ES kh_chunk（snake_case）</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// mapping
+is_public: { type: 'boolean' },
+author_id: { type: 'keyword' },
+team_id: { type: 'keyword' },
+
+// buildDocMap
+is_public: chunk.isPublic ?? false,
+
+// 同样 ensureVisibilityMapping 补 is_public / author_id / team_id</code></pre>
+            </div>
+        <h3>4.4 Neo4j 文档节点</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-cypher">MERGE (d:KnowledgeDocument {id: $id})
+SET d.title = $title, d.summary = $summary, d.categoryId = $categoryId,
+    d.authorId = $authorId, d.teamId = $teamId, d.isPublic = $isPublic,
+    d.status = $status, d.tags = $tags,
+    d.updatedAt = $now, d.createdAt = coalesce(d.createdAt, $now)</code></pre>
+            </div>
+      </section>
+
+      <section id="query">
+        <h2>5. 检索入口加 filter</h2>
+        <p>原则：Controller 取 <code>accessFromUser(user)</code> → Service 查询带 scope。</p>
+        <h3>5.1 全文搜索</h3>
+        <p class="file-path">src/search/search.controller.ts</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">@Post()
+@RequirePermission(PermissionCode.search)
+search(@Body() dto: SearchDocumentsDto, @CurrentUser() user: AuthUser) {
+  return this.searchIndex.searchDocuments({
+    keyword: dto.keyword,
+    page: dto.page,
+    pageSize: dto.pageSize,
+    categoryId: dto.categoryId,
+    authorId: dto.authorId,
+    scope: accessFromUser(user),
+  });
+}</code></pre>
+            </div>
+        <p><code>SearchIndexService.searchDocuments</code>：用 <code>esVisibilityFilter(scope, ES_DOC_VISIBILITY_FIELDS)</code> 放进 <code>bool.filter</code>。</p>
+        <h3>5.2 RAG / 混合检索</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// HybridRetrievalService.retrieve(query, topK, user?)
+const scope = user
+  ? accessFromUser(user)
+  : { unrestricted: false, userId: '', teamIds: [] };
+const fused = await this.vectorIndex.searchHybrid({ …, scope });
+
+// VectorIndexService.keywordSearch / knnSearch
+const vis = scope
+  ? esVisibilityFilter(scope, ES_CHUNK_VISIBILITY_FIELDS)
+  : null;
+// keyword：query = wrapEsQuery(multi_match, vis)
+// knn：若 vis 则 knn.filter = vis
+
+// AiController.rag/search、AiChatService、AiStreamService：retrieve(..., user)</code></pre>
+            </div>
+        <h3>5.3 图谱</h3>
+        <p><code>GraphController</code> 各接口传 <code>scope</code>。实体须存在「可见文档 → chunk → MENTIONS」路径才返回。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-cypher">MATCH (e:KnowledgeEntity)
+WHERE ($type IS NULL OR $type = '' OR e.type = $type)
+  AND (
+    $unrestricted OR EXISTS {
+      MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]-&gt;(:DocumentChunk)-[:MENTIONS]-&gt;(e)
+      WHERE ($unrestricted OR d.authorId = $accessUserId
+             OR d.isPublic = true OR d.teamId IN $accessTeamIds)
+    }
+  )
+RETURN DISTINCT e.name AS id, e.name AS name, e.type AS type
+LIMIT $limit</code></pre>
+            </div>
+      </section>
+
+      <section id="sync">
+        <h2>6. 改公开 / 团队：立刻刷三套索引</h2>
+        <p>
+          已发布文档只改 <code>isPublic</code> / <code>teamId</code> 时，若等再次审核发布才重建索引，
+          搜索会继续按<strong>旧可见性</strong>放行——本课最容易漏的坑。
+        </p>
+        <h3>6.1 DocumentService.update</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">const oldIsPublic = doc.isPublic;
+const oldTeamId = doc.teamId ?? null;
+// …保存
+const visibilityChanged =
+  saved.isPublic !== oldIsPublic || (saved.teamId ?? null) !== oldTeamId;
+
+await this.syncPipelineAfterUpdate(
+  saved, oldStatus, saved.status, contentChanged, visibilityChanged,
+);
+
+private async syncPipelineAfterUpdate(
+  doc, oldStatus, newStatus, contentChanged, visibilityChanged,
+) {
+  const wasPublished = oldStatus === DocumentStatus.Published;
+  const isPublished = newStatus === DocumentStatus.Published;
+
+  if (wasPublished &amp;&amp; !isPublished) {
+    await this.safeUnpublish(doc.id);
+    return;
+  }
+  if (isPublished &amp;&amp; contentChanged &amp;&amp; !this.reviewService.isRequireApproval()) {
+    await this.safePublish(doc);
+    return;
+  }
+  if (isPublished &amp;&amp; visibilityChanged) {
+    try {
+      await this.pipeline.updateVisibility(doc);
+    } catch (error) {
+      this.logger.warn(`可见性同步失败：${error}`);
+    }
+  }
+}</code></pre>
+            </div>
+        <p><code>DocumentModule</code> <code>imports: [PipelineModule]</code>，注入 <code>PipelineOrchestrator</code>。</p>
+        <h3>6.2 PipelineOrchestrator.updateVisibility</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async updateVisibility(doc: DocumentEntity) {
+  const vis = {
+    isPublic: doc.isPublic ?? false,
+    teamId: doc.teamId ?? null,
+    authorId: doc.authorId ?? null,
+  };
+  await Promise.all([
+    this.searchIndexService.updateVisibility(doc.id, vis),
+    this.vectorIndexService.updateVisibility(doc.id, vis),
+    this.graphBuildService.updateVisibility(doc.id, vis),
+  ]);
+}</code></pre>
+            </div>
+        <h3>6.3 各存储的 updateVisibility</h3>
+        <table>
+          <thead><tr><th>存储</th><th>做法</th></tr></thead>
+          <tbody>
+            <tr><td>kh_document</td><td><code>es.update</code> 按 id 写三字段</td></tr>
+            <tr><td>kh_chunk</td><td><code>updateByQuery</code> + script</td></tr>
+            <tr><td>Neo4j</td><td><code>MATCH … SET</code> 三属性</td></tr>
+          </tbody>
+        </table>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">async updateVisibility(documentId: string, vis: {
+  isPublic: boolean; teamId: string | null; authorId: string | null;
+}) {
+  if (!this.es) return;
+  await this.es.updateByQuery({
+    index: CHUNK_INDEX,
+    refresh: true,
+    query: { term: { document_id: documentId } },
+    script: {
+      source:
+        'ctx._source.is_public = params.is_public; ' +
+        'ctx._source.team_id = params.team_id; ' +
+        'ctx._source.author_id = params.author_id;',
+      params: {
+        is_public: vis.isPublic,
+        team_id: vis.teamId,
+        author_id: vis.authorId,
+      },
+    },
+  });
+}</code></pre>
+            </div>
+      </section>
+
+      <section id="team-api">
+        <h2>7. 团队 API 收口</h2>
+        <p>管理接口逐个加 <code>@Roles(RoleCode.ADMIN)</code>；新增登录即可访问的「我的团队」。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 当前用户所在团队（含担任负责人的），登录即可 */
+@Get('mine')
+listMine(@CurrentUser() user: AuthUser) {
+  return this.teamService.listMine(user.userId);
+}
+// 注意：mine 必须写在 @Get(':id') 之前</code></pre>
+            </div>
+        <p><code>RolesGuard</code> 应对 <code>@Public()</code> 直接放行（与 JWT Guard 一致）。</p>
+      </section>
+
+      <section id="verify">
+        <h2>8. 验收 curl</h2>
+        <p>准备：用户 A、用户 B（不同团队）；文档 D1（A 写、Published、isPublic=false、teamId=A 的团队）；文档 D2（A 写、Draft）。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 变量
+BASE=http://localhost:3000
+TOKEN_A=...   # 用户 A
+TOKEN_B=...   # 用户 B（不在 D1 团队）
+TOKEN_ADMIN=...
+
+# 1) 列表：B 看不到 D1、D2
+curl -s -H "Authorization: Bearer $TOKEN_B" "$BASE/documents?page=1" | jq .
+
+# 2) 详情：B 访问 D1 → 403
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $TOKEN_B" "$BASE/documents/$D1_ID"
+
+# 3) 全文搜：B 关键词命中 D1 正文也不应返回
+curl -s -X POST "$BASE/search" \
+  -H "Authorization: Bearer $TOKEN_B" -H 'Content-Type: application/json' \
+  -d '{"keyword":"只有D1才有的词","page":1,"pageSize":10}' | jq .
+
+# 4) RAG
+curl -s -X POST "$BASE/ai/rag/search" \
+  -H "Authorization: Bearer $TOKEN_B" -H 'Content-Type: application/json' \
+  -d '{"query":"只有D1才有的词","topK":5}' | jq .
+
+# 5) 把 D1 改为 isPublic=true 后，B 应能搜到（不必重跑 Embedding）
+curl -s -X PUT "$BASE/documents/$D1_ID" \
+  -H "Authorization: Bearer $TOKEN_A" -H 'Content-Type: application/json' \
+  -d '{"isPublic":true}' | jq .
+# 再执行步骤 3，B 应命中
+
+# 6) Admin 始终能搜到
+curl -s -X POST "$BASE/search" \
+  -H "Authorization: Bearer $TOKEN_ADMIN" -H 'Content-Type: application/json' \
+  -d '{"keyword":"只有D1才有的词"}' | jq .</code></pre>
+            </div>
+        <div class="callout-ok">
+          通关：B 在公开前搜不到；改 <code>isPublic</code> 后立刻能搜到；A / Admin 行为符合规则表。
+        </div>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么规则集中在 document-access.ts？</h3>
+        <p>Postgres / ES / Neo4j 语法不同，但业务规则必须同一处；改「审核员是否豁免」时只改 <code>accessFromUser</code>。</p>
+        <h3>为什么 ES 用 filter 而不是 must？</h3>
+        <p>filter 不打分、可缓存；避免「团队匹配」把相关性分数搅乱。</p>
+        <h3>为什么改可见性不重跑向量？</h3>
+        <p>向量与正文无关；<code>updateByQuery</code> / Neo4j SET 成本远低于 re-embed。</p>
+        <h3>对照阅读顺序（origin v15）</h3>
+        <ol>
+          <li><code>document/document-access.ts</code></li>
+          <li><code>team.service.ts</code> → <code>user.service.ts#toAuthUser</code></li>
+          <li><code>document.service.ts</code>（findAll / findOne / syncPipelineAfterUpdate）</li>
+          <li><code>search-index</code> / <code>vector-index</code> / <code>graph-build</code></li>
+          <li><code>pipeline.orchestrator.ts#updateVisibility</code></li>
+          <li>各 Controller 传 scope；hybrid-retrieval / AI stream</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin / 练习仓差异</h2>
+        <table>
+          <thead><tr><th>点</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>字段命名</td><td>文档索引 camelCase；chunk 索引 snake_case——用两套 <code>ES_*_VISIBILITY_FIELDS</code></td></tr>
+            <tr><td>RolesGuard @Public</td><td>v15 补上；练习仓若已处理可跳过</td></tr>
+            <tr><td>测试 PDF</td><td>origin 增补 test-files 03–06，与可见性无关</td></tr>
+            <tr><td>练习仓现状</td><td>多半尚无 document-access；按本课补齐，不要求一次改前端</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>改 isPublic 后搜索仍按旧权限</td><td>是否走了 <code>updateVisibility</code>；ES mapping 是否有字段</td></tr>
+            <tr><td>filter 后永远 0 命中</td><td>INDEX 时是否写入 isPublic；authorId 类型是否一致（string）</td></tr>
+            <tr><td>toAuthUser 类型错误</td><td>改为 async 后调用方漏 await</td></tr>
+            <tr><td>循环依赖 Document ↔ Pipeline</td><td>DocumentModule import PipelineModule；避免 Pipeline 再 import Document 服务</td></tr>
+            <tr><td><code>GET /teams/mine</code> 404</td><td><code>mine</code> 必须在 <code>:id</code> 前</td></tr>
+            <tr><td>Admin 也被过滤</td><td>RoleCode 常量是否与 JWT roles 字符串一致</td></tr>
+            <tr><td>knn 忽略可见性</td><td>必须设 <code>knn.filter</code>，只 wrap query 不够</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>document-access.ts</code></td><td>新建且被 search/ai/graph/document 引用</td></tr>
+            <tr><td><code>AuthUser.teamIds</code></td><td>interface + toAuthUser</td></tr>
+            <tr><td><code>listAccessibleTeamIds</code></td><td>team.service</td></tr>
+            <tr><td>列表 SQL 可见性 WHERE</td><td>document.service#findAll</td></tr>
+            <tr><td>详情 canRead / 写 canWrite</td><td>document.service</td></tr>
+            <tr><td>ES/向量 mapping + 写入 isPublic</td><td>search-index / vector-index</td></tr>
+            <tr><td>查询 filter / knn.filter / Cypher</td><td>三套查询</td></tr>
+            <tr><td><code>updateVisibility</code> 三联</td><td>orchestrator + 三服务</td></tr>
+            <tr><td>AI / Search / Graph 传 user</td><td>各 controller</td></tr>
+            <tr><td><code>GET /teams/mine</code></td><td>team.controller</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var codeEl = block.querySelector('pre code');
+        if (!btn || !codeEl) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(codeEl.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var cur = sections[0];
+        sections.forEach(function (s) {
+          if (s.el.offsetTop <= y) cur = s;
+        });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (cur) cur.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+
+  </script>
+</body>
+</html>

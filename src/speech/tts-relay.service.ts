@@ -11,6 +11,10 @@ type ClientSession = {
   sessionId: string;
   clientWs: WebSocket;
   tencentWs?: WebSocket;
+  /** 当前腾讯云合成轮次 id（握手 SessionId） */
+  tencentSynthesisId?: string;
+  /** 当前接受的 AI→TTS 轮次 */
+  activeTurn: number;
   ready: boolean;
   pendingChunks: string[];
   closed: boolean;
@@ -48,6 +52,7 @@ export class TtsRelayService implements OnModuleDestroy {
     this.sessions.set(sessionId, {
       sessionId,
       clientWs,
+      activeTurn: 0,
       ready: false,
       pendingChunks: [],
       closed: false,
@@ -68,15 +73,33 @@ export class TtsRelayService implements OnModuleDestroy {
 
     switch (event.type) {
       case 'start': {
-        this.ensureTencentConnection(session);
+        if (event.turn <= session.activeTurn) return;
+
+        const wasActive = this.hasActiveTencent(session) || session.pendingChunks.length > 0;
+        if (wasActive) {
+          this.sendClientJson(session.clientWs, {
+            type: 'tts_interrupted',
+            sessionId: session.sessionId,
+          });
+          this.closeTencentWs(session, 'interrupted');
+        }
+
+        session.activeTurn = event.turn;
+        session.pendingChunks = [];
+        session.ready = false;
+        this.openTencentConnection(session);
+
         this.sendClientJson(session.clientWs, {
           type: 'tts_started',
           sessionId: session.sessionId,
           query: event.query,
+          turn: event.turn,
+          interrupted: wasActive,
         });
         break;
       }
       case 'chunk': {
+        if (event.turn !== session.activeTurn) return;
         const chunk = event.chunk?.trim();
         if (!chunk) return;
         if (
@@ -91,32 +114,34 @@ export class TtsRelayService implements OnModuleDestroy {
         break;
       }
       case 'end': {
+        if (event.turn !== session.activeTurn) return;
         this.flushPendingChunks(session);
         if (session.tencentWs && session.tencentWs.readyState === WebSocket.OPEN) {
           session.tencentWs.send(
             JSON.stringify({
-              session_id: session.sessionId,
+              session_id: session.tencentSynthesisId,
               action: 'ACTION_COMPLETE',
+              data: '',
             }),
           );
         }
         break;
       }
       case 'error': {
+        if (event.turn != null && event.turn !== session.activeTurn) return;
         this.sendClientJson(session.clientWs, {
           type: 'tts_error',
           message: event.error,
         });
-        this.closeSession(session.sessionId, 'ai stream error');
+        this.closeTencentWs(session, 'ai stream error');
         break;
       }
     }
   }
 
-  private ensureTencentConnection(session: ClientSession): void {
-    if (session.tencentWs && session.tencentWs.readyState <= WebSocket.OPEN) {
-      return;
-    }
+  private openTencentConnection(session: ClientSession): void {
+    this.closeTencentWs(session, 'reopen');
+
     if (!this.secretId || !this.secretKey || !this.appId) {
       const message =
         'TTS 凭证缺失：请在 .env 配置 APP_ID（或 TENCENT_CLOUD_APP_ID），以及 SECRET_ID/SECRET_KEY（或 TENCENT_CLOUD_SECRET_ID/KEY）';
@@ -130,17 +155,21 @@ export class TtsRelayService implements OnModuleDestroy {
       return;
     }
 
-    const url = this.buildTencentTtsWsUrl(session.sessionId);
-    const tencentWs = new WebSocket(url);
-    session.tencentWs = tencentWs;
+    const synthesisId = randomUUID();
+    session.tencentSynthesisId = synthesisId;
     session.ready = false;
 
+    const url = this.buildTencentTtsWsUrl(synthesisId);
+    const tencentWs = new WebSocket(url);
+    session.tencentWs = tencentWs;
+
     tencentWs.on('open', () => {
-      this.logger.log(`Tencent TTS ws opened: ${session.sessionId}`);
+      if (session.tencentWs !== tencentWs) return;
+      this.logger.log(`Tencent TTS ws opened: ${session.sessionId} (${synthesisId})`);
     });
 
     tencentWs.on('message', (data, isBinary) => {
-      if (session.closed) return;
+      if (session.closed || session.tencentWs !== tencentWs) return;
       if (isBinary) {
         if (session.clientWs.readyState === WebSocket.OPEN) {
           session.clientWs.send(data, { binary: true });
@@ -167,26 +196,50 @@ export class TtsRelayService implements OnModuleDestroy {
           message: String(msg.message ?? 'Tencent TTS error'),
           code: Number(msg.code),
         });
-        this.closeSession(session.sessionId, 'tencent error');
+        this.closeTencentWs(session, 'tencent error');
         return;
       }
 
       if (Number(msg.final) === 1) {
-        this.sendClientJson(session.clientWs, { type: 'tts_final' });
+        this.sendClientJson(session.clientWs, { type: 'tts_final', turn: session.activeTurn });
+        this.closeTencentWs(session, 'synthesis complete');
       }
     });
 
     tencentWs.on('error', (error) => {
+      if (session.tencentWs !== tencentWs) return;
       this.sendClientJson(session.clientWs, {
         type: 'tts_error',
         message: `Tencent ws error: ${error.message}`,
       });
+      this.closeTencentWs(session, 'tencent ws error');
     });
 
     tencentWs.on('close', () => {
+      if (session.tencentWs !== tencentWs) return;
       session.tencentWs = undefined;
+      session.tencentSynthesisId = undefined;
       session.ready = false;
     });
+  }
+
+  private hasActiveTencent(session: ClientSession): boolean {
+    return !!session.tencentWs && session.tencentWs.readyState <= WebSocket.OPEN;
+  }
+
+  private closeTencentWs(session: ClientSession, reason: string): void {
+    const ws = session.tencentWs;
+    if (!ws) return;
+
+    session.tencentWs = undefined;
+    session.tencentSynthesisId = undefined;
+    session.ready = false;
+
+    ws.removeAllListeners();
+    if (ws.readyState < WebSocket.CLOSING) {
+      ws.close();
+    }
+    this.logger.log(`Tencent TTS closed: ${session.sessionId}, reason: ${reason}`);
   }
 
   private flushPendingChunks(session: ClientSession): void {
@@ -208,7 +261,7 @@ export class TtsRelayService implements OnModuleDestroy {
 
     session.tencentWs.send(
       JSON.stringify({
-        session_id: session.sessionId,
+        session_id: session.tencentSynthesisId,
         message_id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         action: 'ACTION_SYNTHESIS',
         data: text,
@@ -221,9 +274,7 @@ export class TtsRelayService implements OnModuleDestroy {
     if (!session) return;
     session.closed = true;
 
-    if (session.tencentWs && session.tencentWs.readyState < WebSocket.CLOSING) {
-      session.tencentWs.close();
-    }
+    this.closeTencentWs(session, reason);
     if (session.clientWs.readyState < WebSocket.CLOSING) {
       this.sendClientJson(session.clientWs, { type: 'tts_closed', reason });
       session.clientWs.close();
@@ -237,7 +288,7 @@ export class TtsRelayService implements OnModuleDestroy {
     clientWs.send(JSON.stringify(payload));
   }
 
-  private buildTencentTtsWsUrl(sessionId: string): string {
+  private buildTencentTtsWsUrl(synthesisId: string): string {
     const now = Math.floor(Date.now() / 1000);
     const params: Record<string, string | number> = {
       Action: 'TextToStreamAudioWSv2',
@@ -246,7 +297,7 @@ export class TtsRelayService implements OnModuleDestroy {
       Expired: now + 3600,
       SampleRate: 16000,
       SecretId: this.secretId,
-      SessionId: sessionId,
+      SessionId: synthesisId,
       Speed: 0,
       Timestamp: now,
       VoiceType: this.voiceType,

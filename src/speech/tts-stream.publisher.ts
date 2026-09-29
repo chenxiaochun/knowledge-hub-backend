@@ -11,28 +11,10 @@ import { AI_TTS_STREAM_EVENT, type AiTtsStreamEvent } from './stream-events';
  */
 @Injectable()
 export class TtsStreamPublisher {
+  /** 每个会话的 TTS 轮次，用于丢弃旧流残留 chunk/end */
+  private readonly turnBySession = new Map<string, number>();
+
   constructor(private readonly eventEmitter: EventEmitter2) {}
-
-  start(sessionId: string, query: string): void {
-    this.emit({ type: 'start', sessionId, query });
-  }
-
-  chunk(sessionId: string, chunk: string): void {
-    if (!chunk) return;
-    this.emit({ type: 'chunk', sessionId, chunk });
-  }
-
-  end(sessionId: string): void {
-    this.emit({ type: 'end', sessionId });
-  }
-
-  error(sessionId: string, error: unknown): void {
-    this.emit({
-      type: 'error',
-      sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 
   /**
    * 透传 UIMessage 流，并把 text-delta 同步发给 TTS。
@@ -42,21 +24,37 @@ export class TtsStreamPublisher {
     sessionId: string,
     query: string,
   ): ReadableStream<T> {
-    this.start(sessionId, query);
+    const turn = this.nextTurn(sessionId);
+    this.emit({ type: 'start', sessionId, query, turn });
 
     return stream.pipeThrough(
       new TransformStream<T, T>({
         transform: (chunk, controller) => {
           controller.enqueue(chunk);
           if (chunk.type === 'text-delta' && chunk.delta) {
-            this.chunk(sessionId, chunk.delta);
+            this.emit({ type: 'chunk', sessionId, chunk: chunk.delta, turn });
           }
         },
         flush: () => {
-          this.end(sessionId);
+          this.emit({ type: 'end', sessionId, turn });
         },
       }),
     );
+  }
+
+  error(sessionId: string, error: unknown, turn?: number): void {
+    this.emit({
+      type: 'error',
+      sessionId,
+      turn,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  private nextTurn(sessionId: string): number {
+    const turn = (this.turnBySession.get(sessionId) ?? 0) + 1;
+    this.turnBySession.set(sessionId, turn);
+    return turn;
   }
 
   private emit(event: AiTtsStreamEvent): void {
