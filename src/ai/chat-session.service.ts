@@ -118,4 +118,15 @@ export class ChatSessionService {
     }
     return this.em.save(session);
   }
+
+  /** 最近 N 条，时间正序，供 Redis miss 时回填工作窗口 */
+  async listRecentMessages(userId: string, sessionId: string, limit: number) {
+    await this.getOwned(userId, sessionId);
+    const rows = await this.em.find(AiMessageEntity, {
+      where: { sessionId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: Math.max(limit, 1),
+    });
+    return rows.reverse();
+  }
 }

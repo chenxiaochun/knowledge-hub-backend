@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 19 · Mem0 + Redis 长短期双层记忆（origin v16）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .callout-ok { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 19 · Mem0 + Redis 长短期双层记忆 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      前置 <a href="./16-ai-chat-session-v13.html">课 16</a> /
+      <a href="./17-ai-sse-ui-stream-v14.html">课 17</a> ·
+      对照 origin 分支 <code>v16</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念：双层记忆</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#deps">1. 依赖与环境变量</a></li>
+        <li><a href="#util">2. chat-memory.util</a></li>
+        <li><a href="#short">3. 短期记忆 Redis</a></li>
+        <li><a href="#long">4. 长期记忆 Mem0</a></li>
+        <li><a href="#rewrite">5. 检索改写</a></li>
+        <li><a href="#wire">6. 接入 chat / stream</a></li>
+        <li><a href="#session">7. 会话删除清理</a></li>
+        <li><a href="#verify">8. 验收自测</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          给 AI 对话加上<strong>长短期双层记忆</strong>：
+          Redis 热窗口承载<strong>短期工作记忆</strong>（当前会话最近 N 轮）；
+          Mem0 承载<strong>长期记忆</strong>（user 跨会话画像 + session 本轮任务）。
+          同时加上<strong>检索改写</strong>，让「那这个找谁？」能消解指代后再搜知识库。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：练习仓手敲；对照 origin <code>v16</code>。
+          <strong>不替你改业务代码。</strong>
+          不配 <code>MEM0_API_KEY</code> 时长期记忆整段跳过，短期 + 改写仍可单独验收。
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li>同会话追问：「那这个找谁？」仍钉在上文主题，日志有 <code>检索改写：query=</code></li>
+            <li>短期：新会话里复述「我刚才说要写什么」不依赖 Mem0</li>
+            <li>长期 user：会话 A 声明偏好 → 等约 30s → 新会话 B 仍按偏好作答</li>
+            <li>长期 session：会话 C 的「这次只看差旅」不泄漏到新会话 D</li>
+            <li>删除会话时清 Redis key + Mem0 <code>run_id</code></li>
+            <li>制度条文不会被写进 user 记忆（日志 <code>写入=user</code> 不应带制度人名）</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 16（会话落库）必通；课 17（流式）建议已通。
+          Redis 需可用（课 11/13 若已接 <code>RedisModule</code> 可复用）。
+          Mem0 需云端 Key（可选）。记忆<strong>不是</strong>知识库，制度仍以检索为准。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念：双层记忆 + 改写</h2>
+        <table>
+          <thead><tr><th>层</th><th>存储</th><th>范围</th><th>存什么</th><th>不存什么</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>短期</td>
+              <td>Redis 热窗口</td>
+              <td>当前 <code>userId+sessionId</code></td>
+              <td>最近 N 条 human/ai 原文</td>
+              <td>检索资料、思考链、Mem0 系统消息</td>
+            </tr>
+            <tr>
+              <td>长期 · user</td>
+              <td>Mem0 <code>user_id</code></td>
+              <td>跨会话</td>
+              <td>身份、岗位、回答偏好、持久约束</td>
+              <td>制度条文、负责人、本轮任务</td>
+            </tr>
+            <tr>
+              <td>长期 · session</td>
+              <td>Mem0 <code>user_id + run_id</code></td>
+              <td>仅当前会话</td>
+              <td>本轮任务、进度、临时约定</td>
+              <td>应跨会话永久保留的画像</td>
+            </tr>
+            <tr>
+              <td>检索改写</td>
+              <td>—</td>
+              <td>每轮提问前</td>
+              <td>独立短 query + needRetrieve</td>
+              <td>整段上文塞进 ES</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="flow">用户提问
+  │
+  ├─ loadWorkingHistory：Redis tryLoad → miss 则 Postgres listRecent → 回填 Redis
+  ├─ queryRewrite：history → standalone_query / needRetrieve
+  ├─ 并行：RAG(retrieve) ∥ Mem0.search(user + session)
+  ├─ LLM：System + 【记忆 SystemMessage】+ history + 本轮（含检索资料）
+  ├─ Postgres appendTurn（权威历史）
+  ├─ Redis appendTurn（热窗口）
+  └─ Mem0 rememberTurn（分类器 → 可选写 user / session；异步）</div>
+
+        <div class="callout-tip">
+          <strong>权威历史在 Postgres</strong>：Redis TTL 过期只丢热缓存，下次从库回填。
+          Mem0 写入异步，测跨会话记得等约半分钟。
+        </div>
+      </section>
+
+      <section id="files">
+        <h2>文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/ai/chat-memory.util.ts</code></td><td><strong>新建</strong></td></tr>
+            <tr><td><code>src/ai/chat-short-memory.service.ts</code></td><td><strong>新建</strong></td></tr>
+            <tr><td><code>src/ai/chat-long-memory.service.ts</code></td><td><strong>新建</strong></td></tr>
+            <tr><td><code>src/ai/chat-query-rewrite.service.ts</code></td><td><strong>新建</strong></td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code> / <code>ai-stream.service.ts</code></td><td>接入 load / rewrite / search / remember</td></tr>
+            <tr><td><code>src/ai/chat-session.service.ts</code></td><td><code>listRecentMessages</code>；删除时清记忆</td></tr>
+            <tr><td><code>src/ai/ai.module.ts</code></td><td>注册 3 个 Service</td></tr>
+            <tr><td><code>.env</code> / <code>package.json</code></td><td><code>mem0ai</code> + Redis / Mem0 配置</td></tr>
+            <tr><td>origin <code>chat-memory.md</code></td><td>前端自测题（本课验收对齐）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="deps">
+        <h2>1. 依赖与环境变量</h2>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash">pnpm add mem0ai
+# ioredis / RedisModule 若课 11、13 已有则复用</code></pre>
+            </div>
+        <p>确认 <code>RedisModule</code> 为 <code>@Global()</code> 且已在 <code>AppModule</code> 导入（练习仓课 11/13 多半已有）。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># Redis（密码重置验证码、对话短期记忆热窗口）
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# 对话短期记忆：Redis 热窗口，miss 时从 Postgres 回填。TTL 到期不丢历史，只是下次从库加载。
+CHAT_SHORT_MEMORY_TTL_SECONDS=86400
+CHAT_SHORT_MEMORY_MAX_MESSAGES=20
+# CHAT_SHORT_MEMORY_KEY_PREFIX=kh:chat
+
+# 检索改写：追问消解指代后再搜。超时或失败回退原问题。
+# AI_QUERY_REWRITE_TIMEOUT_MS=15000
+
+# 对话长期记忆（Mem0）。不配则跳过，不影响问答。记忆不是知识库，制度仍以检索为准。
+# MEM0_API_KEY=
+# MEM0_HOST=https://api.mem0.ai
+MEM0_TOP_K=5</code></pre>
+            </div>
+        <div class="callout-warning">
+          勿提交真实 <code>MEM0_API_KEY</code>。无 Key 时 <code>ChatLongMemoryService</code> 打 warn 并全部 no-op。
+        </div>
+      </section>
+
+      <section id="util">
+        <h2>2. chat-memory.util（完整可粘贴）</h2>
+        <p class="file-path">src/ai/chat-memory.util.ts</p>
+        <p>工作消息过滤、DB 行转 LangChain Message、改写用紧凑上下文。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import {
+  AIMessage,
+  HumanMessage,
+  type BaseMessage,
+} from '@langchain/core/messages';
+import type { AiMessageEntity } from './entities/ai-message.entity';
+
+export function messageText(message: BaseMessage): string {
+  const content = message.content;
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return String(content ?? '').trim();
+  return content
+    .map((part) =&gt; {
+      if (typeof part === 'string') return part;
+      if (part &amp;&amp; typeof part === 'object' &amp;&amp; 'text' in part) {
+        return String((part as { text?: string }).text ?? '');
+      }
+      return '';
+    })
+    .join('')
+    .trim();
+}
+
+export function isWorkingMessage(message: BaseMessage): boolean {
+  return HumanMessage.isInstance(message) || AIMessage.isInstance(message);
+}
+
+export function dbRowsToMessages(rows: AiMessageEntity[]): BaseMessage[] {
+  const out: BaseMessage[] = [];
+  for (const row of rows) {
+    const text = row.content?.trim();
+    if (!text) continue;
+    if (row.role === 'user') out.push(new HumanMessage(text));
+    if (row.role === 'assistant') out.push(new AIMessage(text));
+  }
+  return out;
+}
+
+/** 给检索改写器用：最近几轮，助手只留短摘要，避免制度原文污染 query */
+export function compactRewriteContext(history: BaseMessage[]): string {
+  if (!history.length) return '';
+  const lines: string[] = [];
+  for (const message of history.slice(-4)) {
+    const text = messageText(message);
+    if (!text) continue;
+    if (HumanMessage.isInstance(message)) {
+      lines.push(`用户：${text.slice(0, 200)}`);
+    } else if (AIMessage.isInstance(message)) {
+      lines.push(`助手：${text.slice(0, 120)}`);
+    }
+  }
+  return lines.join('\n');
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="short">
+        <h2>3. 短期记忆：Redis 热窗口（完整可粘贴）</h2>
+        <p class="file-path">src/ai/chat-short-memory.service.ts</p>
+        <p>Key：<code>kh:chat:{userId}:{sessionId}:messages</code>。用 LangChain
+        <code>mapChatMessagesToStoredMessages</code> 序列化，只保留 human/ai。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  AIMessage,
+  HumanMessage,
+  mapChatMessagesToStoredMessages,
+  mapStoredMessagesToChatMessages,
+  type BaseMessage,
+} from '@langchain/core/messages';
+import { RedisService } from '../redis/redis.service';
+import { isWorkingMessage } from './chat-memory.util';
+
+/**
+ * 对话短期记忆：Redis 热窗口。
+ * miss / 故障时由调用方从 Postgres 回填再 save。
+ * 只存 human/ai 原文，不含检索资料、思考、Mem0 系统消息。
+ */
+@Injectable()
+export class ChatShortMemoryService {
+  private readonly logger = new Logger(ChatShortMemoryService.name);
+  private readonly ttlSeconds: number;
+  private readonly maxMessages: number;
+  private readonly keyPrefix: string;
+
+  constructor(
+    config: ConfigService,
+    private readonly redis: RedisService,
+  ) {
+    this.ttlSeconds = Number(
+      config.get('CHAT_SHORT_MEMORY_TTL_SECONDS', 86400),
+    );
+    this.maxMessages = Number(
+      config.get('CHAT_SHORT_MEMORY_MAX_MESSAGES', 20),
+    );
+    this.keyPrefix = config.get('CHAT_SHORT_MEMORY_KEY_PREFIX', 'kh:chat');
+  }
+
+  get windowSize() {
+    return this.maxMessages;
+  }
+
+  /** 命中返回消息；key 不存在或 Redis 故障返回 null */
+  async tryLoad(userId: string, sessionId: string): Promise&lt;BaseMessage[] | null&gt; {
+    try {
+      const raw = await this.redis.get(this.key(userId, sessionId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      return mapStoredMessagesToChatMessages(parsed).filter(isWorkingMessage);
+    } catch (error) {
+      this.logger.warn(
+        `短期记忆 Redis 读取失败，改走数据库：${error instanceof Error ? error.message : error}`,
+      );
+      return null;
+    }
+  }
+
+  async save(
+    userId: string,
+    sessionId: string,
+    messages: BaseMessage[],
+  ): Promise&lt;void&gt; {
+    const working = messages.filter(isWorkingMessage).slice(-this.maxMessages);
+    try {
+      const payload = JSON.stringify(mapChatMessagesToStoredMessages(working));
+      await this.redis.set(this.key(userId, sessionId), payload, this.ttlSeconds);
+    } catch (error) {
+      this.logger.warn(
+        `短期记忆 Redis 写入失败：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  async appendTurn(
+    userId: string,
+    sessionId: string,
+    history: BaseMessage[],
+    question: string,
+    answer: string,
+  ): Promise&lt;void&gt; {
+    await this.save(userId, sessionId, [
+      ...history,
+      new HumanMessage(question),
+      new AIMessage(answer),
+    ]);
+  }
+
+  async clear(userId: string, sessionId: string): Promise&lt;void&gt; {
+    try {
+      await this.redis.del(this.key(userId, sessionId));
+    } catch (error) {
+      this.logger.warn(
+        `短期记忆 Redis 删除失败：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  private key(userId: string, sessionId: string) {
+    return `${this.keyPrefix}:${userId}:${sessionId}:messages`;
+  }
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="long">
+        <h2>4. 长期记忆：Mem0 user / session（完整可粘贴）</h2>
+        <p class="file-path">src/ai/chat-long-memory.service.ts</p>
+        <ul>
+          <li><code>search</code>：分别按 <code>user_id</code> 与 <code>user_id+run_id</code> 检索</li>
+          <li><code>buildSystemMessage</code>：拼【用户长期记忆】/【当前会话记忆】，并声明「制度以本轮检索为准」</li>
+          <li><code>rememberTurn</code>：结构化分类器决定 <code>write_user</code> / <code>write_session</code>，再 <code>client.add</code></li>
+          <li><code>clearSession</code>：删会话时 <code>deleteAll({ userId, runId })</code></li>
+        </ul>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatOpenAI } from '@langchain/openai';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { z } from 'zod';
+import { MemoryClient } from 'mem0ai';
+
+const memorySchema = z.object({
+  write_user: z
+    .boolean()
+    .describe(
+      '写入用户层：换会话仍应保留的身份、岗位、回答偏好、长期约束。不含本轮任务、不含知识库条文。',
+    ),
+  write_session: z
+    .boolean()
+    .describe(
+      '写入会话层：仅当前会话的任务、进度、待办、临时约定。',
+    ),
+  reason: z.string().describe('分类理由，一句话'),
+});
+
+const CLASSIFIER_PROMPT =
+  '你是企业知识库助手的记忆分类器。判断本轮是否有「新事实」要写入 Mem0。\n' +
+  '\n' +
+  '## user 层（跨会话）\n' +
+  '- 用户身份、岗位、所在团队自称\n' +
+  '- 长期偏好：答短一点、只要本团队制度、技术回答带示例\n' +
+  '- 持久约束：过敏、语言、称呼\n' +
+  '\n' +
+  '## session 层（仅当前会话）\n' +
+  '- 正在排查的问题、本次要写的文档、已确认的下一步\n' +
+  '- 用户说「这次」「本轮」的工作上下文\n' +
+  '\n' +
+  '## 均不写入\n' +
+  '- 寒暄、致谢、纯确认\n' +
+  '- 助手根据知识库/检索资料说出的制度、流程、负责人、系统名（那是文档事实，不是用户记忆）\n' +
+  '- 联网搜索结果、引用编号 [n]\n' +
+  '- 无信息增量的复述\n' +
+  '\n' +
+  '## 原则\n' +
+  '1. 知识库内容永远不要写成 user 记忆\n' +
+  '2. 「这次先看差旅制度第三节」→ session，不要标成 user\n' +
+  '3. user 与 session 可同时为 true\n' +
+  '4. 一次性提问且未产生需跨轮记住的约定 → 均为 false';
+
+export type LongMemoryHits = {
+  user: string[];
+  session: string[];
+};
+
+/**
+ * 对话长期记忆（Mem0）。未配置 MEM0_API_KEY 时全部跳过。
+ * 记忆只用于改写问题和补上下文，不作制度事实来源。
+ */
+@Injectable()
+export class ChatLongMemoryService {
+  private readonly logger = new Logger(ChatLongMemoryService.name);
+  private readonly client?: MemoryClient;
+  private readonly classifier?: {
+    invoke: (messages: unknown[]) =&gt; Promise&lt;z.infer&lt;typeof memorySchema&gt;&gt;;
+  };
+  private readonly topK: number;
+
+  constructor(config: ConfigService) {
+    this.topK = Number(config.get('MEM0_TOP_K', 5));
+    const mem0Key = config.get&lt;string&gt;('MEM0_API_KEY') || '';
+    const host = config.get&lt;string&gt;('MEM0_HOST') || undefined;
+    if (mem0Key) {
+      this.client = new MemoryClient({
+        apiKey: mem0Key,
+        ...(host ? { host } : {}),
+      });
+    } else {
+      this.logger.warn('未配置 MEM0_API_KEY，跳过长期记忆');
+    }
+
+    const apiKey =
+      config.get&lt;string&gt;('OPENAI_API_KEY') ||
+      config.get&lt;string&gt;('LLM_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY') ||
+      '';
+    if (!apiKey || !this.client) return;
+
+    const baseURL =
+      config.get&lt;string&gt;('OPENAI_BASE_URL') ||
+      config.get&lt;string&gt;('LLM_BASE_URL') ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const modelName =
+      config.get&lt;string&gt;('MODEL_NAME') ||
+      config.get&lt;string&gt;('LLM_MODEL') ||
+      'qwen-plus';
+
+    const llm = new ChatOpenAI({
+      apiKey,
+      model: modelName,
+      temperature: 0,
+      timeout: Number(config.get('AI_CHAT_TIMEOUT_MS', 60000)),
+      maxRetries: 0,
+      useResponsesApi: false,
+      configuration: { baseURL },
+    });
+    this.classifier = llm.withStructuredOutput(memorySchema) as ChatLongMemoryService['classifier'];
+  }
+
+  get enabled() {
+    return Boolean(this.client);
+  }
+
+  async search(
+    userId: string,
+    sessionId: string | undefined,
+    query: string,
+  ): Promise&lt;LongMemoryHits&gt; {
+    const empty: LongMemoryHits = { user: [], session: [] };
+    if (!this.client) return empty;
+    try {
+      const userRes = await this.client.search(query, {
+        filters: { user_id: userId },
+        topK: this.topK,
+      });
+      const sessionRes = sessionId
+        ? await this.client.search(query, {
+            filters: {
+              AND: [{ user_id: userId }, { run_id: sessionId }],
+            },
+            topK: this.topK,
+          })
+        : { results: [] };
+      return {
+        user: (userRes.results ?? [])
+          .map((m) =&gt; m.memory)
+          .filter((text): text is string =&gt; Boolean(text)),
+        session: (sessionRes.results ?? [])
+          .map((m) =&gt; m.memory)
+          .filter((text): text is string =&gt; Boolean(text)),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Mem0 检索失败：${error instanceof Error ? error.message : error}`,
+      );
+      return empty;
+    }
+  }
+
+  buildSystemMessage(hits: LongMemoryHits): SystemMessage | null {
+    const blocks: string[] = [];
+    if (hits.user.length) {
+      blocks.push(
+        `【用户长期记忆】\n${hits.user.map((line) =&gt; `- ${line}`).join('\n')}`,
+      );
+    }
+    if (hits.session.length) {
+      blocks.push(
+        `【当前会话记忆】\n${hits.session.map((line) =&gt; `- ${line}`).join('\n')}`,
+      );
+    }
+    if (!blocks.length) return null;
+    return new SystemMessage(
+      `${blocks.join('\n\n')}\n\n以上仅作背景，制度/流程以本轮检索资料为准，不要用记忆替代文档。`,
+    );
+  }
+
+  async rememberTurn(
+    userId: string,
+    sessionId: string,
+    question: string,
+    answer: string,
+  ): Promise&lt;void&gt; {
+    if (!this.client || !this.classifier) return;
+    const extractFrom = [{ role: 'user' as const, content: question }];
+    try {
+      const { write_user, write_session, reason } = await this.classifier.invoke([
+        new SystemMessage(CLASSIFIER_PROMPT),
+        new HumanMessage(
+          `用户：${question}\n助手（仅供判断，不要当作用户事实）：${answer.slice(0, 300)}`,
+        ),
+      ]);
+
+      const written: string[] = [];
+      const addOpts = {
+        customInstructions:
+          '只用用户说的话抽取记忆，一句完整中文。' +
+          '只保存身份、岗位、偏好、约束，或用户声明的本轮任务。' +
+          '不要保存制度条文、流程、时限、负责人、系统名、引用编号。' +
+          '不要译成英文。',
+      };
+      if (write_user) {
+        await this.client.add(extractFrom, { userId, ...addOpts });
+        written.push('user');
+      }
+      if (write_session) {
+        await this.client.add(extractFrom, {
+          userId,
+          runId: sessionId,
+          ...addOpts,
+        });
+        written.push('session');
+      }
+      this.logger.log(
+        `Mem0 分类：${reason}；写入=${written.join(',') || '无'}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Mem0 写入失败：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  async clearSession(userId: string, sessionId: string): Promise&lt;void&gt; {
+    if (!this.client) return;
+    try {
+      await this.client.deleteAll({ userId, runId: sessionId });
+    } catch (error) {
+      this.logger.warn(
+        `Mem0 会话层清理失败：${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+}
+</code></pre>
+            </div>
+        <div class="callout-ok">
+          分类原则写在 <code>CLASSIFIER_PROMPT</code>：知识库内容永远不要写成 user 记忆；
+          「这次先看…」→ session。
+        </div>
+      </section>
+
+      <section id="rewrite">
+        <h2>5. 检索改写（完整可粘贴）</h2>
+        <p class="file-path">src/ai/chat-query-rewrite.service.ts</p>
+        <p>有 history 时才改写；失败或无 LLM 回退原问题。<code>need_retrieve=false</code> 时跳过 RAG（寒暄）。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatOpenAI } from '@langchain/openai';
+import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { z } from 'zod';
+import { compactRewriteContext } from './chat-memory.util';
+
+const rewriteSchema = z.object({
+  standalone_query: z
+    .string()
+    .describe('可独立检索的一句中文短查询，消解指代和省略，不含寒暄'),
+  need_retrieve: z
+    .boolean()
+    .describe('是否需要查知识库。寒暄、致谢、与制度无关的闲聊为 false'),
+});
+
+const REWRITE_PROMPT =
+  '你是企业知识库的检索改写器。根据对话把当前问题改写成一条可独立检索的短查询。\n' +
+  '\n' +
+  '## 要求\n' +
+  '- 消解「这个 / 那个 / 谁负责 / 怎么办」等指代，补全省略的主题\n' +
+  '- 只保留检索需要的实体、事项、动作，一句中文，尽量不超过 40 字\n' +
+  '- 不要编造上文没出现的专有名词、条款号、系统名\n' +
+  '- 不要复述助手给出的制度条文、时限、流程细节\n' +
+  '- 当前问题已经完整、不依赖上文时，standalone_query 用原问题略作精炼即可\n' +
+  '- 寒暄、致谢、与知识库无关 → need_retrieve=false，standalone_query 仍给原问题\n' +
+  '- 输出不要解释';
+
+export type RetrieveQueryPlan = {
+  query: string;
+  needRetrieve: boolean;
+};
+
+/**
+ * 检索前把追问改写成独立短查询。未配置 LLM 或改写失败时回退原文。
+ */
+@Injectable()
+export class ChatQueryRewriteService {
+  private readonly logger = new Logger(ChatQueryRewriteService.name);
+  private readonly rewriter?: {
+    invoke: (messages: unknown[]) =&gt; Promise&lt;z.infer&lt;typeof rewriteSchema&gt;&gt;;
+  };
+
+  constructor(config: ConfigService) {
+    const apiKey =
+      config.get&lt;string&gt;('OPENAI_API_KEY') ||
+      config.get&lt;string&gt;('LLM_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY') ||
+      '';
+    if (!apiKey) return;
+
+    const baseURL =
+      config.get&lt;string&gt;('OPENAI_BASE_URL') ||
+      config.get&lt;string&gt;('LLM_BASE_URL') ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const modelName =
+      config.get&lt;string&gt;('MODEL_NAME') ||
+      config.get&lt;string&gt;('LLM_MODEL') ||
+      'qwen-plus';
+
+    const llm = new ChatOpenAI({
+      apiKey,
+      model: modelName,
+      temperature: 0,
+      timeout: Number(config.get('AI_QUERY_REWRITE_TIMEOUT_MS', 15000)),
+      maxRetries: 0,
+      useResponsesApi: false,
+      configuration: { baseURL },
+    });
+    this.rewriter =
+      llm.withStructuredOutput(rewriteSchema) as ChatQueryRewriteService['rewriter'];
+  }
+
+  async rewrite(
+    question: string,
+    history: BaseMessage[],
+  ): Promise&lt;RetrieveQueryPlan&gt; {
+    const fallback: RetrieveQueryPlan = { query: question, needRetrieve: true };
+    if (!history.length || !this.rewriter) return fallback;
+
+    const context = compactRewriteContext(history);
+    if (!context) return fallback;
+
+    try {
+      const result = await this.rewriter.invoke([
+        new SystemMessage(REWRITE_PROMPT),
+        new HumanMessage(`对话：\n${context}\n\n当前问题：${question}`),
+      ]);
+      const query = result.standalone_query.trim() || question;
+      this.logger.log(
+        `检索改写：needRetrieve=${result.need_retrieve} query=${query.slice(0, 80)}`,
+      );
+      return { query, needRetrieve: result.need_retrieve };
+    } catch (error) {
+      this.logger.warn(
+        `检索改写失败，使用原问题：${error instanceof Error ? error.message : error}`,
+      );
+      return fallback;
+    }
+  }
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="wire">
+        <h2>6. 接入 AiChatService / AiStreamService</h2>
+        <h3>6.1 AiModule 注册</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">providers: [
+  AiChatService,
+  AiStreamService,
+  ChatSessionService,
+  ChatShortMemoryService,
+  ChatLongMemoryService,
+  ChatQueryRewriteService,
+  // …
+],
+// RedisModule 若为 @Global()，AiModule 不必再 imports</code></pre>
+            </div>
+
+        <h3>6.2 加载工作历史（chat / stream 共用思路）</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">private async loadWorkingHistory(
+  userId: string,
+  sessionId: string | undefined,
+): Promise&lt;BaseMessage[]&gt; {
+  if (!sessionId) return [];
+  const cached = await this.shortMemory.tryLoad(userId, sessionId);
+  if (cached) return cached;
+  const rows = await this.sessions.listRecentMessages(
+    userId,
+    sessionId,
+    this.shortMemory.windowSize,
+  );
+  const history = dbRowsToMessages(rows);
+  if (history.length) {
+    await this.shortMemory.save(userId, sessionId, history);
+  }
+  return history;
+}</code></pre>
+            </div>
+
+        <h3>6.3 非流式 chat 主链路（对齐 origin）</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">const history = user
+  ? await this.loadWorkingHistory(user.userId, sessionId)
+  : [];
+const plan = await this.queryRewrite.rewrite(trimmed, history);
+const [hits, memHits] = await Promise.all([
+  plan.needRetrieve
+    ? this.retrieval.retrieve(plan.query, topK, user)
+    : Promise.resolve([] as ChunkHit[]),
+  user
+    ? this.longMemory.search(user.userId, sessionId, plan.query)
+    : Promise.resolve({ user: [] as string[], session: [] as string[] }),
+]);
+
+const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+const userTurn = hits.length
+  ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${trimmed}`
+  : `用户问题：${trimmed}`;
+
+const response = await this.llm.invoke([
+  new SystemMessage(/* 见 origin：结合历史与记忆，制度以本轮资料为准 */),
+  ...(memoryMsg ? [memoryMsg] : []),
+  ...history,
+  new HumanMessage(userTurn),
+]);
+
+// 落库后：
+await this.shortMemory.appendTurn(user.userId, session.id, history, trimmed, answer);
+void this.longMemory.rememberTurn(user.userId, session.id, trimmed, answer);</code></pre>
+            </div>
+
+        <h3>6.4 流式 stream 增量</h3>
+        <p>除同样的 load → rewrite → 并行 retrieve/Mem0 → 拼 messages 外，origin 还给 Agent 加了
+        <code>summarizationMiddleware</code>（消息多时摘要，减轻上下文）。
+        <code>data-status</code> 可先发 <code>stage: 'rewrite'</code> 再 <code>retrieve</code>；
+        <code>data-retrieve.query</code> 用改写后的 <code>plan.query</code>。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// createAgent middleware 增加（摘要模型用 temperature:0、不开思考）
+summarizationMiddleware({
+  model: compactLlm,
+  trigger: { messages: 12 },
+  keep: { messages: 6 },
+  summaryPrompt:
+    '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+}),
+
+// execute 内：
+const history = await this.loadWorkingHistory(user.userId, session.id);
+const plan = await this.queryRewrite.rewrite(question, history);
+const [hits, memHits] = await Promise.all([
+  plan.needRetrieve ? this.retrieval.retrieve(plan.query, topK, user) : [],
+  this.longMemory.search(user.userId, session.id, plan.query),
+]);
+const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+await this.agent.stream({
+  messages: [
+    ...(memoryMsg ? [memoryMsg] : []),
+    ...history,
+    new HumanMessage(prompt),
+  ],
+}, { streamMode: ['messages', 'tools'] });
+
+// onFinish：appendTurn(Postgres) + shortMemory.appendTurn + longMemory.rememberTurn</code></pre>
+            </div>
+        <p>细节逐段对照 origin <code>v16</code> 的 <code>ai-chat.service.ts</code> /
+        <code>ai-stream.service.ts</code>。</p>
+      </section>
+
+      <section id="session">
+        <h2>7. 会话服务：回填 + 删除清理</h2>
+        <p class="file-path">src/ai/chat-session.service.ts</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 最近 N 条，时间正序，供 Redis miss 时回填工作窗口 */
+async listRecentMessages(userId: string, sessionId: string, limit: number) {
+  await this.getOwned(userId, sessionId);
+  const rows = await this.em.find(AiMessageEntity, {
+    where: { sessionId },
+    order: { createdAt: 'DESC', id: 'DESC' },
+    take: Math.max(limit, 1),
+  });
+  return rows.reverse();
+}
+
+// deleteSession 时：
+await this.shortMemory.clear(userId, id);
+await this.longMemory.clearSession(userId, id);</code></pre>
+            </div>
+      </section>
+
+      <section id="verify">
+        <h2>8. 验收自测（对齐 origin chat-memory.md）</h2>
+        <p>测 user 层前先清掉该账号 Mem0。Mem0 写入异步，写完等约 30 秒再开新对话。
+        知识库需已发布差旅 / 发布 SOP / 考勤等文档（见 origin <code>test-files/</code>）。</p>
+
+        <h3>8.1 检索改写（同一会话）</h3>
+        <ol>
+          <li>出差预估费用超过五千谁还要加签？</li>
+          <li>那这个找谁？ → 仍是差旅/总监加签</li>
+          <li>报销进度要问张敏还是周宁？ → 能区分财务张敏 / HR 周宁</li>
+        </ol>
+        <p>日志应有短句 <code>检索改写：query=</code>，不是整段上文。</p>
+
+        <h3>8.2 短期记忆（新开会话）</h3>
+        <ol>
+          <li>我接下来要写一篇给研发看的差旅报销 FAQ，先别展开生产发布。</li>
+          <li>我刚才说要写什么？先别写什么？ → 能复述，不依赖 Mem0</li>
+        </ol>
+
+        <h3>8.3 长期 user（跨会话）</h3>
+        <p>会话 A：声明「成都研发、回答尽量短、只要本团队制度」。等 30s，新开会话 B，
+        问差旅注意点 / 发布窗口审批人——仍按偏好，且不应把制度人名写进 user 记忆。</p>
+
+        <h3>8.4 长期 session（仅当前会话）</h3>
+        <p>会话 C：「这次只看差旅住宿上限」。新开会话 D：「我现在该优先处理什么？」
+        → 不应默认还在查住宿；user 画像可以还在。</p>
+
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 可选：看 Redis 热窗口
+redis-cli GET 'kh:chat:&lt;userId&gt;:&lt;sessionId&gt;:messages'
+
+# 后端日志关键字
+# 检索改写：needRetrieve=... query=...
+# Mem0 分类：...；写入=user|session|无
+# 短期记忆从库回填：sessionId=...</code></pre>
+            </div>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么短期用 Redis、长期用 Mem0？</h3>
+        <p>短期要低延迟多轮原文，适合 KV 窗口；长期要语义检索与分层（user/session），Mem0 现成。
+        Postgres 仍是对话权威源。</p>
+        <h3>为什么要检索改写？</h3>
+        <p>追问指代若不消解，ES/向量会飘题；改写输出短 query，避免把整段制度塞进检索。</p>
+        <h3>为什么 Mem0 不能当制度来源？</h3>
+        <p>记忆会过时、会误抽。System 明确「制度以本轮检索为准」；分类器禁止把文档事实写成 user。</p>
+        <h3>对照阅读顺序（origin v16）</h3>
+        <ol>
+          <li><code>chat-memory.md</code>（自测场景）</li>
+          <li><code>chat-memory.util.ts</code> → short → long → query-rewrite</li>
+          <li><code>ai-chat.service.ts</code> 再 <code>ai-stream.service.ts</code></li>
+          <li><code>chat-session.service.ts</code> listRecent / delete</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与 origin / 练习仓差异</h2>
+        <table>
+          <thead><tr><th>点</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>Mem0 可选</td><td>无 Key 时长期层跳过；短期 + 改写仍可交课</td></tr>
+            <tr><td>summarizationMiddleware</td><td>流式 Agent 用；非流式 chat 靠 Redis 窗口截断即可</td></tr>
+            <tr><td>Redis</td><td>练习仓若已有全局 RedisModule，直接注入</td></tr>
+            <tr><td>自测文档</td><td>用 origin test-files 或自备等价制度 PDF</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>追问检索跑偏</td><td>改写是否启用；history 是否为空（sessionId 没传）</td></tr>
+            <tr><td>Redis 总 miss</td><td>TTL / key 前缀；save 是否在 appendTurn 之后；userId 一致</td></tr>
+            <tr><td>跨会话无画像</td><td>Mem0 Key；是否等了写入；分类器是否 write_user=false</td></tr>
+            <tr><td>制度进了 user 记忆</td><td>customInstructions / CLASSIFIER_PROMPT；检查日志「写入=user」</td></tr>
+            <tr><td>删除会话后仍命中 session 记忆</td><td><code>clearSession</code> 是否调用</td></tr>
+            <tr><td>寒暄回「知识库没有」</td><td><code>needRetrieve=false</code> 时勿走空 hits 早退文案</td></tr>
+            <tr><td>循环依赖 Session ↔ ShortMemory</td><td>对照 origin：双方互注可以，避免再引入第三环</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>mem0ai</code> 依赖 + env</td><td>package.json / .env</td></tr>
+            <tr><td>三服务 + util 注册</td><td>ai.module / 新建文件</td></tr>
+            <tr><td>Redis 热窗口 load/save/append/clear</td><td>chat-short-memory.service</td></tr>
+            <tr><td>Mem0 search / remember / clearSession</td><td>chat-long-memory.service</td></tr>
+            <tr><td>检索改写</td><td>chat-query-rewrite.service</td></tr>
+            <tr><td>chat + stream 接入 history/rewrite/mem</td><td>ai-chat / ai-stream</td></tr>
+            <tr><td><code>listRecentMessages</code> + 删除清理</td><td>chat-session.service</td></tr>
+            <tr><td>自测题 1～4 通过</td><td>对照 chat-memory.md</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var codeEl = block.querySelector('pre code');
+        if (!btn || !codeEl) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(codeEl.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var cur = sections[0];
+        sections.forEach(function (s) {
+          if (s.el.offsetTop <= y) cur = s;
+        });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (cur) cur.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+
+  </script>
+</body>
+</html>

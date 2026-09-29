@@ -1,17 +1,25 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { BaseMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { AuthUser } from 'src/auth/auth-user.interface';
 
 import { ChunkHit } from '../pipeline/types/pipeline.types';
+import { ChatLongMemoryService } from './chat-long-memory.service';
+import { dbRowsToMessages } from './chat-memory.util';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
+import { ChatShortMemoryService } from './chat-short-memory.service';
 import { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 
 const EXCERPT_LEN = 200;
 const CITATION_RE = /\[(\d+)\]/g;
+const CHAT_SYSTEM =
+  '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
+  '制度/流程/负责人等事实只根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
+  '依据某条资料必须在句末标注 [1]、[2]。编号与资料列表一致，不要编造标题或链接。';
 
 @Injectable()
 export class AiChatService {
@@ -22,6 +30,9 @@ export class AiChatService {
     config: ConfigService,
     private readonly retrieval: HybridRetrievalService,
     private readonly sessions: ChatSessionService,
+    private readonly shortMemory: ChatShortMemoryService,
+    private readonly queryRewrite: ChatQueryRewriteService,
+    private readonly longMemory: ChatLongMemoryService,
   ) {
     const apiKey = config.get('OPENAI_API_KEY') || config.get('DASHSCOPE_API_KEY') || undefined;
     if (!apiKey) return;
@@ -47,42 +58,47 @@ export class AiChatService {
   ): Promise<ChatResponseDto> {
     const trimmed = question.trim();
     if (!trimmed) return { sessionId: sessionId ?? null, answer: '请输入问题。', sources: [] };
-
-    const hits = await this.retrieval.retrieve(trimmed, topK);
-    if (!hits.length) {
-      const empty = { answer: '知识库里没有相关内容。', sources: [] as ChatSourceDto[] };
-      const session = user
-        ? await this.sessions.appendTurn(
-            user.userId,
-            sessionId,
-            trimmed,
-            empty.answer,
-            empty.sources,
-          )
-        : null;
-      return { sessionId: session?.id ?? sessionId ?? null, ...empty };
-    }
     if (!this.llm) {
       throw new ServiceUnavailableException('未配置 LLM API Key');
     }
 
-    const context = this.buildContext(hits);
+    const history = user
+      ? await this.loadWorkingHistory(user.userId, sessionId)
+      : [];
+    const plan = await this.queryRewrite.rewrite(trimmed, history);
+    const [hits, memHits] = await Promise.all([
+      plan.needRetrieve
+        ? this.retrieval.retrieve(plan.query, topK)
+        : Promise.resolve([] as ChunkHit[]),
+      user
+        ? this.longMemory.search(user.userId, sessionId, plan.query)
+        : Promise.resolve({ user: [] as string[], session: [] as string[] }),
+    ]);
+
+    const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+    const userTurn = hits.length
+      ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${trimmed}`
+      : `用户问题：${trimmed}`;
+
     const response = await this.llm.invoke([
-      new SystemMessage(
-        '你是企业知识库助手。只根据「检索到的资料」回答。' +
-          '依据某条资料必须在句末标注 [1]、[2]。' +
-          '编号与资料列表一致，不要编造标题或链接。',
-      ),
-      new HumanMessage(`检索到的资料：\n${context}\n\n用户问题：${trimmed}`),
+      new SystemMessage(CHAT_SYSTEM),
+      ...(memoryMsg ? [memoryMsg] : []),
+      ...history,
+      new HumanMessage(userTurn),
     ]);
 
     const answer =
       typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-    const sources = this.toCitedSources(answer, hits);
+    const sources = hits.length ? this.toCitedSources(answer, hits) : [];
 
     const session = user
       ? await this.sessions.appendTurn(user.userId, sessionId, trimmed, answer, sources)
       : null;
+
+    if (user && session) {
+      await this.shortMemory.appendTurn(user.userId, session.id, history, trimmed, answer);
+      void this.longMemory.rememberTurn(user.userId, session.id, trimmed, answer);
+    }
 
     return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
   }
@@ -121,5 +137,24 @@ export class AiChatService {
         return `[${i + 1}] ${src.documentTitle}${heading}\n${snippet}`;
       })
       .join('\n\n');
+  }
+
+  private async loadWorkingHistory(
+    userId: string,
+    sessionId: string | undefined,
+  ): Promise<BaseMessage[]> {
+    if (!sessionId) return [];
+    const cached = await this.shortMemory.tryLoad(userId, sessionId);
+    if (cached) return cached;
+    const rows = await this.sessions.listRecentMessages(
+      userId,
+      sessionId,
+      this.shortMemory.windowSize,
+    );
+    const history = dbRowsToMessages(rows);
+    if (history.length) {
+      await this.shortMemory.save(userId, sessionId, history);
+    }
+    return history;
   }
 }

@@ -8,7 +8,10 @@ import { ToolsModule } from 'src/tools/tools.module';
 import { AiChatService } from './ai-chat.service';
 import { AiStreamService } from './ai-stream.service';
 import { AiController } from './ai.controller';
+import { ChatLongMemoryService } from './chat-long-memory.service';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
+import { ChatShortMemoryService } from './chat-short-memory.service';
 import { AiMessageEntity } from './entities/ai-message.entity';
 import { AiSessionEntity } from './entities/ai-session.entity';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
@@ -27,7 +30,10 @@ import { RerankerService } from './reranker.service';
     HybridRetrievalService,
     RerankerService,
     ChatSessionService,
+    ChatShortMemoryService,
     AiStreamService,
+    ChatQueryRewriteService,
+    ChatLongMemoryService,
   ],
 })
 export class AiModule {}

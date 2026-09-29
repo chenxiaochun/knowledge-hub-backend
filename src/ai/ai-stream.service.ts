@@ -7,12 +7,23 @@ import { toUIMessageStream } from '@ai-sdk/langchain';
 import { Tool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
 import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessage } from 'ai';
-import { createAgent, HumanMessage, modelCallLimitMiddleware } from 'langchain';
+import {
+  BaseMessage,
+  createAgent,
+  HumanMessage,
+  modelCallLimitMiddleware,
+  summarizationMiddleware,
+} from 'langchain';
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { ChunkHit } from 'src/pipeline/types/pipeline.types';
 import { TtsStreamPublisher } from 'src/speech/tts-stream.publisher';
 
+import { excerptRagContent, lastUserText, mapReasoningStream } from './ai-stream.util';
+import { ChatLongMemoryService } from './chat-long-memory.service';
+import { dbRowsToMessages } from './chat-memory.util';
+import { ChatQueryRewriteService } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
+import { ChatShortMemoryService } from './chat-short-memory.service';
 import { ChatSourceDto } from './dto/chat-response.dto';
 import { ChatStreamDto } from './dto/chat-stream.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
@@ -29,10 +40,9 @@ type KhUIMessage = UIMessage<
   }
 >;
 
-const EXCERPT_LEN = 200;
-
 const SYSTEM =
-  '你是企业知识库助手。优先根据「检索到的资料」回答。' +
+  '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
+  '制度/流程/负责人等事实优先根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
   '资料不足、需要时效性或外部公开信息时，调用 web_search。' +
   '依据资料的陈述句末标 [n]，与资料编号一致。' +
   '联网结果用标题+链接说明，不要编造。资料不够就明确说不知道。';
@@ -48,6 +58,9 @@ export class AiStreamService {
     private readonly sessions: ChatSessionService,
     private readonly retrieval: HybridRetrievalService,
     private readonly ttsPublisher: TtsStreamPublisher,
+    private readonly shortMemory: ChatShortMemoryService,
+    private readonly queryRewrite: ChatQueryRewriteService,
+    private readonly longMemory: ChatLongMemoryService,
   ) {
     this.agent = createAgent({
       model: this.llmTool,
@@ -56,6 +69,13 @@ export class AiStreamService {
       middleware: [
         // 单次最多调 4 次模型，避免 web_search 循环打爆；超限正常结束
         modelCallLimitMiddleware({ runLimit: 4, exitBehavior: 'end' }),
+        summarizationMiddleware({
+          model: this.llmTool,
+          trigger: { messages: 12 },
+          keep: { messages: 6 },
+          summaryPrompt:
+            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+        }),
       ],
     });
   }
@@ -67,6 +87,7 @@ export class AiStreamService {
 
     let persistSessionId = dto.sessionId;
     let persistSources: ChatSourceDto[] = [];
+    let workingHistory: BaseMessage[] = [];
 
     // TTS 需前端先用同一 sessionId 连 WS；新建会话时提前落库拿到 id
     if (enableTts && question) {
@@ -109,26 +130,33 @@ export class AiStreamService {
           data: { sessionId: persistSessionId },
         });
 
-        // ——— 2) 检索 ———
+        const sessionId = persistSessionId!;
+
+        // ——— 2) 记忆 + 改写 + 检索 ———
+        writer.write({
+          type: 'data-status',
+          data: { stage: 'rewrite', text: '正在理解问题…' },
+        });
+
+        const turn = await this.prepareAgentTurn({
+          userId: user.userId,
+          sessionId,
+          question,
+          topK,
+        });
+        workingHistory = turn.history;
+
         writer.write({
           type: 'data-status',
           data: { stage: 'retrieve', text: '正在检索知识库…' },
         });
 
-        let hits: ChunkHit[] = [];
-        try {
-          hits = await this.retrieval.retrieve(question, topK);
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`RAG 检索失败：${detail}`);
-        }
-
-        const sources = this.toSources(hits);
+        const sources = this.toSources(turn.hits);
         persistSources = sources;
         writer.write({
           type: 'data-retrieve',
           data: {
-            query: question,
+            query: turn.plan.query,
             items: sources.map((src) => ({
               index: src.index,
               documentId: src.documentId,
@@ -159,12 +187,14 @@ export class AiStreamService {
         }
 
         // ——— 3) Agent 流 → UI Message 流 ———
-        const prompt = hits.length
-          ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${question}`
-          : `知识库没有召回到相关内容。\n\n用户问题：${question}`;
-
         const langchainStream = await this.agent.stream(
-          { messages: [new HumanMessage(prompt)] },
+          {
+            messages: [
+              ...(turn.memoryMsg ? [turn.memoryMsg] : []),
+              ...turn.history,
+              new HumanMessage(turn.prompt),
+            ],
+          },
           // messages：token/思考；tools：tool 调用（第 6 步挂上后才有）
           { streamMode: ['messages', 'tools'] },
         );
@@ -192,14 +222,23 @@ export class AiStreamService {
         const used = new Set([...answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
         const sources = used.size ? persistSources.filter((s) => used.has(s.index)) : [];
         if (!question || !persistSessionId) return;
+        const finalAnswer = answer || '未能生成回答。';
         try {
           await this.sessions.appendTurn(
             user.userId,
             persistSessionId,
             question,
-            answer || '未能生成回答。',
+            finalAnswer,
             sources,
           );
+          await this.shortMemory.appendTurn(
+            user.userId,
+            persistSessionId,
+            workingHistory,
+            question,
+            finalAnswer,
+          );
+          void this.longMemory.rememberTurn(user.userId, persistSessionId, question, finalAnswer);
         } catch (error) {
           this.logger.warn(`流式对话落库失败：${error instanceof Error ? error.message : error}`);
         }
@@ -220,7 +259,7 @@ export class AiStreamService {
       documentId: hit.documentId,
       documentTitle: hit.documentTitle,
       heading: hit.heading,
-      excerpt: excerpt(hit.content),
+      excerpt: excerptRagContent(hit.content),
       score: hit.score,
     }));
   }
@@ -234,61 +273,57 @@ export class AiStreamService {
       })
       .join('\n\n');
   }
-}
 
-/**
- *
- * @param messages - 消息列表
- * @returns 最后一个用户消息的文本
- */
-function lastUserText(messages: ChatStreamDto['messages'] | undefined): string {
-  if (!messages?.length) return '';
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (msg.role !== 'user') continue;
-    const text = (msg.parts ?? [])
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text)
-      .join('');
-    return text.trim();
-  }
-  return '';
-}
+  /** load → rewrite → 并行 RAG/Mem0 → 拼 prompt，供 Agent 流使用 */
+  private async prepareAgentTurn(params: {
+    userId: string;
+    sessionId: string;
+    question: string;
+    topK: number;
+  }) {
+    const { userId, sessionId, question, topK } = params;
 
-/**
- * 百炼兼容口把思考放在 reasoning_content；
- * @ai-sdk/langchain 只认 additional_kwargs.reasoning.summary，这里转一下。
- */
-async function* mapReasoningStream(stream: AsyncIterable<unknown>): AsyncIterable<unknown> {
-  for await (const event of stream) {
-    attachDashScopeReasoning(event);
-    yield event;
-  }
-}
+    const history = await this.loadWorkingHistory(userId, sessionId);
+    const plan = await this.queryRewrite.rewrite(question, history);
 
-/** 递归改写；seen 防循环引用 */
-function attachDashScopeReasoning(value: unknown, seen = new Set<object>()): void {
-  if (value == null || typeof value !== 'object' || seen.has(value)) return;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) attachDashScopeReasoning(item, seen);
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  const kwargs = obj.additional_kwargs as Record<string, unknown> | undefined;
-  if (typeof kwargs?.reasoning_content === 'string' && kwargs.reasoning_content) {
-    kwargs.reasoning = {
-      summary: [{ type: 'summary_text', text: kwargs.reasoning_content }],
-    };
-  }
-  attachDashScopeReasoning(obj.chunk, seen);
-  attachDashScopeReasoning(obj.data, seen);
-  attachDashScopeReasoning(obj.kwargs, seen);
-  attachDashScopeReasoning(obj.messages, seen);
-}
+    let hits: ChunkHit[] = [];
+    let memHits = { user: [] as string[], session: [] as string[] };
+    try {
+      [hits, memHits] = await Promise.all([
+        plan.needRetrieve
+          ? this.retrieval.retrieve(plan.query, topK)
+          : Promise.resolve([] as ChunkHit[]),
+        this.longMemory.search(userId, sessionId, plan.query),
+      ]);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`RAG/Mem0 准备失败：${detail}`);
+    }
 
-function excerpt(content: string) {
-  const text = content.replace(/\s+/g, ' ').trim();
-  if (text.length <= EXCERPT_LEN) return text;
-  return `${text.slice(0, EXCERPT_LEN)}...`;
+    const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+    const prompt = hits.length
+      ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${question}`
+      : `用户问题：${question}`;
+
+    return { history, plan, hits, memHits, memoryMsg, prompt };
+  }
+
+  private async loadWorkingHistory(
+    userId: string,
+    sessionId: string | undefined,
+  ): Promise<BaseMessage[]> {
+    if (!sessionId) return [];
+    const cached = await this.shortMemory.tryLoad(userId, sessionId);
+    if (cached) return cached;
+    const rows = await this.sessions.listRecentMessages(
+      userId,
+      sessionId,
+      this.shortMemory.windowSize,
+    );
+    const history = dbRowsToMessages(rows);
+    if (history.length) {
+      await this.shortMemory.save(userId, sessionId, history);
+    }
+    return history;
+  }
 }
