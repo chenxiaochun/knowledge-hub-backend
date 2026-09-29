@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "10e41b85-f02c-4df1-bd7b-37079a2b0e29",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/chenxiaochun/Documents/MyProject/knowledge-hub-backend/docs/architecture/candidate.json",
+  "output": "/Users/chenxiaochun/Documents/MyProject/knowledge-hub-backend/docs/architecture/knowledge-hub.html",
+  "specification": {
+    "sha256": "37fa78d845bd639f58f1cb91192644c2c449f40387b762ffa96d5610f430e991",
+    "bytes": 7106
+  },
+  "artifact": {
+    "sha256": "fb4e56c782966990fe4007f75b53e95f2086858329910b36e480c9a5aad34f08",
+    "bytes": 776974
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3a32dcbe-50e2-4466-836f-83339ce715fe",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/chenxiaochun/Documents/MyProject/knowledge-hub-backend/.archify/architecture-knowledge-hub-20260929-085941/candidate.json",
+  "output": "/Users/chenxiaochun/Documents/MyProject/knowledge-hub-backend/.archify/architecture-knowledge-hub-20260929-085941/review-2/knowledge-hub.html",
+  "specification": {
+    "sha256": "d46da8ca5153035cf45b03ccbbe17011b79a4729e3bc9343dbcb0369d670122e",
+    "bytes": 7140
+  },
+  "artifact": {
+    "sha256": "fb4e56c782966990fe4007f75b53e95f2086858329910b36e480c9a5aad34f08",
+    "bytes": 776974
+  }
+}

@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Knowledge Hub 后端系统架构",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-knowledge-hub-20260929-085941/knowledge-hub.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:chenxiaochun/knowledge-hub-backend.git",
+      "link_mode": "local-only",
+      "revision": "57fedae06d5a78b6def5238523774a8ce7c15877"
+    }
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "客户端",
+      "sublabel": "Web / 移动端",
+      "pos": [40, 260],
+      "size": [120, 64]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM API",
+      "sublabel": "OpenAI / DashScope",
+      "pos": [40, 80],
+      "size": [130, 64],
+      "sources": [{ "path": "src/ai/ai-chat.service.ts", "line": 26, "end_line": 34 }]
+    },
+    {
+      "id": "tencent",
+      "type": "external",
+      "label": "腾讯云",
+      "sublabel": "TTS / ASR",
+      "pos": [40, 440],
+      "size": [120, 64],
+      "sources": [{ "path": "src/speech/tts-relay.service.ts", "line": 28, "end_line": 32 }]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "认证与 RBAC",
+      "sublabel": "JWT + 权限守卫",
+      "pos": [240, 80],
+      "size": [140, 64],
+      "tag": "Passport JWT",
+      "sources": [{ "path": "src/auth/auth.module.ts", "line": 31, "end_line": 39 }]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "NestJS API",
+      "sublabel": "REST :3000 /api",
+      "pos": [240, 260],
+      "size": [140, 64],
+      "sources": [{ "path": "src/main.ts", "line": 9, "end_line": 33 }]
+    },
+    {
+      "id": "biz",
+      "type": "backend",
+      "label": "业务模块",
+      "sublabel": "Document / AI / Search / Graph / Speech",
+      "pos": [500, 260],
+      "size": [170, 74],
+      "sources": [{ "path": "src/app.module.ts", "line": 58, "end_line": 91 }]
+    },
+    {
+      "id": "mq",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "文档流水线队列",
+      "pos": [240, 440],
+      "size": [130, 64],
+      "sources": [{ "path": "docker-compose.yml", "line": 97, "end_line": 113 }]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "索引流水线",
+      "sublabel": "分块 / 嵌入 / 索引 / KG",
+      "pos": [500, 440],
+      "size": [150, 64],
+      "sources": [{ "path": "src/mq/document-pipeline.publisher.ts", "line": 23, "end_line": 29 }]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "TypeORM 元数据",
+      "pos": [720, 80],
+      "size": [140, 60],
+      "sources": [{ "path": "src/app.module.ts", "line": 35, "end_line": 56 }]
+    },
+    {
+      "id": "mongo",
+      "type": "database",
+      "label": "MongoDB",
+      "sublabel": "文档正文",
+      "pos": [720, 170],
+      "size": [140, 60],
+      "sources": [{ "path": "src/app.module.ts", "line": 64, "end_line": 68 }]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "验证码 / 缓存",
+      "pos": [720, 390],
+      "size": [130, 60],
+      "sources": [{ "path": "docker-compose.yml", "line": 172, "end_line": 185 }]
+    },
+    {
+      "id": "es",
+      "type": "database",
+      "label": "Elasticsearch",
+      "sublabel": "全文 + 向量检索",
+      "pos": [920, 80],
+      "size": [150, 60],
+      "sources": [{ "path": "src/pipeline/search-index.service.ts", "line": 18, "end_line": 46 }]
+    },
+    {
+      "id": "neo4j",
+      "type": "database",
+      "label": "Neo4j",
+      "sublabel": "知识图谱",
+      "pos": [920, 170],
+      "size": [130, 60],
+      "sources": [{ "path": "src/graph/graph-build.service.ts", "line": 44, "end_line": 48 }]
+    },
+    {
+      "id": "rustfs",
+      "type": "cloud",
+      "label": "RustFS",
+      "sublabel": "S3 对象存储",
+      "pos": [920, 390],
+      "size": [130, 60],
+      "sources": [{ "path": "docker-compose.yml", "line": 145, "end_line": 164 }]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "NestJS 应用层",
+      "wraps": ["auth", "api", "biz", "pipeline"]
+    },
+    {
+      "kind": "region",
+      "label": "Docker 基础设施",
+      "wraps": ["postgres", "mongo", "redis", "es", "neo4j", "rustfs", "mq"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-rest",
+      "from": "client",
+      "to": "api",
+      "label": "REST / SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "client-ws",
+      "from": "client",
+      "to": "api",
+      "label": "WebSocket TTS",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "jwt-guard",
+      "from": "auth",
+      "to": "api",
+      "label": "JWT 校验",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "api-biz",
+      "from": "api",
+      "to": "biz"
+    },
+    {
+      "id": "biz-llm",
+      "from": "biz",
+      "to": "llm",
+      "label": "LLM 推理",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "biz-tencent",
+      "from": "biz",
+      "to": "tencent",
+      "label": "语音合成",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "biz-pg",
+      "from": "biz",
+      "to": "postgres",
+      "label": "TypeORM"
+    },
+    {
+      "id": "biz-mongo",
+      "from": "biz",
+      "to": "mongo",
+      "label": "Mongoose"
+    },
+    {
+      "id": "biz-redis",
+      "from": "biz",
+      "to": "redis"
+    },
+    {
+      "id": "biz-es",
+      "from": "biz",
+      "to": "es",
+      "label": "检索 / RAG"
+    },
+    {
+      "id": "biz-neo4j",
+      "from": "biz",
+      "to": "neo4j",
+      "label": "图谱查询"
+    },
+    {
+      "id": "biz-rustfs",
+      "from": "biz",
+      "to": "rustfs",
+      "label": "文件上传"
+    },
+    {
+      "id": "biz-mq",
+      "from": "biz",
+      "to": "mq",
+      "label": "发布任务",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "mq-pipeline",
+      "from": "mq",
+      "to": "pipeline"
+    },
+    {
+      "id": "pipeline-es",
+      "from": "pipeline",
+      "to": "es",
+      "label": "重建索引"
+    },
+    {
+      "id": "pipeline-neo4j",
+      "from": "pipeline",
+      "to": "neo4j",
+      "label": "KG 构建"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "API 入口",
+      "items": [
+        "全局前缀 /api，Swagger 文档 /docs",
+        "TTS WebSocket 挂载于 /api/speech/tts/ws"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "核心业务",
+      "items": [
+        "文档上传解析与审核发布",
+        "AI 对话 / RAG 流式输出",
+        "全文检索与知识图谱可视化"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "异步流水线",
+      "items": [
+        "文档发布后触发搜索索引、向量重建与 KG 构建",
+        "RabbitMQ 解耦同步 API 与重索引任务"
+      ]
+    }
+  ]
+}
