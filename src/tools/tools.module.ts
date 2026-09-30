@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 
+import { MailerModule } from '@nestjs-modules/mailer';
+
 import { AsrClientService } from './asr-client.service';
 import { LlmService } from './llm.service';
+import { MailService } from './mail.service';
 import { WebSearchService } from './web-search.service';
 
 @Module({
+  imports: [MailerModule],
   providers: [
     WebSearchService,
     {
@@ -30,7 +34,15 @@ import { WebSearchService } from './web-search.service';
       },
       inject: [AsrClientService],
     },
+    MailService,
+    {
+      provide: 'MAIL_TOOL',
+      useFactory: (mailService: MailService) => {
+        return mailService;
+      },
+      inject: [MailService],
+    },
   ],
-  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'ASR_CLIENT_TOOL'],
+  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'ASR_CLIENT_TOOL', 'MAIL_TOOL'],
 })
 export class ToolsModule {}

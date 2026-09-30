@@ -1,22 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { MailerService } from '@nestjs-modules/mailer';
+import { MailService } from '../tools/mail.service';
 
 @Injectable()
 export class EmailService {
-  private readonly logger = new Logger(EmailService.name);
-  private transport!: string;
-  private publicUrl!: string;
-  private from!: string;
+  private readonly publicUrl: string;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly mailerService: MailerService,
+    @Inject('MAIL_TOOL') private readonly mail: MailService,
   ) {
-    this.transport = this.configService.get('MAIL_TRANSPORT') || 'log';
     this.publicUrl = this.configService.get('APP_PUBLIC_URL') || 'http://localhost:3000';
-    this.from = this.configService.get('MAIL_FROM') || 'Knowledge Hub <noreply@example.com>';
   }
 
   async sendActivationEmail(email: string, username: string, token: string): Promise<void> {
@@ -31,23 +26,13 @@ export class EmailService {
       <p>请点击链接激活（24h 内有效）：</p>
       <p><a href="${link}">${link}</a></p>
     `;
-    await this.dispatch(email, subject, text, html);
+    await this.mail.send({ to: email, subject, text, html });
   }
 
   async sendResetCodeEmail(email: string, username: string, code: string): Promise<void> {
     const subject = '密码重置验证码';
     const text = `您好 ${username}，验证码：${code}，10 分钟内有效。`;
     const html = `<p>验证码：<b style="font-size:24px">${code}</b></p>`;
-    await this.dispatch(email, subject, text, html);
-  }
-
-  private async dispatch(to: string, subject: string, text: string, html: string) {
-    if (this.transport === 'smtp' && this.mailerService) {
-      this.logger.log(`发送邮件：to=${to} subject=${subject} transport=smtp`);
-      await this.mailerService.sendMail({ to, from: this.from, subject, text, html });
-      this.logger.log(`邮件已提交 SMTP：to=${to}`);
-      return;
-    }
-    this.logger.log(`[mail:log] to=${to} subject=${subject}\n${text}`);
+    await this.mail.send({ to: email, subject, text, html });
   }
 }

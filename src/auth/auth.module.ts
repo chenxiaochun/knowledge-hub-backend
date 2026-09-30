@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 
+import { ToolsModule } from '../tools/tools.module';
 import { UserModule } from '../user/user.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -26,6 +27,7 @@ import { RolesGuard } from './roles.guard';
       }),
     }),
     UserModule,
+    ToolsModule,
   ],
   controllers: [AuthController],
   providers: [

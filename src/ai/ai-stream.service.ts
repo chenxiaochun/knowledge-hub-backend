@@ -17,6 +17,7 @@ import {
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { ChunkHit } from 'src/pipeline/types/pipeline.types';
 import { TtsStreamPublisher } from 'src/speech/tts-stream.publisher';
+import { MailService } from 'src/tools/mail.service';
 
 import { excerptRagContent, lastUserText, mapReasoningStream } from './ai-stream.util';
 import { ChatLongMemoryService } from './chat-long-memory.service';
@@ -55,6 +56,7 @@ export class AiStreamService {
   constructor(
     @Inject('WEB_SEARCH_TOOL') private readonly webSearchTool: Tool,
     @Inject('LLM_TOOL') private readonly llmTool: ChatOpenAI,
+    @Inject('MAIL_TOOL') private readonly mailTool: MailService,
     private readonly sessions: ChatSessionService,
     private readonly retrieval: HybridRetrievalService,
     private readonly ttsPublisher: TtsStreamPublisher,
@@ -64,7 +66,7 @@ export class AiStreamService {
   ) {
     this.agent = createAgent({
       model: this.llmTool,
-      tools: [this.webSearchTool],
+      tools: [this.webSearchTool, this.mailTool.tool],
       systemPrompt: SYSTEM,
       middleware: [
         // 单次最多调 4 次模型，避免 web_search 循环打爆；超限正常结束
