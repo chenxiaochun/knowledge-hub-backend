@@ -1,10 +1,13 @@
 import {
   Controller,
   BadRequestException,
+  BadGatewayException,
   Post,
+  Body,
   UploadedFile,
   UseInterceptors,
   Inject,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -19,7 +22,9 @@ import {
 import type { UploadAudio } from './speech.service';
 
 import { AsrResponseDto, AsrUploadDto } from './dto/asr.dto';
+import { TtsRequestDto } from './dto/tts.dto';
 import { SpeechService } from './speech.service';
+import { TtsOneShotService } from './tts-one-shot.service';
 
 @ApiTags('speech')
 @ApiBearerAuth()
@@ -28,7 +33,35 @@ export class SpeechController {
   @Inject(SpeechService)
   private readonly speechService!: SpeechService;
 
+  @Inject(TtsOneShotService)
+  private readonly ttsOneShot!: TtsOneShotService;
+
   constructor() {}
+
+  /**
+   * 文本转语音：返回 MP3，前端可直接 blob + Audio 播放
+   */
+  @Post('tts')
+  @ApiOperation({ summary: '文本转语音（返回 MP3）' })
+  @ApiBody({ type: TtsRequestDto })
+  @ApiOkResponse({
+    description: 'MP3 音频',
+    content: { 'audio/mpeg': { schema: { type: 'string', format: 'binary' } } },
+  })
+  async synthesize(@Body() dto: TtsRequestDto): Promise<StreamableFile> {
+    const text = dto.text.trim();
+    if (!text) {
+      throw new BadRequestException('文本不能为空');
+    }
+    const buffer = await this.ttsOneShot.synthesizeToMp3(text);
+    if (!buffer.length) {
+      throw new BadGatewayException('未收到音频数据');
+    }
+    return new StreamableFile(buffer, {
+      type: 'audio/mpeg',
+      disposition: 'inline',
+    });
+  }
 
   /**
    * 语音识别（一句话识别）

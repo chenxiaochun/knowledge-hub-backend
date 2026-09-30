@@ -2,10 +2,15 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
 import { AI_TTS_STREAM_EVENT, type AiTtsStreamEvent } from './stream-events';
+import {
+  buildTencentStreamTtsWsUrl,
+  readTencentTtsCredentials,
+  type TencentTtsCredentials,
+} from './tencent-tts.util';
 
 type ClientSession = {
   sessionId: string;
@@ -24,16 +29,10 @@ type ClientSession = {
 export class TtsRelayService implements OnModuleDestroy {
   private readonly logger = new Logger(TtsRelayService.name);
   private readonly sessions = new Map<string, ClientSession>();
-  private readonly secretId: string;
-  private readonly secretKey: string;
-  private readonly appId: number;
-  private readonly voiceType: number;
+  private readonly creds: TencentTtsCredentials;
 
   constructor(@Inject(ConfigService) configService: ConfigService) {
-    this.secretId = configService.get<string>('TENCENT_CLOUD_SECRET_ID') ?? '';
-    this.secretKey = configService.get<string>('TENCENT_CLOUD_SECRET_KEY') ?? '';
-    this.appId = Number(configService.get<string>('TENCENT_CLOUD_APP_ID') ?? 0);
-    this.voiceType = Number(configService.get<string>('TTS_VOICE_TYPE') ?? 101001);
+    this.creds = readTencentTtsCredentials(configService);
   }
 
   onModuleDestroy(): void {
@@ -142,11 +141,11 @@ export class TtsRelayService implements OnModuleDestroy {
   private openTencentConnection(session: ClientSession): void {
     this.closeTencentWs(session, 'reopen');
 
-    if (!this.secretId || !this.secretKey || !this.appId) {
+    if (!this.creds.secretId || !this.creds.secretKey || !this.creds.appId) {
       const message =
         'TTS 凭证缺失：请在 .env 配置 APP_ID（或 TENCENT_CLOUD_APP_ID），以及 SECRET_ID/SECRET_KEY（或 TENCENT_CLOUD_SECRET_ID/KEY）';
       this.logger.error(
-        `${message}; secretId=${Boolean(this.secretId)}, secretKey=${Boolean(this.secretKey)}, appId=${this.appId}`,
+        `${message}; secretId=${Boolean(this.creds.secretId)}, secretKey=${Boolean(this.creds.secretKey)}, appId=${this.creds.appId}`,
       );
       this.sendClientJson(session.clientWs, {
         type: 'tts_error',
@@ -159,7 +158,7 @@ export class TtsRelayService implements OnModuleDestroy {
     session.tencentSynthesisId = synthesisId;
     session.ready = false;
 
-    const url = this.buildTencentTtsWsUrl(synthesisId);
+    const url = buildTencentStreamTtsWsUrl(synthesisId, this.creds);
     const tencentWs = new WebSocket(url);
     session.tencentWs = tencentWs;
 
@@ -286,35 +285,5 @@ export class TtsRelayService implements OnModuleDestroy {
   private sendClientJson(clientWs: WebSocket, payload: Record<string, unknown>): void {
     if (clientWs.readyState !== WebSocket.OPEN) return;
     clientWs.send(JSON.stringify(payload));
-  }
-
-  private buildTencentTtsWsUrl(synthesisId: string): string {
-    const now = Math.floor(Date.now() / 1000);
-    const params: Record<string, string | number> = {
-      Action: 'TextToStreamAudioWSv2',
-      AppId: this.appId,
-      Codec: 'mp3',
-      Expired: now + 3600,
-      SampleRate: 16000,
-      SecretId: this.secretId,
-      SessionId: synthesisId,
-      Speed: 0,
-      Timestamp: now,
-      VoiceType: this.voiceType,
-      Volume: 5,
-    };
-
-    const signStr = Object.keys(params)
-      .sort()
-      .map((k) => `${k}=${params[k]}`)
-      .join('&');
-    const rawStr = `GETtts.cloud.tencent.com/stream_wsv2?${signStr}`;
-    const signature = createHmac('sha1', this.secretKey).update(rawStr).digest('base64');
-    const searchParams = new URLSearchParams({
-      ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
-      Signature: signature,
-    });
-
-    return `wss://tts.cloud.tencent.com/stream_wsv2?${searchParams.toString()}`;
   }
 }
