@@ -19,13 +19,18 @@ import { ChunkHit } from 'src/pipeline/types/pipeline.types';
 import { TtsStreamPublisher } from 'src/speech/tts-stream.publisher';
 import { MailService } from 'src/tools/mail.service';
 
-import { excerptRagContent, lastUserText, mapReasoningStream } from './ai-stream.util';
+import {
+  excerptRagContent,
+  extractGeneratedImagesFromParts,
+  lastUserText,
+  mapReasoningStream,
+} from './ai-stream.util';
 import { ChatLongMemoryService } from './chat-long-memory.service';
 import { dbRowsToMessages } from './chat-memory.util';
 import { ChatQueryRewriteService } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
-import { ChatSourceDto } from './dto/chat-response.dto';
+import { ChatImageDto, ChatSourceDto } from './dto/chat-response.dto';
 import { ChatStreamDto } from './dto/chat-stream.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 import { titleFromQuestion } from './titleFromQuestion';
@@ -38,6 +43,7 @@ type KhUIMessage = UIMessage<
     sources: ChatSourceDto[];
     retrieve: { query: string; items: Array<ChatSourceDto> };
     session: { sessionId: string };
+    image: ChatImageDto;
   }
 >;
 
@@ -45,6 +51,7 @@ const SYSTEM =
   '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
   '制度/流程/负责人等事实优先根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
   '资料不足、需要时效性或外部公开信息时，调用 web_search。' +
+  '用户明确要求生成配图、海报、示意图且与知识库无关时，调用 generate_image，并在回复中给出返回的 url。' +
   '依据资料的陈述句末标 [n]，与资料编号一致。' +
   '联网结果用标题+链接说明，不要编造。资料不够就明确说不知道。';
 
@@ -57,6 +64,8 @@ export class AiStreamService {
     @Inject('WEB_SEARCH_TOOL') private readonly webSearchTool: Tool,
     @Inject('LLM_TOOL') private readonly llmTool: ChatOpenAI,
     @Inject('MAIL_TOOL') private readonly mailTool: MailService,
+    @Inject('GENERATE_IMAGE_TOOL') private readonly generateImageTool: Tool,
+
     private readonly sessions: ChatSessionService,
     private readonly retrieval: HybridRetrievalService,
     private readonly ttsPublisher: TtsStreamPublisher,
@@ -66,7 +75,7 @@ export class AiStreamService {
   ) {
     this.agent = createAgent({
       model: this.llmTool,
-      tools: [this.webSearchTool, this.mailTool.tool],
+      tools: [this.webSearchTool, this.mailTool.tool, this.generateImageTool],
       systemPrompt: SYSTEM,
       middleware: [
         // 单次最多调 4 次模型，避免 web_search 循环打爆；超限正常结束
@@ -223,6 +232,7 @@ export class AiStreamService {
           .trim();
         const used = new Set([...answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
         const sources = used.size ? persistSources.filter((s) => used.has(s.index)) : [];
+        const images = extractGeneratedImagesFromParts(parts);
         if (!question || !persistSessionId) return;
         const finalAnswer = answer || '未能生成回答。';
         try {
@@ -232,6 +242,7 @@ export class AiStreamService {
             question,
             finalAnswer,
             sources,
+            images,
           );
           await this.shortMemory.appendTurn(
             user.userId,

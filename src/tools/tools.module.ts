@@ -2,13 +2,15 @@ import { Module } from '@nestjs/common';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 
+import { AiCanvasModule } from '../ai-canvas/ai-canvas.module';
 import { AsrClientService } from './asr-client.service';
+import { CanvasImageService } from './canvas-image.service';
 import { LlmService } from './llm.service';
 import { MailService } from './mail.service';
 import { WebSearchService } from './web-search.service';
 
 @Module({
-  imports: [MailerModule],
+  imports: [MailerModule, AiCanvasModule],
   providers: [
     WebSearchService,
     {
@@ -47,7 +49,20 @@ import { WebSearchService } from './web-search.service';
       },
       inject: [MailService],
     },
+    CanvasImageService,
+    {
+      provide: 'GENERATE_IMAGE_TOOL',
+      useFactory: (canvasImage: CanvasImageService) => canvasImage.tool,
+      inject: [CanvasImageService],
+    },
   ],
-  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'MULTI_LLM_TOOL', 'ASR_CLIENT_TOOL', 'MAIL_TOOL'],
+  exports: [
+    'WEB_SEARCH_TOOL',
+    'LLM_TOOL',
+    'MULTI_LLM_TOOL',
+    'ASR_CLIENT_TOOL',
+    'MAIL_TOOL',
+    'GENERATE_IMAGE_TOOL',
+  ],
 })
 export class ToolsModule {}

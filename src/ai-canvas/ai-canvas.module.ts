@@ -5,5 +5,6 @@ import { AiCanvasController } from './ai-canvas.controller';
 @Module({
   controllers: [AiCanvasController],
   providers: [AiCanvasService],
+  exports: [AiCanvasService],
 })
 export class AiCanvasModule {}

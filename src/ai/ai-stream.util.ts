@@ -1,3 +1,6 @@
+import { getToolName, isToolUIPart, type UIMessage } from 'ai';
+
+import type { ChatImageDto } from './dto/chat-response.dto';
 import type { ChatStreamDto } from './dto/chat-stream.dto';
 
 export const RAG_EXCERPT_LEN = 200;
@@ -50,4 +53,43 @@ export function excerptRagContent(content: string, maxLen = RAG_EXCERPT_LEN): st
   const text = content.replace(/\s+/g, ' ').trim();
   if (text.length <= maxLen) return text;
   return `${text.slice(0, maxLen)}...`;
+}
+
+/** 从流式结束时的 assistant parts 提取 generate_image 成功结果，供落库 images */
+export function extractGeneratedImagesFromParts(
+  parts: UIMessage['parts'] | undefined,
+): ChatImageDto[] {
+  if (!parts?.length) return [];
+  const images: ChatImageDto[] = [];
+  for (const part of parts) {
+    if (!isToolUIPart(part)) continue;
+    if (getToolName(part) !== 'generate_image') continue;
+    if (part.state !== 'output-available') continue;
+    const payload = parseToolResultPayload(part.output);
+    if (!payload || typeof payload.url !== 'string' || typeof payload.error === 'string') continue;
+    images.push({
+      url: payload.url,
+      prompt: typeof payload.prompt === 'string' ? payload.prompt : undefined,
+      mode: typeof payload.mode === 'string' ? payload.mode : undefined,
+      size: typeof payload.size === 'string' ? payload.size : undefined,
+    });
+  }
+  return images;
+}
+
+function parseToolResultPayload(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string') {
+    try {
+      return parseToolResultPayload(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object') return null;
+  const rec = value as Record<string, unknown>;
+  if (typeof rec.content === 'string') {
+    const nested = parseToolResultPayload(rec.content);
+    if (nested) return nested;
+  }
+  return rec;
 }
