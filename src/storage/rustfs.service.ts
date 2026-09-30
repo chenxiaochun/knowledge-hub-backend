@@ -93,6 +93,57 @@ export class RustfsService implements OnModuleInit {
     return url;
   }
 
+  /**
+   * 将已是公网 URL 或本 bucket 对象 key 转为 DashScope 等外部服务可读的 HTTP URL。
+   */
+  resolveReadableUrl(urlOrKey: string): string {
+    const raw = urlOrKey.trim();
+    if (!raw) return raw;
+    if (/^https?:\/\//i.test(raw)) {
+      return raw;
+    }
+    const key = raw.replace(/^\/+/, '');
+    if (key.startsWith(`${this.bucket}/`)) {
+      return `${this.publicBaseUrl}/${key}`;
+    }
+    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
+  }
+
+  /** 从远程 URL 拉取并上传到 RustFS，返回本 bucket 公网 URL */
+  async uploadFromUrl(
+    sourceUrl: string,
+    options: { prefix?: string; fileName?: string } = {},
+  ): Promise<string> {
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      throw new ServiceUnavailableException(
+        `拉取远程文件失败：${response.status} ${response.statusText}`,
+      );
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) {
+      throw new ServiceUnavailableException('远程文件内容为空');
+    }
+
+    const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
+    let fileName = options.fileName;
+    if (!fileName) {
+      try {
+        const pathname = new URL(sourceUrl).pathname;
+        const base = pathname.split('/').pop();
+        fileName = base && base.includes('.') ? base : `remote-${Date.now()}.png`;
+      } catch {
+        fileName = `remote-${Date.now()}.png`;
+      }
+    }
+
+    return this.uploadBytes(buffer, {
+      fileName,
+      contentType,
+      prefix: options.prefix ?? 'ai-canvas',
+    });
+  }
+
   private async ensureBucket(): Promise<void> {
     if (!this.client) return;
 

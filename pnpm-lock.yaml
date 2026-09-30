@@ -80,6 +80,9 @@ importers:
       class-validator:
         specifier: ^0.15.1
         version: 0.15.1
+      dashscope-sdk-official:
+        specifier: ^1.27.0
+        version: 1.27.0
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0
@@ -2709,6 +2712,10 @@ packages:
   csso@5.0.5:
     resolution: {integrity: sha512-0LrrStPOdJj+SPCCrGhzryycLjwcgUSHBtxNA8aIDxf0GLsRh1cKYhB00Gd1lDOS4yGH69+SNn13+TWbVHETFQ==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0, npm: '>=7.0.0'}
+
+  dashscope-sdk-official@1.27.0:
+    resolution: {integrity: sha512-bxbFAf1FPYUjbWvhPVtMbn7AyncMTw26BCKak7wMqk8Jf5HDcew9psloZnULTLt6q4QR9TfMZvjTmx3282a+0Q==}
+    engines: {node: '>=18.0.0'}
 
   dayjs@1.11.23:
     resolution: {integrity: sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==}
@@ -8499,6 +8506,16 @@ snapshots:
     dependencies:
       css-tree: 2.2.1
     optional: true
+
+  dashscope-sdk-official@1.27.0:
+    dependencies:
+      axios: 1.20.0
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - debug
+      - supports-color
+      - utf-8-validate
 
   dayjs@1.11.23: {}
 

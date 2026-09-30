@@ -28,6 +28,7 @@ import { RoleEntity } from './user/entities/role.entity';
 import { UserRoleEntity } from './user/entities/user-role.entity';
 import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
+import { AiCanvasModule } from './ai-canvas/ai-canvas.module';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { UserModule } from './user/user.module';
     EventEmitterModule.forRoot({
       maxListeners: 20,
     }),
+    AiCanvasModule,
   ],
   controllers: [AppController],
   providers: [AppService],
