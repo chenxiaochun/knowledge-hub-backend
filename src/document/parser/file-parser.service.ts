@@ -1,26 +1,34 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+
+import { ChatOpenAI } from '@langchain/openai';
 
 import { RustfsService } from '../../storage/rustfs.service';
 import { parseDocx } from './parsers/docx.parser';
+import { imageContentTypeFromExtension, parseImage } from './parsers/image.parser';
 import { parsePdf } from './parsers/pdf.parser';
 import { parsePlainText } from './parsers/plain-text.parser';
 import { parsePptx } from './parsers/pptx.parser';
 import { parseXlsx } from './parsers/xlsx.parser';
 import { getExtension } from './utils/markdown.util';
 
-const SUPPORTED = new Set(['txt', 'md', 'docx', 'pdf', 'pptx', 'xlsx']);
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
+const SUPPORTED = new Set(['txt', 'md', 'docx', 'pdf', 'pptx', 'xlsx', ...IMAGE_EXT]);
 
 export interface ParseInput {
   originalname: string;
   buffer: Buffer;
   size: number;
+  mimetype?: string;
 }
 
 @Injectable()
 export class FileParserService {
   private readonly logger = new Logger(FileParserService.name);
 
-  constructor(private readonly rustfsService: RustfsService) {}
+  constructor(
+    private readonly rustfsService: RustfsService,
+    @Inject('MULTI_LLM_TOOL') private readonly multiLlm: ChatOpenAI,
+  ) {}
 
   getExtension(filename: string): string {
     return getExtension(filename).replace(/^\./, '').toLowerCase();
@@ -72,6 +80,10 @@ export class FileParserService {
         result = parsePlainText(file.buffer);
         break;
       default:
+        if (IMAGE_EXT.has(extension)) {
+          result = await this.parseImageFile(file.buffer, extension, file.mimetype);
+          break;
+        }
         throw new BadRequestException(`不支持的文件格式: ${extension}`);
     }
 
@@ -82,6 +94,12 @@ export class FileParserService {
       throw new BadRequestException('文件解析结果为空，请确认文件包含可提取的文本内容');
     }
     return result;
+  }
+
+  private async parseImageFile(buffer: Buffer, extension: string, mimetype?: string) {
+    const contentType =
+      mimetype?.startsWith('image/') ? mimetype : imageContentTypeFromExtension(extension);
+    return parseImage({ buffer, contentType, llm: this.multiLlm });
   }
 
   private async parseXlsxWithFallback(buffer: Buffer): Promise<string> {

@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { MqModule } from '../mq/mq.module';
+import { ToolsModule } from '../tools/tools.module';
 import { DocumentReviewService } from './document-review.service';
 import { DocumentController } from './document.controller';
 import { DocumentService } from './document.service';
@@ -17,6 +18,7 @@ import { DocumentContent, DocumentContentSchema } from './schemas/document-conte
     MongooseModule.forFeature([{ name: DocumentContent.name, schema: DocumentContentSchema }]),
     // DocumentService 依赖 DocumentPipelinePublisher，需导入并复用 MqModule 的 exports
     MqModule,
+    ToolsModule,
   ],
   controllers: [DocumentController],
   providers: [DocumentService, FileParserService, DocumentReviewService],

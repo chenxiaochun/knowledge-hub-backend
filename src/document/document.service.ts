@@ -51,6 +51,7 @@ export class DocumentService {
       originalname: originalFileName,
       buffer: file.buffer,
       size: file.size,
+      mimetype: file.mimetype,
     });
 
     let fileUrl: string | null = null;

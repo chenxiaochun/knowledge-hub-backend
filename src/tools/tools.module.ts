@@ -26,6 +26,11 @@ import { WebSearchService } from './web-search.service';
       },
       inject: [LlmService],
     },
+    {
+      provide: 'MULTI_LLM_TOOL',
+      useFactory: (llmService: LlmService) => llmService.multiModalTool,
+      inject: [LlmService],
+    },
     AsrClientService,
     {
       provide: 'ASR_CLIENT_TOOL',
@@ -43,6 +48,6 @@ import { WebSearchService } from './web-search.service';
       inject: [MailService],
     },
   ],
-  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'ASR_CLIENT_TOOL', 'MAIL_TOOL'],
+  exports: ['WEB_SEARCH_TOOL', 'LLM_TOOL', 'MULTI_LLM_TOOL', 'ASR_CLIENT_TOOL', 'MAIL_TOOL'],
 })
 export class ToolsModule {}
