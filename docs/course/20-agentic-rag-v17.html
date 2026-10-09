@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>进阶课 20 · Agentic RAG 大模型自主检索（origin v17）</title>
+  <title>进阶课 20 · 让大模型自己决定怎么搜知识库（origin v17）</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body {
@@ -110,131 +110,140 @@
 </head>
 <body>
   <header class="header">
-    <h1>进阶课 20 · Agentic RAG 大模型自主检索 <span class="badge-adv">进阶</span></h1>
+    <h1>进阶课 20 · 让大模型自己决定怎么搜知识库 <span class="badge-adv">进阶</span></h1>
     <p>
       <a href="./index.html">← 课程目录</a> ·
-      前置 <a href="./17-ai-sse-ui-stream-v14.html">课 17</a> /
+      建议先做完 <a href="./17-ai-sse-ui-stream-v14.html">课 17</a>、
       <a href="./19-chat-memory-mem0-redis-v16.html">课 19</a> ·
-      对照 origin 分支 <code>v17</code>
+      答案对照 origin 的 <code>v17</code> 分支
     </p>
   </header>
   <div class="layout">
     <nav id="nav">
       <ul>
-        <li><a href="#goal">目标与验收</a></li>
-        <li><a href="#concept">概念：从 Naive 到 Agentic</a></li>
-        <li><a href="#files">文件清单</a></li>
-        <li><a href="#route">1. 意图路由 classify</a></li>
-        <li><a href="#grade">2. 切题评估 + 不足改写</a></li>
-        <li><a href="#loop">3. agentic-retrieve 循环</a></li>
-        <li><a href="#stream">4. 流式 Agent 工具环</a></li>
-        <li><a href="#chat">5. 非流式等价环</a></li>
-        <li><a href="#isolate">6. invokeIsolated 防串流</a></li>
-        <li><a href="#frontend">7. 前端过程卡</a></li>
-        <li><a href="#verify">8. 验收自测</a></li>
-        <li><a href="#design">设计决策</a></li>
-        <li><a href="#diff">与 origin 差异</a></li>
-        <li><a href="#errors">常见报错</a></li>
-        <li><a href="#align">对齐检查表</a></li>
+        <li><a href="#goal">这课做什么</a></li>
+        <li><a href="#concept">先搞懂在干嘛</a></li>
+        <li><a href="#files">要改哪些文件</a></li>
+        <li><a href="#route">1. 先判断用户想干啥</a></li>
+        <li><a href="#grade">2. 搜到的内容靠不靠谱</a></li>
+        <li><a href="#loop">3. 查库小循环（可粘贴）</a></li>
+        <li><a href="#stream">4. 流式：交给模型自己查</a></li>
+        <li><a href="#chat">5. 非流式：后端替它查</a></li>
+        <li><a href="#isolate">6. 别把内部思考漏进回答</a></li>
+        <li><a href="#frontend">7. 前端过程条怎么画</a></li>
+        <li><a href="#verify">8. 怎么自测</a></li>
+        <li><a href="#design">为什么这样设计</a></li>
+        <li><a href="#diff">和上一课差在哪</a></li>
+        <li><a href="#errors">常见坑</a></li>
+        <li><a href="#align">做完对照这张表</a></li>
       </ul>
     </nav>
     <main id="main">
 
       <section id="goal">
-        <h2>目标与验收</h2>
+        <h2>这课做什么</h2>
         <p>
-          把「每轮必查库」的 Naive RAG，升级为<strong>Agentic RAG</strong>：
-          模型先识别意图，再<strong>自主决定</strong>是否检索、检索词是否切题、要不要改写再查、要不要联网。
-          知识库单轮最多两次检索；闲聊/个人偏好不查库。
+          以前差不多「用户一问，就先搜知识库再回答」。
+          本课改成更聪明的做法（Agentic RAG）：
+          <strong>先看用户到底想干啥</strong>，再决定要不要搜库、搜到的内容对不对题、不对就换个说法再搜一次、实在没有要不要上网查。
+          知识库一轮最多搜两遍；「你好」「以后回答短一点」这类话<strong>别去搜库</strong>。
         </p>
         <div class="callout-info">
-          <strong>本课只写讲义</strong>：练习仓手敲；对照 origin <code>v17</code> 与仓库根目录
-          <code>agentic-rag.md</code>。<strong>不替你改业务代码。</strong>
+          <strong>提醒</strong>：这课还是讲义，你自己在练习仓改代码；
+          对照答案看 origin 分支 <code>v17</code>，自测题在 origin 根目录
+          <code>agentic-rag.md</code>。<strong>我不会替你改业务代码。</strong>
         </div>
         <div class="callout-tip">
-          <strong>验收清单</strong>
+          <strong>怎样算做对了</strong>
           <ol>
-            <li>闲聊 / 个人偏好：意图卡正确，无知识库 / 改写 / 联网卡</li>
-            <li>制度题：意图「知识库」→ 检索 → 评估「切题」→ 引用文档</li>
-            <li>词沾边题（如加班餐补）：评估「不足」→ 改写 → 再检索（最多两次）</li>
-            <li>库空题：两次后明确说没有，禁止用记忆编制度，kb 意图不联网</li>
-            <li>汇率等：意图「联网」或「库不足则联网」，出现联网卡</li>
-            <li>流式过程条顺序可读：意图 → 知识库 → 评估 →（改写 → 再检索）→（联网）</li>
+            <li>说「你好」「以后回答短一点」：界面只显示闲聊/偏好，不要冒出搜库、改写、联网卡片</li>
+            <li>问制度（比如出差加签）：先显示「知识库」→ 搜到了 → 评估「切题」→ 回答里能引用文档</li>
+            <li>问「加班餐补」这种库里没有、但词和差旅报销沾边的：评估说不够 → 改检索词 → 再搜（最多两次）</li>
+            <li>问年会抽奖规则这种库里真没有的：两轮搜完就老实说没有，别瞎编，也别偷偷上网</li>
+            <li>问汇率、法定假期：走联网，界面出现联网卡片</li>
+            <li>流式回答时，过程条大致按这个顺序刷：判断意图 → 搜库 → 评估 →（改写 → 再搜）→（联网）</li>
           </ol>
         </div>
         <div class="callout-warning">
-          <strong>前置</strong>：课 17（UI Message Stream + Agent tools）必通；课 19（记忆 + 旧版改写）建议已通——本课会<strong>重写</strong>
-          <code>ChatQueryRewriteService</code> 为意图路由 + 评估 + 不足改写。
+          <strong>先做完啥再来</strong>：课 17（流式对话 + 工具）必须能跑；
+          课 19（记忆）最好做过。本课会把课 19 里的
+          <code>ChatQueryRewriteService</code> <strong>整文件换掉</strong>：
+          不只是改写问句，还要负责「判断意图、评估搜到的内容、不够再改词」。
         </div>
       </section>
 
       <section id="concept">
-        <h2>概念：从 Naive RAG 到 Agentic RAG</h2>
+        <h2>先搞懂在干嘛</h2>
+        <p>一句话：以前是「有问必搜」；现在是「先想清楚再搜，搜错了换词再试」。</p>
         <table>
-          <thead><tr><th></th><th>Naive（课 14/16）</th><th>Agentic（v17）</th></tr></thead>
+          <thead><tr><th></th><th>以前（课 14/16）</th><th>现在（v17）</th></tr></thead>
           <tbody>
-            <tr><td>是否检索</td><td>几乎每轮都查</td><td>意图决定：闲聊/偏好不查</td></tr>
-            <tr><td>检索词</td><td>原问题或简单改写</td><td>建议词 + Agent 可再改</td></tr>
-            <tr><td>命中质量</td><td>有条数就塞给模型</td><td><strong>切题评估</strong>；不切题不当制度依据</td></tr>
-            <tr><td>失败策略</td><td>直接「没有」或硬答</td><td>改写再查一次；仍不足才联网或承认没有</td></tr>
-            <tr><td>调度者</td><td>后端写死流水线</td><td>流式由 <strong>Agent 工具循环</strong>调度</td></tr>
+            <tr><td>要不要搜库</td><td>几乎每句都搜</td><td>先判断：闲聊、改偏好就别搜</td></tr>
+            <tr><td>用啥词搜</td><td>用户原话，或简单改一下</td><td>先给一个建议词，模型还能再改</td></tr>
+            <tr><td>搜到就算数吗</td><td>有结果就扔给模型</td><td>再问一句：<strong>这几条是不是在答这个问题</strong>？不对题就别当制度依据</td></tr>
+            <tr><td>搜不对怎么办</td><td>直接说没有，或硬答</td><td>换说法再搜一次；还不行再决定上网或老实说没有</td></tr>
+            <tr><td>谁说了算</td><td>后端写死步骤</td><td>流式时交给模型用工具自己走（查库 / 改词 / 联网）</td></tr>
           </tbody>
         </table>
 
+        <p><strong>整轮大致这样走：</strong></p>
         <div class="flow">用户提问
   │
-  ├─ classify → ChatRoutePlan（intent / query / allowRetrieve / allowWeb）
-  │     chitchat | profile | kb | web | kb_then_web
+  ├─ 1）先判断意图（闲聊？制度？要上网？）
+  │     顺便给出「建议检索词」
   │
-  ├─【流式】createTurnAgent(plan)
-  │     tools: retrieve_knowledge? + rewrite_query? + web_search?
-  │     Agent 循环：
-  │       retrieve → grade(eval) → insufficient?
-  │         → rewrite_query → retrieve（第 2 次）
-  │         → 仍不足且 allowWeb → web_search
-  │         → 作答
+  ├─ 2）【流式对话】按意图给模型挂工具
+  │     允许查库 → 有「搜知识库」「改检索词」
+  │     允许上网 → 有「联网搜索」
+  │     模型自己循环：
+  │       搜一次 → 看切不切题 → 不够？
+  │         → 改词 → 再搜（第 2 次）
+  │         → 还不够且允许上网 → 联网
+  │         → 再写回答
   │
-  └─【非流式】retrieveUntilRelevant（同一套评估/改写，无工具环）
-        → 按需 web_search → LLM 作答</div>
+  └─ 3）【普通 JSON 对话】后端按同样规则跑完
+        （评估、改词、再搜），不一定走工具 UI</div>
 
-        <h3>五类意图</h3>
+        <h3>五种「用户想干啥」</h3>
         <table>
-          <thead><tr><th>intent</th><th>中文</th><th>retrieve</th><th>web</th></tr></thead>
+          <thead><tr><th>代码里的名字</th><th>人话</th><th>查内部库？</th><th>上网？</th></tr></thead>
           <tbody>
-            <tr><td><code>chitchat</code></td><td>闲聊</td><td>×</td><td>×</td></tr>
-            <tr><td><code>profile</code></td><td>个人偏好</td><td>×</td><td>×</td></tr>
-            <tr><td><code>kb</code></td><td>知识库</td><td>✓</td><td>×（两次仍不足也不网）</td></tr>
-            <tr><td><code>web</code></td><td>联网搜索</td><td>×</td><td>✓</td></tr>
-            <tr><td><code>kb_then_web</code></td><td>库不足则联网</td><td>✓</td><td>✓（库循环后）</td></tr>
+            <tr><td><code>chitchat</code></td><td>打招呼、说谢谢</td><td>不查</td><td>不上</td></tr>
+            <tr><td><code>profile</code></td><td>说自己是谁、希望回答短一点</td><td>不查</td><td>不上</td></tr>
+            <tr><td><code>kb</code></td><td>问公司制度、流程</td><td>查</td><td>不上（两轮仍没有也不上）</td></tr>
+            <tr><td><code>web</code></td><td>问公开的、有时效的（如汇率）</td><td>不查</td><td>上</td></tr>
+            <tr><td><code>kb_then_web</code></td><td>像内部问题，但也可能要外部信息</td><td>先查</td><td>库不够再上</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="files">
-        <h2>文件清单</h2>
+        <h2>要改哪些文件</h2>
         <table>
-          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <thead><tr><th>路径</th><th>你干什么</th></tr></thead>
           <tbody>
-            <tr><td><code>src/ai/agentic-retrieve.ts</code></td><td><strong>新建</strong>：retrieveAndGrade / retrieveUntilRelevant</td></tr>
-            <tr><td><code>src/ai/chat-query-rewrite.service.ts</code></td><td><strong>重写</strong>：classify / gradeHits / rewriteAfterRetrieve</td></tr>
-            <tr><td><code>src/ai/ai-stream.service.ts</code></td><td>按意图挂工具；data-intent / data-eval</td></tr>
-            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>非流式走 retrieveUntilRelevant</td></tr>
-            <tr><td>前端 <code>ChatMessageParts</code></td><td>渲意图卡 / 评估卡 / retrieve·rewrite 工具卡</td></tr>
-            <tr><td>origin <code>agentic-rag.md</code></td><td>前端自测题</td></tr>
+            <tr><td><code>src/ai/agentic-retrieve.ts</code></td><td><strong>新建</strong>：搜一次并打分；不够就改词再搜</td></tr>
+            <tr><td><code>src/ai/chat-query-rewrite.service.ts</code></td><td><strong>整文件重写</strong>：判断意图、评估切题、不够时改检索词</td></tr>
+            <tr><td><code>src/ai/ai-stream.service.ts</code></td><td>流式：按意图挂工具，往前端推「意图卡」「评估卡」</td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>非流式：后端按同一套规则查完再答</td></tr>
+            <tr><td>前端 <code>ChatMessageParts</code></td><td>把意图、评估、搜库、改词画成过程卡片</td></tr>
+            <tr><td>origin <code>agentic-rag.md</code></td><td>自测题清单，照着点就行</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="route">
-        <h2>1. 意图路由 classify</h2>
-        <p class="file-path">src/ai/chat-query-rewrite.service.ts（相对课 19 整文件重写，完整可粘贴）</p>
+        <h2>1. 先判断用户想干啥</h2>
+        <p class="file-path">src/ai/chat-query-rewrite.service.ts（相对课 19 整文件重写，下面整段可粘贴）</p>
         <p>
-          进 Agent 前只跑一次：输出 <code>intent</code> + <code>standalone_query</code>，
-          映射为 <code>allowRetrieve</code> / <code>allowWeb</code>。
-          失败时按 <code>kb</code> 处理（宁可多检索也不漏制度）。
+          在交给模型「自己查」之前，先问一次大模型：
+          这句是闲聊、改偏好、查制度，还是要上网？
+          同时给出一句适合搜索的短话（把「那这个找谁」补成完整主题）。
+          识别失败就当「查知识库」处理——宁可多搜一次，别把制度题漏掉。
         </p>
         <div class="callout-tip">
-          易混：「我是哪个部门」→ <code>profile</code>；「预算审核员属于哪个部门」→ <code>kb</code>。
+          别搞混：「我是哪个部门」是说用户自己 → 个人偏好；
+          「预算审核员属于哪个部门」是问岗位制度 → 查知识库。
         </div>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
@@ -584,22 +593,26 @@ function distinctQuery(next: string, previous: string): string {
       </section>
 
       <section id="grade">
-        <h2>2. 切题评估 + 不足改写</h2>
-        <p>同文件内三个结构化调用（均包 <code>invokeIsolated</code>，见第 6 步）：</p>
+        <h2>2. 搜到的内容靠不靠谱</h2>
+        <p>还是这个文件里的另外两个能力（调用时都要包一层「隔离」，见第 6 步，否则会把内部 JSON 打进回答里）：</p>
         <ul>
-          <li><code>gradeHits</code>：有命中才调模型；<strong>词沾边 ≠ 切题</strong>；评估失败有召回则放行</li>
-          <li><code>rewriteAfterRetrieve</code>：空或不切题后换问法；与上次相同则回退原问题；仍相同返回空</li>
-          <li>空命中不调评估模型，直接 <code>reason: 'empty'</code></li>
+          <li><strong>评估切题</strong>（<code>gradeHits</code>）：只有真搜到了才问模型「这些能不能回答用户」。
+            关键词沾边不算数——问加班餐补却搜到差旅报销，就是不切题。
+            评估调用挂了、但库里确实有结果时，先放行，避免误杀。</li>
+          <li><strong>不够就换词</strong>（<code>rewriteAfterRetrieve</code>）：没搜到或不切题时，换一句检索词再试。
+            新词不能和上次一模一样；实在想不出新词就返回空，表示别再搜了。</li>
+          <li>一次结果都没有时，别浪费模型去「评估」，直接记成「空」。</li>
         </ul>
       </section>
 
       <section id="loop">
-        <h2>3. agentic-retrieve 循环（完整可粘贴）</h2>
+        <h2>3. 查库小循环（完整可粘贴）</h2>
         <p class="file-path">src/ai/agentic-retrieve.ts</p>
+        <p>把「搜 + 打分」和「不够再搜」抽成两个函数，流式、非流式都用同一套：</p>
         <ul>
-          <li><code>retrieveAndGrade</code>：单次检索 + 评估；Agent 每次工具调用走这里</li>
-          <li><code>retrieveUntilRelevant</code>：查一次 → 评估 → 不足则改写再查；给非流式用</li>
-          <li><code>hits</code> 仅在切题时保留；不切题时 <code>rawHits</code> 留给改写器参考</li>
+          <li><code>retrieveAndGrade</code>：搜一轮并评估。模型每次点「搜知识库」工具，就走这里。</li>
+          <li><code>retrieveUntilRelevant</code>：搜 → 评 → 不够就改词再搜。给非流式接口用，不用工具 UI。</li>
+          <li>只有评估通过的结果才放进 <code>hits</code> 给模型当依据；不切题的原文留在 <code>rawHits</code>，改词时可以参考。</li>
         </ul>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
@@ -789,12 +802,14 @@ function toEval(
       </section>
 
       <section id="stream">
-        <h2>4. 流式：Agent 工具环</h2>
+        <h2>4. 流式：交给模型自己查</h2>
         <p class="file-path">src/ai/ai-stream.service.ts</p>
-        <p>相对 v16：不再在 execute 里写死「先 retrieve 再答」；改为
-        <code>classify</code> → <code>createTurnAgent(plan)</code> → Agent 自己调工具。</p>
+        <p>
+          和课 19 / v16 最大的差别：不要在后端写死「先搜库再回答」。
+          正确顺序是：先判断意图 → 按意图给模型挂上对应工具 → 让模型自己决定何时搜、何时改词、何时上网。
+        </p>
 
-        <h3>4.1 扩展 UIMessage data-*</h3>
+        <h3>4.1 多推两种过程数据给前端</h3>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">type KhUIMessage = UIMessage&lt;
@@ -818,7 +833,7 @@ function toEval(
 // 前端 ChatMessageParts：data-intent → 意图卡；data-eval → 评估卡；tool-retrieve_knowledge / tool-rewrite_query</code></pre>
             </div>
 
-        <h3>4.2 createTurnAgent（教学骨架，完整对照 origin）</h3>
+        <h3>4.2 按意图组装「这一轮的 Agent」（骨架，完整看 origin）</h3>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">/** 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。 */
@@ -938,7 +953,7 @@ private createTurnAgent(
 }</code></pre>
             </div>
 
-        <h3>4.3 systemForPlan</h3>
+        <h3>4.3 给模型的系统提示（按意图换说法）</h3>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">/** Agent 循环：检索 → 评估 → 不足则改写再检索 → 仍不足才联网 → 作答。 */
@@ -971,7 +986,7 @@ function systemForPlan(plan: ChatRoutePlan) {
 }</code></pre>
             </div>
 
-        <h3>4.4 execute 编排</h3>
+        <h3>4.4 流式主流程里怎么串起来</h3>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">// execute 内（会话 + history 之后）：
@@ -1006,15 +1021,21 @@ writer.merge(toUIMessageStream(mapReasoningStream(langchainStream) as never, {
   sendFinish: false,
 }) as never);</code></pre>
             </div>
-        <p><code>packRetrieveResult</code>：切题命中写入 <code>persistSources</code>，推
-        <code>data-sources</code> / <code>source-document</code>，并返回带 <code>context</code> 的工具结果给模型引用。</p>
+        <p>
+          <code>packRetrieveResult</code> 干的事很实在：
+          只有切题的结果才记进引用列表，推给前端做引用区，
+          同时把带正文的 <code>context</code> 还给模型，方便它写带 <code>[n]</code> 的回答。
+        </p>
       </section>
 
       <section id="chat">
-        <h2>5. 非流式：等价环（无 Agent 工具）</h2>
+        <h2>5. 非流式：后端替它查完</h2>
         <p class="file-path">src/ai/ai-chat.service.ts</p>
-        <p>没有工具环，但检索语义与流式一致：评估切题、不足改写再查；
-        <code>kb_then_web</code> 在库不足后再 <code>webSearch</code>。</p>
+        <p>
+          普通 JSON 接口没有工具卡片，但规矩一样：
+          评估切不切题，不够就改词再搜；
+          若意图是「库不够再上网」，内部库两轮仍不行再调联网。
+        </p>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">const plan = await this.queryRewrite.classify(trimmed, history);
@@ -1044,16 +1065,18 @@ const web =
 // intent===kb 且不足 → 直接「知识库里没有相关内容」
 // 否则拼 知识库资料 / 联网结果 + 用户问题，按 intent 选 SystemPrompt</code></pre>
             </div>
-        <p>注入 <code>WebSearchService</code>；按 intent / 是否有 KB / 是否有 web 拼
-        <code>buildSystemPrompt</code>（对照 origin 全文）。</p>
+        <p>
+          记得注入 <code>WebSearchService</code>。
+          系统提示按「这轮意图 / 有没有库资料 / 有没有网页」拼一段即可，完整文案照抄 origin。
+        </p>
       </section>
 
       <section id="isolate">
-        <h2>6. invokeIsolated：防止内部模型串进回答流</h2>
+        <h2>6. 别把内部思考漏进回答</h2>
         <p>
-          Agent 流式时 AsyncLocalStorage 带着 callbacks；工具里再
-          <code>invoke</code> 评估/改写模型，结构化 JSON 可能漏进 messages 流变成「回答正文」。
-          origin 用空 callbacks + <code>kh-internal</code> tag 隔离。
+          流式 Agent 跑着的时候，工具里如果再调一次「评估/改词」小模型，
+          默认会继承外面那套流式回调，结果评估用的 JSON 可能被当成回答正文刷到用户屏幕上。
+          做法：这些内部调用包一层空回调（再打上 <code>kh-internal</code> 标记），别跟正式回答流混在一起。
         </p>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
@@ -1078,33 +1101,33 @@ function invokeIsolated&lt;T&gt;(run: () =&gt; Promise&lt;T&gt;): Promise&lt;T&g
       </section>
 
       <section id="frontend">
-        <h2>7. 前端过程卡（对照 frontend-origin）</h2>
-        <p>在课 17 的 <code>ChatMessageParts</code> 上增加：</p>
+        <h2>7. 前端过程条怎么画</h2>
+        <p>在课 17 的气泡组件上多认几种数据（对照 frontend-origin 即可）：</p>
         <table>
-          <thead><tr><th>part</th><th>UI</th></tr></thead>
+          <thead><tr><th>后端推来的</th><th>页面上长什么样</th></tr></thead>
           <tbody>
             <tr><td><code>data-intent</code></td><td>意图卡：闲聊 / 知识库 / 联网…</td></tr>
-            <tr><td><code>data-eval</code></td><td>评估卡：切题 / 不足 / 改写后再查…</td></tr>
-            <tr><td><code>data-status</code> stage=rewrite</td><td>「正在改写检索词…」</td></tr>
-            <tr><td>tool <code>retrieve_knowledge</code></td><td>检索卡片（可复用 Retrieve 样式）</td></tr>
-            <tr><td>tool <code>rewrite_query</code></td><td>改写卡片：旧词 → 新词</td></tr>
-            <tr><td>tool <code>web_search</code></td><td>联网卡（课 17）</td></tr>
+            <tr><td><code>data-eval</code></td><td>评估卡：切题 / 不够 / 改词后再查…</td></tr>
+            <tr><td><code>data-status</code>（改写中）</td><td>一行灰字：「正在改写检索词…」</td></tr>
+            <tr><td>工具 <code>retrieve_knowledge</code></td><td>搜库卡片（可沿用课 17 检索样式）</td></tr>
+            <tr><td>工具 <code>rewrite_query</code></td><td>改词卡片：旧词 → 新词</td></tr>
+            <tr><td>工具 <code>web_search</code></td><td>联网卡（课 17 已有）</td></tr>
           </tbody>
         </table>
         <div class="callout-tip">
-          闲聊不应出现知识库卡。过程条顺序：意图 → 知识库 → 评估 →（改写 → 再检索）→（联网）。
+          闲聊时不要出现搜库卡片。正常顺序：意图 → 搜库 → 评估 →（改词 → 再搜）→（联网）。
         </div>
       </section>
 
       <section id="verify">
-        <h2>8. 验收自测（对齐 agentic-rag.md）</h2>
-        <p>测前发布 <code>test-files/</code> 六篇制度 PDF。时间不够跑最小集：</p>
+        <h2>8. 怎么自测</h2>
+        <p>先把 origin <code>test-files/</code> 里那几篇制度 PDF 上传并发布完。赶时间就测这 5 条：</p>
         <ol>
-          <li>你好 → 闲聊，无检索</li>
-          <li>出差预估费用超过五千谁还要加签？ → 切题知识库</li>
-          <li>加班餐补怎么报、标准是多少？ → 不足 → 改写再查</li>
-          <li>公司年会抽奖规则是什么？ → 库空，不编、不联网</li>
-          <li>今天人民币兑美元汇率 → 联网</li>
+          <li>你好 → 应是闲聊，别去搜库</li>
+          <li>出差预估费用超过五千谁还要加签？ → 知识库切题</li>
+          <li>加班餐补怎么报、标准是多少？ → 不够 → 改词再搜</li>
+          <li>公司年会抽奖规则是什么？ → 库里没有，别编、别上网</li>
+          <li>今天人民币兑美元汇率 → 走联网</li>
         </ol>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
@@ -1116,75 +1139,78 @@ function invokeIsolated&lt;T&gt;(run: () =&gt; Promise&lt;T&gt;): Promise&lt;T&g
 # 流式看 Network：data-intent / data-eval / tool-*</code></pre>
             </div>
         <div class="callout-ok">
-          完整 24 题见 origin <code>agentic-rag.md</code>；记忆/指代题仍见课 19 <code>chat-memory.md</code>。
+          更完整的 20 多道题在 origin <code>agentic-rag.md</code>。
+          记忆、指代追问还是看课 19 的 <code>chat-memory.md</code>。
         </div>
       </section>
 
       <section id="design" class="design-block">
-        <h2>设计决策</h2>
-        <h3>为什么评估「切题」而不是「有条数」？</h3>
-        <p>混合检索常因词沾边召回错误制度（差旅 vs 加班餐补）。不切题的 hits 不能当引用依据。</p>
-        <h3>为什么知识库最多两次？</h3>
-        <p>防 Agent 死循环打爆账单；两次仍不足应承认没有或按意图联网。</p>
-        <h3>为什么流式用工具环、非流式用 retrieveUntilRelevant？</h3>
-        <p>流式要过程可视化与模型自主调度；非流式要同一套语义但不需要 tool UI，后端同步跑完更简单。</p>
-        <h3>为什么意图在 Agent 之前？</h3>
-        <p>工具列表按 plan 挂载：闲聊根本没有 retrieve 工具，比「靠 prompt 禁止」更硬。</p>
-        <h3>对照阅读顺序（origin v17）</h3>
+        <h2>为什么这样设计</h2>
+        <h3>为啥不只看「搜到几条」？</h3>
+        <p>搜引擎经常因为几个相同的词，把差旅报销塞给「加班餐补」这种题。
+          条数再多，主题不对就不能当制度依据。</p>
+        <h3>为啥知识库最多两轮？</h3>
+        <p>防止模型没完没了地搜，又贵又慢。两轮还不行，就该老实说没有，或按意图决定要不要上网。</p>
+        <h3>为啥流式让模型自己点工具，非流式却后端直接跑？</h3>
+        <p>流式要对着用户展示「正在搜 / 正在改词」，也方便模型临场决定下一步；
+          非流式只要结果对，后端一口气跑完更省事，不必画工具卡片。</p>
+        <h3>为啥意图要在进 Agent 之前定？</h3>
+        <p>闲聊就根本不挂「搜知识库」工具——比只在提示词里写「禁止搜库」靠谱得多。</p>
+        <h3>对照 origin 建议怎么读</h3>
         <ol>
-          <li><code>agentic-rag.md</code></li>
-          <li><code>chat-query-rewrite.service.ts</code>（classify / grade / rewriteAfter）</li>
-          <li><code>agentic-retrieve.ts</code></li>
-          <li><code>ai-stream.service.ts</code>（createTurnAgent / systemForPlan）</li>
-          <li><code>ai-chat.service.ts</code>（非流式）</li>
+          <li>先看 <code>agentic-rag.md</code> 自测题，建立直觉</li>
+          <li>再看改写服务（意图 / 评估 / 改词）</li>
+          <li>然后是 <code>agentic-retrieve.ts</code></li>
+          <li>流式服务里「怎么组 Agent」</li>
+          <li>最后非流式 <code>ai-chat.service.ts</code></li>
         </ol>
       </section>
 
       <section id="diff">
-        <h2>与课 19 / origin 差异</h2>
+        <h2>和上一课差在哪</h2>
         <table>
-          <thead><tr><th>点</th><th>说明</th></tr></thead>
+          <thead><tr><th>点</th><th>人话</th></tr></thead>
           <tbody>
-            <tr><td>改写服务</td><td>课 19 只有「指代改写」；v17 升级为意图+评估+不足改写，API 不兼容，需整文件替换</td></tr>
-            <tr><td>流式检索时机</td><td>v16 在 Agent 前 retrieve；v17 改由工具调度</td></tr>
-            <tr><td>runLimit</td><td>流式 modelCallLimit 提到 6（多了工具轮次）</td></tr>
-            <tr><td>图谱</td><td>不参与对话，不要用图谱页对照验收</td></tr>
+            <tr><td>改写服务</td><td>课 19 主要是把「那这个」补全；v17 还要判断意图、评估切题，接口对不上，整文件换</td></tr>
+            <tr><td>什么时候搜库</td><td>v16 多半在进模型前就搜完；v17 改成模型自己调工具搜</td></tr>
+            <tr><td>模型调用次数上限</td><td>流式放宽一点（工具多走几轮），别一碰就掐断</td></tr>
+            <tr><td>图谱页</td><td>这课对话不看图谱，别拿图谱结果来对答案</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="errors">
-        <h2>常见报错</h2>
+        <h2>常见坑</h2>
         <table>
-          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <thead><tr><th>你看到啥</th><th>先查啥</th></tr></thead>
           <tbody>
-            <tr><td>回答里出现评估 JSON</td><td>缺 <code>invokeIsolated</code>；工具内模型继承了 Agent callbacks</td></tr>
-            <tr><td>闲聊仍出知识库卡</td><td>intent 是否判错；tools 是否仍无条件挂了 retrieve</td></tr>
-            <tr><td>词沾边当切题</td><td>GRADE_PROMPT；是否评估失败被「有召回放行」掩盖</td></tr>
-            <tr><td>第三次还在检索</td><td>retrieveCount 上限；systemPrompt 是否写清</td></tr>
-            <tr><td>kb 空题去联网</td><td>intent=kb 时 allowWeb=false；system 禁止联网</td></tr>
-            <tr><td>部门题判成 profile</td><td>ROUTE_PROMPT 易混条；主语是否用户本人</td></tr>
-            <tr><td>非流式与流式行为不一致</td><td>非流式是否走了 retrieveUntilRelevant 而非裸 retrieve</td></tr>
+            <tr><td>回答里冒出一堆评估 JSON</td><td>内部小模型调用有没有做隔离（第 6 步）</td></tr>
+            <tr><td>说你好还出搜库卡片</td><td>意图判错了？还是闲聊也挂了搜库工具？</td></tr>
+            <tr><td>词沾边却当切题</td><td>评估提示词；或评估失败被「有结果就放行」盖过去了</td></tr>
+            <tr><td>还在搜第三遍</td><td>次数上限有没有卡住；系统提示有没有写死「最多两次」</td></tr>
+            <tr><td>纯制度空题却去上网</td><td>意图是 kb 时就别开联网工具；提示里也要写死</td></tr>
+            <tr><td>「某某岗位属哪个部门」被当成个人偏好</td><td>看路由提示里的易混例子；主语是不是用户自己</td></tr>
+            <tr><td>流式和非流式表现差很多</td><td>非流式是不是还在用旧的「裸搜」，没走评估+改词循环</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="align">
-        <h2>对齐检查表</h2>
+        <h2>做完对照这张表</h2>
         <table>
-          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <thead><tr><th>做完了吗</th><th>在哪</th></tr></thead>
           <tbody>
-            <tr><td><code>agentic-retrieve.ts</code></td><td>新建</td></tr>
-            <tr><td>classify / gradeHits / rewriteAfterRetrieve + invokeIsolated</td><td>chat-query-rewrite.service</td></tr>
-            <tr><td>retrieve_knowledge + rewrite_query 工具 + 最多 2 次</td><td>ai-stream createTurnAgent</td></tr>
-            <tr><td>data-intent / data-eval</td><td>ai-stream execute / 前端</td></tr>
-            <tr><td>systemForPlan 按意图约束</td><td>ai-stream</td></tr>
-            <tr><td>非流式 retrieveUntilRelevant + 按需 web</td><td>ai-chat</td></tr>
-            <tr><td>agentic-rag.md 最小集 5 题</td><td>自测通过</td></tr>
+            <tr><td>新建了查库小循环文件</td><td><code>agentic-retrieve.ts</code></td></tr>
+            <tr><td>意图 / 评估 / 改词 + 调用隔离</td><td>改写服务</td></tr>
+            <tr><td>搜库、改词两个工具，且最多两轮搜</td><td>流式 createTurnAgent</td></tr>
+            <tr><td>前端能收到意图卡、评估卡</td><td>流式推送 + 前端渲染</td></tr>
+            <tr><td>系统提示按意图约束行为</td><td>流式 systemForPlan</td></tr>
+            <tr><td>非流式也评估+改词，该上网才上网</td><td>ai-chat</td></tr>
+            <tr><td>自测最小 5 题过了</td><td><code>agentic-rag.md</code></td></tr>
           </tbody>
         </table>
         <div class="callout-tip">
-          完成后回 <a href="./index.html">课程目录</a>。
+          做完回 <a href="./index.html">课程目录</a>。
         </div>
       </section>
 
