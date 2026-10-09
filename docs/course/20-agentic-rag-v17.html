@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 20 · Agentic RAG 大模型自主检索（origin v17）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .callout-ok { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 20 · Agentic RAG 大模型自主检索 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      前置 <a href="./17-ai-sse-ui-stream-v14.html">课 17</a> /
+      <a href="./19-chat-memory-mem0-redis-v16.html">课 19</a> ·
+      对照 origin 分支 <code>v17</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念：从 Naive 到 Agentic</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#route">1. 意图路由 classify</a></li>
+        <li><a href="#grade">2. 切题评估 + 不足改写</a></li>
+        <li><a href="#loop">3. agentic-retrieve 循环</a></li>
+        <li><a href="#stream">4. 流式 Agent 工具环</a></li>
+        <li><a href="#chat">5. 非流式等价环</a></li>
+        <li><a href="#isolate">6. invokeIsolated 防串流</a></li>
+        <li><a href="#frontend">7. 前端过程卡</a></li>
+        <li><a href="#verify">8. 验收自测</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与 origin 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <p>
+          把「每轮必查库」的 Naive RAG，升级为<strong>Agentic RAG</strong>：
+          模型先识别意图，再<strong>自主决定</strong>是否检索、检索词是否切题、要不要改写再查、要不要联网。
+          知识库单轮最多两次检索；闲聊/个人偏好不查库。
+        </p>
+        <div class="callout-info">
+          <strong>本课只写讲义</strong>：练习仓手敲；对照 origin <code>v17</code> 与仓库根目录
+          <code>agentic-rag.md</code>。<strong>不替你改业务代码。</strong>
+        </div>
+        <div class="callout-tip">
+          <strong>验收清单</strong>
+          <ol>
+            <li>闲聊 / 个人偏好：意图卡正确，无知识库 / 改写 / 联网卡</li>
+            <li>制度题：意图「知识库」→ 检索 → 评估「切题」→ 引用文档</li>
+            <li>词沾边题（如加班餐补）：评估「不足」→ 改写 → 再检索（最多两次）</li>
+            <li>库空题：两次后明确说没有，禁止用记忆编制度，kb 意图不联网</li>
+            <li>汇率等：意图「联网」或「库不足则联网」，出现联网卡</li>
+            <li>流式过程条顺序可读：意图 → 知识库 → 评估 →（改写 → 再检索）→（联网）</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 17（UI Message Stream + Agent tools）必通；课 19（记忆 + 旧版改写）建议已通——本课会<strong>重写</strong>
+          <code>ChatQueryRewriteService</code> 为意图路由 + 评估 + 不足改写。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念：从 Naive RAG 到 Agentic RAG</h2>
+        <table>
+          <thead><tr><th></th><th>Naive（课 14/16）</th><th>Agentic（v17）</th></tr></thead>
+          <tbody>
+            <tr><td>是否检索</td><td>几乎每轮都查</td><td>意图决定：闲聊/偏好不查</td></tr>
+            <tr><td>检索词</td><td>原问题或简单改写</td><td>建议词 + Agent 可再改</td></tr>
+            <tr><td>命中质量</td><td>有条数就塞给模型</td><td><strong>切题评估</strong>；不切题不当制度依据</td></tr>
+            <tr><td>失败策略</td><td>直接「没有」或硬答</td><td>改写再查一次；仍不足才联网或承认没有</td></tr>
+            <tr><td>调度者</td><td>后端写死流水线</td><td>流式由 <strong>Agent 工具循环</strong>调度</td></tr>
+          </tbody>
+        </table>
+
+        <div class="flow">用户提问
+  │
+  ├─ classify → ChatRoutePlan（intent / query / allowRetrieve / allowWeb）
+  │     chitchat | profile | kb | web | kb_then_web
+  │
+  ├─【流式】createTurnAgent(plan)
+  │     tools: retrieve_knowledge? + rewrite_query? + web_search?
+  │     Agent 循环：
+  │       retrieve → grade(eval) → insufficient?
+  │         → rewrite_query → retrieve（第 2 次）
+  │         → 仍不足且 allowWeb → web_search
+  │         → 作答
+  │
+  └─【非流式】retrieveUntilRelevant（同一套评估/改写，无工具环）
+        → 按需 web_search → LLM 作答</div>
+
+        <h3>五类意图</h3>
+        <table>
+          <thead><tr><th>intent</th><th>中文</th><th>retrieve</th><th>web</th></tr></thead>
+          <tbody>
+            <tr><td><code>chitchat</code></td><td>闲聊</td><td>×</td><td>×</td></tr>
+            <tr><td><code>profile</code></td><td>个人偏好</td><td>×</td><td>×</td></tr>
+            <tr><td><code>kb</code></td><td>知识库</td><td>✓</td><td>×（两次仍不足也不网）</td></tr>
+            <tr><td><code>web</code></td><td>联网搜索</td><td>×</td><td>✓</td></tr>
+            <tr><td><code>kb_then_web</code></td><td>库不足则联网</td><td>✓</td><td>✓（库循环后）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="files">
+        <h2>文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/ai/agentic-retrieve.ts</code></td><td><strong>新建</strong>：retrieveAndGrade / retrieveUntilRelevant</td></tr>
+            <tr><td><code>src/ai/chat-query-rewrite.service.ts</code></td><td><strong>重写</strong>：classify / gradeHits / rewriteAfterRetrieve</td></tr>
+            <tr><td><code>src/ai/ai-stream.service.ts</code></td><td>按意图挂工具；data-intent / data-eval</td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>非流式走 retrieveUntilRelevant</td></tr>
+            <tr><td>前端 <code>ChatMessageParts</code></td><td>渲意图卡 / 评估卡 / retrieve·rewrite 工具卡</td></tr>
+            <tr><td>origin <code>agentic-rag.md</code></td><td>前端自测题</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="route">
+        <h2>1. 意图路由 classify</h2>
+        <p class="file-path">src/ai/chat-query-rewrite.service.ts（相对课 19 整文件重写，完整可粘贴）</p>
+        <p>
+          进 Agent 前只跑一次：输出 <code>intent</code> + <code>standalone_query</code>，
+          映射为 <code>allowRetrieve</code> / <code>allowWeb</code>。
+          失败时按 <code>kb</code> 处理（宁可多检索也不漏制度）。
+        </p>
+        <div class="callout-tip">
+          易混：「我是哪个部门」→ <code>profile</code>；「预算审核员属于哪个部门」→ <code>kb</code>。
+        </div>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ChatOpenAI } from '@langchain/openai';
+import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { AsyncLocalStorageProviderSingleton } from '@langchain/core/singletons';
+import { z } from 'zod';
+import { compactRewriteContext } from './chat-memory.util';
+import type { ChunkHit } from '../pipeline/types/pipeline.types';
+
+/**
+ * Agent 流式运行时，当前 callbacks 存在 AsyncLocalStorage 里。
+ * 工具里再 invoke 评估/改写模型会默认继承这套上下文，内部 JSON 会进 messages 流、变成回答正文。
+ * runWithConfig 在这段调用里换成空 callbacks，跑完自动恢复；第三个 true 表示不要再挂 tracing 根节点。
+ * tags / metadata 是双保险，万一还有事件漏出，流过滤能按 kh-internal 丢掉。
+ */
+function invokeIsolated&lt;T&gt;(run: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  return AsyncLocalStorageProviderSingleton.runWithConfig(
+    {
+      callbacks: [],
+      tags: ['kh-internal'],
+      metadata: { khInternal: true },
+    },
+    run,
+    true,
+  );
+}
+
+/** 本轮路由意图。kb = knowledge base（知识库） */
+export const CHAT_INTENTS = [
+  'chitchat', // 问好、致谢、与库无关的闲聊
+  'profile', // 只问/改用户自己的名字、部门、回答偏好
+  'kb', // 公司制度、流程、岗位、内部系统
+  'web', // 只要公开时效信息
+  'kb_then_web', // 先查知识库，不够再联网
+] as const;
+
+export type ChatIntent = (typeof CHAT_INTENTS)[number];
+
+/** 意图识别结果：同时给出改写检索词，以及本轮允许哪些工具。 */
+export type ChatRoutePlan = {
+  intent: ChatIntent;
+  label: string;
+  /** 消解指代后的独立短查询，给 RAG / 联网用 */
+  query: string;
+  /** kb / kb_then_web 才挂 retrieve_knowledge */
+  allowRetrieve: boolean;
+  /** web / kb_then_web 才挂 web_search */
+  allowWeb: boolean;
+};
+
+/** JSON 对话接口用的精简形态；流式走 ChatRoutePlan */
+export type RetrieveQueryPlan = {
+  query: string;
+  needRetrieve: boolean;
+};
+
+/** 一轮检索后的切题判断。empty 不调模型。 */
+export type HitGrade = {
+  ok: boolean;
+  reason:
+    /** 没有 chunk 命中 */
+    | 'empty'
+    /** 命中能支撑作答 */
+    | 'relevant'
+    /** 有命中但主题不是同一件事 */
+    | 'irrelevant';
+  text: string;
+};
+
+/** 意图在过程条上的中文名 */
+const INTENT_LABEL: Record&lt;ChatIntent, string&gt; = {
+  chitchat: '闲聊',
+  profile: '个人偏好',
+  kb: '知识库',
+  web: '联网搜索',
+  kb_then_web: '知识库，不足则联网',
+};
+
+/** 意图识别的结构化输出 */
+const routeSchema = z.object({
+  intent: z.enum(CHAT_INTENTS).describe(
+    'chitchat=寒暄闲聊；profile=只改用户自己的名字/偏好；kb=制度流程岗位系统；web=只要公开时效信息；kb_then_web=先查库不够再搜网',
+  ),
+  standalone_query: z
+    .string()
+    .describe('可独立检索的一句中文短查询，消解指代。闲聊/偏好可原样'),
+});
+
+/** 检索切题评估的结构化输出 */
+const gradeSchema = z.object({
+  relevant: z
+    .boolean()
+    .describe('只要有能支撑作答的资料即为 true；仅关键词沾边、主题不是同一件事为 false'),
+  reason: z.string().describe('一句中文：为何切题或不切题'),
+});
+
+/** 不足后改写检索词的结构化输出 */
+const retryRewriteSchema = z.object({
+  query: z
+    .string()
+    .describe('与上次不同的一句中文检索词，不超过 40 字，针对用户原问题'),
+});
+
+/** 判断命中资料是否针对用户问题 */
+const GRADE_PROMPT =
+  '你是企业知识库的检索评估器。判断命中资料能否回答用户问题。\n' +
+  '\n' +
+  '- 切题：同一主题、同一制度/岗位/流程，能支撑作答（不必覆盖每个细节）\n' +
+  '- 不切题：只是词沾边（如问加班餐补却命中差旅报销）、或完全另一件事\n' +
+  '- 只根据给定标题和摘录判断，不要假设库里还有别的文档\n' +
+  '- 输出不要解释字段以外的内容';
+
+/** 不足时换一种问法再查知识库 */
+const RETRY_REWRITE_PROMPT =
+  '你是企业知识库的检索改写器。上次检索不足，请换一种问法再查。\n' +
+  '\n' +
+  '- 紧扣用户原问题，不要跑题\n' +
+  '- 不要重复上次检索词\n' +
+  '- 可换同义、补全制度/岗位/补贴类型等核心实体\n' +
+  '- 不要编造条款号、专有名词\n' +
+  '- 一句中文，尽量不超过 40 字';
+
+/** 本轮意图 + 建议检索词（进 Agent 前只跑一次） */
+const ROUTE_PROMPT =
+  '你是企业知识库的意图与检索改写器。根据对话判断本轮意图，并给出一条可检索短查询。\n' +
+  '\n' +
+  '## intent\n' +
+  '- chitchat：问好、致谢、与库无关的闲聊\n' +
+  '- profile：只问/改「我自己」的名字、我所在部门、回答长短偏好。主语必须是用户本人\n' +
+  '- kb：公司制度、流程、岗位、内部系统、文档\n' +
+  '- web：只要最新公开信息，明显不是内部制度\n' +
+  '- kb_then_web：像内部问题但也可能要外部时效（政策新闻+内部流程）\n' +
+  '\n' +
+  '## 易混\n' +
+  '- 「我是哪个部门 / 以后回答短一点」→ profile\n' +
+  '- 「预算审核员属于哪个部门」→ kb，不要因为出现「部门」就判 profile\n' +
+  '- 记忆里的用户部门不能改变本题意图\n' +
+  '\n' +
+  '## standalone_query\n' +
+  '- 消解「这个 / 谁负责 / 怎么办」，补全省略主题，一句中文，尽量不超过 40 字\n' +
+  '- 不要编造上文没有的专有名词、条款号\n' +
+  '- 不要复述助手已给出的制度条文\n' +
+  '- 闲聊/偏好：用原问题即可\n' +
+  '- 输出不要解释';
+
+/**
+ * 对话路由：识别意图 + 给出建议检索词。
+ * 闲聊/个人偏好不检索；内部制度走知识库；公开时效走联网；两者都可能时先库后网。
+ * 检索后的切题评估与不足时改写，见 gradeHits / rewriteAfterRetrieve。
+ */
+@Injectable()
+export class ChatQueryRewriteService {
+  private readonly logger = new Logger(ChatQueryRewriteService.name);
+  private readonly router?: {
+    invoke: (messages: unknown[]) =&gt; Promise&lt;z.infer&lt;typeof routeSchema&gt;&gt;;
+  };
+  private readonly grader?: {
+    invoke: (messages: unknown[]) =&gt; Promise&lt;z.infer&lt;typeof gradeSchema&gt;&gt;;
+  };
+  private readonly retryWriter?: {
+    invoke: (messages: unknown[]) =&gt; Promise&lt;z.infer&lt;typeof retryRewriteSchema&gt;&gt;;
+  };
+
+  constructor(config: ConfigService) {
+    const apiKey =
+      config.get&lt;string&gt;('OPENAI_API_KEY') ||
+      config.get&lt;string&gt;('LLM_API_KEY') ||
+      config.get&lt;string&gt;('DASHSCOPE_API_KEY') ||
+      '';
+    if (!apiKey) return;
+
+    const baseURL =
+      config.get&lt;string&gt;('OPENAI_BASE_URL') ||
+      config.get&lt;string&gt;('LLM_BASE_URL') ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const modelName =
+      config.get&lt;string&gt;('MODEL_NAME') ||
+      config.get&lt;string&gt;('LLM_MODEL') ||
+      'qwen-plus';
+
+    const llm = new ChatOpenAI({
+      apiKey,
+      model: modelName,
+      temperature: 0,
+      timeout: Number(config.get('AI_QUERY_REWRITE_TIMEOUT_MS', 15000)),
+      maxRetries: 0,
+      streaming: false,
+      useResponsesApi: false,
+      configuration: { baseURL },
+    });
+    this.router =
+      llm.withStructuredOutput(routeSchema) as ChatQueryRewriteService['router'];
+    this.grader =
+      llm.withStructuredOutput(gradeSchema) as ChatQueryRewriteService['grader'];
+    this.retryWriter = llm.withStructuredOutput(
+      retryRewriteSchema,
+    ) as ChatQueryRewriteService['retryWriter'];
+  }
+
+  /** 失败时按 kb 处理，宁可多检索也不漏内部制度。 */
+  async classify(
+    question: string,
+    history: BaseMessage[],
+  ): Promise&lt;ChatRoutePlan&gt; {
+    const fallback = this.toPlan('kb', question);
+    if (!this.router) return fallback;
+
+    const context = compactRewriteContext(history);
+    try {
+      const result = await invokeIsolated(() =&gt;
+        this.router!.invoke([
+          new SystemMessage(ROUTE_PROMPT),
+          new HumanMessage(
+            context
+              ? `对话：\n${context}\n\n当前问题：${question}`
+              : `当前问题：${question}`,
+          ),
+        ]),
+      );
+      const query = result.standalone_query.trim() || question;
+      const plan = this.toPlan(result.intent, query);
+      this.logger.log(
+        `意图：${plan.intent} query=${plan.query.slice(0, 80)}`,
+      );
+      return plan;
+    } catch (error) {
+      this.logger.warn(
+        `意图识别失败，按知识库处理：${error instanceof Error ? error.message : error}`,
+      );
+      return fallback;
+    }
+  }
+
+  /** 给非流式 /ai/chat 用：只关心要不要查知识库 */
+  async rewrite(
+    question: string,
+    history: BaseMessage[],
+  ): Promise&lt;RetrieveQueryPlan&gt; {
+    const plan = await this.classify(question, history);
+    return { query: plan.query, needRetrieve: plan.allowRetrieve };
+  }
+
+  /** 有命中再判切题；空结果不调模型。评估失败时有召回则放行，避免误杀。 */
+  async gradeHits(question: string, hits: ChunkHit[]): Promise&lt;HitGrade&gt; {
+    if (!hits.length) {
+      return { ok: false, reason: 'empty', text: '未检索到资料' };
+    }
+    if (!this.grader) {
+      return { ok: true, reason: 'relevant', text: '有召回（未配置评估模型）' };
+    }
+    try {
+      const result = await invokeIsolated(() =&gt;
+        this.grader!.invoke([
+          new SystemMessage(GRADE_PROMPT),
+          new HumanMessage(
+            `用户问题：${question}\n\n命中资料：\n${summarizeHits(hits)}`,
+          ),
+        ]),
+      );
+      const ok = result.relevant;
+      const text = result.reason.trim() || (ok ? '资料切题' : '资料不切题');
+      this.logger.log(`检索评估：${ok ? '切题' : '不切题'} ${text.slice(0, 80)}`);
+      return { ok, reason: ok ? 'relevant' : 'irrelevant', text };
+    } catch (error) {
+      this.logger.warn(
+        `检索评估失败，按有召回放行：${error instanceof Error ? error.message : error}`,
+      );
+      return { ok: true, reason: 'relevant', text: '评估失败，按有召回处理' };
+    }
+  }
+
+  /**
+   * 首轮空或不切题后改写检索词。
+   * 失败或与上次相同则回退用户原问题；原问题也相同则返回空字符串表示无法再查。
+   */
+  async rewriteAfterRetrieve(
+    question: string,
+    previousQuery: string,
+    grade: HitGrade,
+    hits: ChunkHit[],
+  ): Promise&lt;string&gt; {
+    const fallback = distinctQuery(question, previousQuery);
+    if (!this.retryWriter) return fallback;
+
+    try {
+      const hitBlock = hits.length
+        ? `\n上次命中（不切题）：\n${summarizeHits(hits, 3)}`
+        : '\n上次无命中。';
+      const result = await invokeIsolated(() =&gt;
+        this.retryWriter!.invoke([
+          new SystemMessage(RETRY_REWRITE_PROMPT),
+          new HumanMessage(
+            `用户问题：${question}\n上次检索词：${previousQuery}\n不足原因：${grade.text}${hitBlock}`,
+          ),
+        ]),
+      );
+      const query = distinctQuery(result.query.trim(), previousQuery);
+      if (query) {
+        this.logger.log(`检索改写：${previousQuery.slice(0, 40)} → ${query.slice(0, 40)}`);
+        return query;
+      }
+      return fallback;
+    } catch (error) {
+      this.logger.warn(
+        `检索改写失败，回退原问题：${error instanceof Error ? error.message : error}`,
+      );
+      return fallback;
+    }
+  }
+
+  /** 意图 → 工具开关。识别失败时 classify 会落到 kb，避免内部问题漏检。 */
+  private toPlan(intent: ChatIntent, query: string): ChatRoutePlan {
+    const kb = intent === 'kb' || intent === 'kb_then_web';
+    return {
+      intent,
+      label: INTENT_LABEL[intent],
+      query,
+      allowRetrieve: kb,
+      allowWeb: intent === 'web' || intent === 'kb_then_web',
+    };
+  }
+}
+
+function summarizeHits(hits: ChunkHit[], limit = 5): string {
+  return hits
+    .slice(0, limit)
+    .map((hit, i) =&gt; {
+      const heading = hit.heading ? ` / ${hit.heading}` : '';
+      const snippet = hit.content.replace(/\s+/g, ' ').trim().slice(0, 180);
+      const score = Number.isFinite(hit.score) ? hit.score.toFixed(2) : '-';
+      return `${i + 1}. ${hit.documentTitle}${heading}（分=${score}）\n${snippet}`;
+    })
+    .join('\n');
+}
+
+function distinctQuery(next: string, previous: string): string {
+  const query = next.replace(/\s+/g, ' ').trim();
+  if (!query) return '';
+  if (query === previous.replace(/\s+/g, ' ').trim()) return '';
+  return query;
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="grade">
+        <h2>2. 切题评估 + 不足改写</h2>
+        <p>同文件内三个结构化调用（均包 <code>invokeIsolated</code>，见第 6 步）：</p>
+        <ul>
+          <li><code>gradeHits</code>：有命中才调模型；<strong>词沾边 ≠ 切题</strong>；评估失败有召回则放行</li>
+          <li><code>rewriteAfterRetrieve</code>：空或不切题后换问法；与上次相同则回退原问题；仍相同返回空</li>
+          <li>空命中不调评估模型，直接 <code>reason: 'empty'</code></li>
+        </ul>
+      </section>
+
+      <section id="loop">
+        <h2>3. agentic-retrieve 循环（完整可粘贴）</h2>
+        <p class="file-path">src/ai/agentic-retrieve.ts</p>
+        <ul>
+          <li><code>retrieveAndGrade</code>：单次检索 + 评估；Agent 每次工具调用走这里</li>
+          <li><code>retrieveUntilRelevant</code>：查一次 → 评估 → 不足则改写再查；给非流式用</li>
+          <li><code>hits</code> 仅在切题时保留；不切题时 <code>rawHits</code> 留给改写器参考</li>
+        </ul>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import type { AuthUser } from '../auth/auth-user.interface';
+import type { ChunkHit } from '../pipeline/types/pipeline.types';
+import type { ChatQueryRewriteService, HitGrade } from './chat-query-rewrite.service';
+import type { HybridRetrievalService } from './hybrid-retrieval.service';
+
+/** 推给前端 data-eval；ok 表示资料切题，不是「有条数」。 */
+export type RetrieveEvalReason =
+  /** 首轮检索切题 */
+  | 'ok'
+  /** 改写后再查切题 */
+  | 'retried_ok'
+  /** 首轮无命中 */
+  | 'empty'
+  /** 改写后再查仍无命中 */
+  | 'retried_empty'
+  /** 首轮有命中但不切题 */
+  | 'irrelevant'
+  /** 改写后再查仍不切题 */
+  | 'retried_irrelevant'
+  /** 检索接口失败 */
+  | 'error';
+
+export type RetrieveEval = {
+  /** 是否可作为制度依据 */
+  ok: boolean;
+  reason: RetrieveEvalReason;
+  /** 给过程条看的一句中文 */
+  text: string;
+  /** 是否已经走过改写再查 */
+  retried: boolean;
+  /** 首轮检索词 */
+  query: string;
+  /** 改写后的检索词（仅再查时有） */
+  retryQuery?: string;
+};
+
+export type GradedRetrieve = {
+  /** 原始命中，给改写器用；不切题时不要当制度依据 */
+  rawHits: ChunkHit[];
+  /** 切题才有，给模型引用 */
+  hits: ChunkHit[];
+  grade: HitGrade; // 切题判断原文
+  eval: RetrieveEval; // 推给前端过程条
+  usedQuery: string; // 本轮实际用来检索的词
+};
+
+/** 无命中时的评估占位，不再调模型 */
+const EMPTY_GRADE: HitGrade = { ok: false, reason: 'empty', text: '未检索到资料' };
+
+/** 单次检索 + 切题评估。Agent loop 每次工具调用走这里。 */
+export async function retrieveAndGrade(opts: {
+  question: string; // 用户原问题，评估切题时对照这个
+  query: string; // 本轮检索词（建议词或改写后的词）
+  topK: number; // 返回条数
+  user?: AuthUser; // 可见范围：公开 / 所在团队 / 自己写的
+  retrieval: HybridRetrievalService; // ES 混合检索
+  rewrite: ChatQueryRewriteService; // 只用来 gradeHits，这里不改写
+  retried?: boolean; // 是否已是改写后的第二次检索
+  previousQuery?: string; // 首轮检索词，填 eval.query 用
+}): Promise&lt;GradedRetrieve&gt; {
+  const usedQuery = opts.query.trim() || opts.question;
+  const retried = Boolean(opts.retried);
+  const displayQuery = retried ? opts.previousQuery || usedQuery : usedQuery;
+  const retryQuery = retried ? usedQuery : undefined;
+
+  try {
+    const rawHits = await opts.retrieval.retrieve(usedQuery, opts.topK, opts.user);
+    const grade = await opts.rewrite.gradeHits(opts.question, rawHits);
+    return {
+      rawHits,
+      hits: grade.ok ? rawHits : [],
+      grade,
+      eval: toEval(grade, displayQuery, retried, retryQuery),
+      usedQuery,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      rawHits: [],
+      hits: [],
+      grade: { ...EMPTY_GRADE, text: `检索失败：${detail}` },
+      eval: {
+        ok: false,
+        reason: 'error',
+        text: retried ? '改写后再次检索失败' : '检索失败',
+        retried,
+        query: displayQuery,
+        retryQuery,
+      },
+      usedQuery,
+    };
+  }
+}
+
+/**
+ * 无 Agent 时的等价环：查一次 → 评估 → 不足则改写再查一次。
+ * 给非流式 /ai/chat 用。
+ */
+export async function retrieveUntilRelevant(opts: {
+  question: string; // 用户原问题
+  query: string; // 首轮检索词（一般是意图改写后的建议词）
+  topK: number; // 返回条数
+  user?: AuthUser; // 文档可见范围
+  retrieval: HybridRetrievalService; // ES 混合检索
+  rewrite: ChatQueryRewriteService; // 评估切题 + 不足时改写
+  onEval?: (data: RetrieveEval) =&gt; void; // 每次评估后回调（流式可推过程条）
+  onRewrite?: (retryQuery: string) =&gt; void; // 即将用新词再查时回调
+}): Promise&lt;{ hits: ChunkHit[]; eval: RetrieveEval; usedQuery: string }&gt; {
+  const first = await retrieveAndGrade({
+    question: opts.question,
+    query: opts.query,
+    topK: opts.topK,
+    user: opts.user,
+    retrieval: opts.retrieval,
+    rewrite: opts.rewrite,
+  });
+  opts.onEval?.(first.eval);
+  if (first.eval.ok || first.eval.reason === 'error') {
+    return { hits: first.hits, eval: first.eval, usedQuery: first.usedQuery };
+  }
+
+  const retryQuery = await opts.rewrite.rewriteAfterRetrieve(
+    opts.question,
+    first.usedQuery,
+    first.grade,
+    first.rawHits,
+  );
+  if (!retryQuery) {
+    return { hits: [], eval: first.eval, usedQuery: first.usedQuery };
+  }
+
+  opts.onRewrite?.(retryQuery);
+  const second = await retrieveAndGrade({
+    question: opts.question,
+    query: retryQuery,
+    topK: opts.topK,
+    user: opts.user,
+    retrieval: opts.retrieval,
+    rewrite: opts.rewrite,
+    retried: true,
+    previousQuery: first.usedQuery,
+  });
+  opts.onEval?.(second.eval);
+  return { hits: second.hits, eval: second.eval, usedQuery: second.usedQuery };
+}
+
+function toEval(
+  grade: HitGrade, // gradeHits 的结果
+  query: string, // 首轮检索词，展示在 eval.query
+  retried: boolean, // 是否改写后再查
+  retryQuery?: string, // 第二次用的词
+): RetrieveEval {
+  if (grade.reason === 'relevant') {
+    return {
+      ok: true,
+      reason: retried ? 'retried_ok' : 'ok',
+      text: retried ? `已改写再查，${grade.text}` : grade.text,
+      retried,
+      query,
+      retryQuery,
+    };
+  }
+  if (grade.reason === 'empty') {
+    return {
+      ok: false,
+      reason: retried ? 'retried_empty' : 'empty',
+      text: retried ? '改写后仍无结果' : grade.text,
+      retried,
+      query,
+      retryQuery,
+    };
+  }
+  return {
+    ok: false,
+    reason: retried ? 'retried_irrelevant' : 'irrelevant',
+    text: retried ? `改写后仍不切题：${grade.text}` : grade.text,
+    retried,
+    query,
+    retryQuery,
+  };
+}
+</code></pre>
+            </div>
+      </section>
+
+      <section id="stream">
+        <h2>4. 流式：Agent 工具环</h2>
+        <p class="file-path">src/ai/ai-stream.service.ts</p>
+        <p>相对 v16：不再在 execute 里写死「先 retrieve 再答」；改为
+        <code>classify</code> → <code>createTurnAgent(plan)</code> → Agent 自己调工具。</p>
+
+        <h3>4.1 扩展 UIMessage data-*</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">type KhUIMessage = UIMessage&lt;
+  unknown,
+  {
+    status: { stage: string; text: string };
+    think: { text: string };
+    sources: ChatSource[];
+    retrieve: { query: string; items: Array&lt;{…}&gt; };
+    intent: {
+      intent: ChatRoutePlan['intent'];
+      label: string;
+      query: string;
+      allowRetrieve: boolean;
+      allowWeb: boolean;
+    };
+    eval: RetrieveEval;
+    session: { sessionId: string };
+  }
+&gt;;
+// 前端 ChatMessageParts：data-intent → 意图卡；data-eval → 评估卡；tool-retrieve_knowledge / tool-rewrite_query</code></pre>
+            </div>
+
+        <h3>4.2 createTurnAgent（教学骨架，完整对照 origin）</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。 */
+private createTurnAgent(
+  user: AuthUser,
+  topK: number,
+  persistSources: ChatSource[],
+  writer: UIMessageStreamWriter&lt;KhUIMessage&gt;,
+  plan: ChatRoutePlan,
+  question: string,
+) {
+  // …llm / compactLlm 已在构造函数建好
+  const tools: StructuredToolInterface[] = [];
+  let retrieveCount = 0;
+  let lastRetrieve: Awaited&lt;ReturnType&lt;typeof retrieveAndGrade&gt;&gt; | undefined;
+
+  if (plan.allowRetrieve) {
+    tools.push(
+      tool(
+        async (input: { query: string; topK?: number }) =&gt; {
+          if (retrieveCount &gt;= 2) {
+            return {
+              query: input.query,
+              items: [],
+              insufficient: true,
+              error: '本轮知识库最多检索两次，请根据已有评估作答或联网',
+            };
+          }
+          retrieveCount += 1;
+          const result = await retrieveAndGrade({
+            question,
+            query: input.query,
+            topK: input.topK ?? topK,
+            user,
+            retrieval: this.retrieval,
+            rewrite: this.queryRewrite,
+            retried: retrieveCount &gt; 1,
+            previousQuery: lastRetrieve?.usedQuery,
+          });
+          lastRetrieve = result;
+          writer.write({ type: 'data-eval', data: result.eval });
+          if (!result.eval.ok) {
+            return packRetrieveResult([], result.usedQuery, persistSources, writer, {
+              insufficient: true,
+              eval: result.eval,
+            });
+          }
+          return packRetrieveResult(result.hits, result.usedQuery, persistSources, writer, {
+            eval: result.eval,
+          });
+        },
+        {
+          name: 'retrieve_knowledge',
+          description:
+            '检索企业知识库一次并评估是否切题。不会自动再查。' +
+            'eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
+          schema: z.object({
+            query: z.string().min(1).describe('适合检索的关键词或短句'),
+            topK: z.number().int().min(1).max(10).optional(),
+          }),
+        },
+      ),
+    );
+    tools.push(
+      tool(
+        async (input: { focus?: string }) =&gt; {
+          if (!lastRetrieve) return { error: '请先调用 retrieve_knowledge' };
+          if (lastRetrieve.eval.ok) {
+            return { error: '当前资料已切题，无需改写', query: lastRetrieve.usedQuery };
+          }
+          writer.write({
+            type: 'data-status',
+            data: { stage: 'rewrite', text: '正在改写检索词…' },
+          });
+          const retryQuery = await this.queryRewrite.rewriteAfterRetrieve(
+            question,
+            lastRetrieve.usedQuery,
+            lastRetrieve.grade,
+            lastRetrieve.rawHits,
+          );
+          if (!retryQuery) {
+            return { error: '无法改写出与上次不同的检索词' };
+          }
+          return {
+            query: retryQuery,
+            previousQuery: lastRetrieve.usedQuery,
+            reason: lastRetrieve.eval.text,
+            focus: input.focus,
+          };
+        },
+        {
+          name: 'rewrite_query',
+          description:
+            '根据上次检索评估改写检索词。仅在 retrieve_knowledge 返回 insufficient 后调用，' +
+            '再把返回的 query 交给 retrieve_knowledge。',
+          schema: z.object({
+            focus: z.string().optional().describe('希望改写时强调的缺口，可空'),
+          }),
+        },
+      ),
+    );
+  }
+
+  if (plan.allowWeb) {
+    tools.push(/* web_search 同课 17，description 强调：库循环结束后仍不足才调 */);
+  }
+
+  return createAgent({
+    model: this.llm,
+    tools,
+    systemPrompt: systemForPlan(plan),
+    middleware: [
+      summarizationMiddleware({ model: this.compactLlm, trigger: { messages: 12 }, keep: { messages: 6 }, … }),
+      modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
+    ],
+  });
+}</code></pre>
+            </div>
+
+        <h3>4.3 systemForPlan</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** Agent 循环：检索 → 评估 → 不足则改写再检索 → 仍不足才联网 → 作答。 */
+function systemForPlan(plan: ChatRoutePlan) {
+  let prompt =
+    '你是企业知识库助手，必须按 Agentic RAG 循环作答，不要跳步。' +
+    '结合对话历史和记忆里的用户背景，但制度/流程以本轮检索资料为准。' +
+    `本轮意图：${plan.label}。`;
+  if (plan.allowRetrieve) {
+    prompt +=
+      `建议检索词「${plan.query}」，可改写成更准的 query。` +
+      '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]；' +
+      '③ 若 insufficient，先 rewrite_query，再用返回的新词再次 retrieve_knowledge（知识库最多两次）；' +
+      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。';
+  } else {
+    prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
+  }
+  if (plan.intent === 'chitchat') prompt += '这是闲聊，直接回应，不要调用任何工具。';
+  if (plan.intent === 'profile') prompt += '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。';
+  if (plan.intent === 'kb') {
+    prompt += '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
+  }
+  if (plan.intent === 'web') prompt += '用 web_search 查公开信息，用标题+链接说明，不要编造。';
+  if (plan.intent === 'kb_then_web') {
+    prompt += '先走完知识库循环；两次后仍 insufficient 再 web_search。联网结果不要写成内部制度。';
+  }
+  if (!plan.allowWeb) prompt += '不要调用 web_search。';
+  prompt += '资料不够就明确说不知道。';
+  return prompt;
+}</code></pre>
+            </div>
+
+        <h3>4.4 execute 编排</h3>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// execute 内（会话 + history 之后）：
+writer.write({ type: 'data-status', data: { stage: 'intent', text: '正在识别意图…' } });
+const plan = await this.queryRewrite.classify(question, history);
+writer.write({
+  type: 'data-intent',
+  data: {
+    intent: plan.intent,
+    label: plan.label,
+    query: plan.query,
+    allowRetrieve: plan.allowRetrieve,
+    allowWeb: plan.allowWeb,
+  },
+});
+
+const memHits = await this.longMemory.search(user.userId, session.id, question);
+const agent = this.createTurnAgent(user, topK, persistSources, writer, plan, question);
+
+const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+const human = [
+  plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
+  `用户问题：${question}`,
+].filter(Boolean).join('\n\n');
+
+const langchainStream = await agent.stream(
+  { messages: [...(memoryMsg ? [memoryMsg] : []), ...history, new HumanMessage(human)] },
+  { streamMode: ['messages', 'tools'] },
+);
+writer.merge(toUIMessageStream(mapReasoningStream(langchainStream) as never, {
+  sendStart: false,
+  sendFinish: false,
+}) as never);</code></pre>
+            </div>
+        <p><code>packRetrieveResult</code>：切题命中写入 <code>persistSources</code>，推
+        <code>data-sources</code> / <code>source-document</code>，并返回带 <code>context</code> 的工具结果给模型引用。</p>
+      </section>
+
+      <section id="chat">
+        <h2>5. 非流式：等价环（无 Agent 工具）</h2>
+        <p class="file-path">src/ai/ai-chat.service.ts</p>
+        <p>没有工具环，但检索语义与流式一致：评估切题、不足改写再查；
+        <code>kb_then_web</code> 在库不足后再 <code>webSearch</code>。</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">const plan = await this.queryRewrite.classify(trimmed, history);
+let hits = [] as ChunkHit[];
+let kbInsufficient = false;
+let searchQuery = plan.query || trimmed;
+
+if (plan.allowRetrieve) {
+  const retrieved = await retrieveUntilRelevant({
+    question: trimmed,
+    query: plan.query,
+    topK,
+    user,
+    retrieval: this.retrieval,
+    rewrite: this.queryRewrite,
+  });
+  hits = retrieved.hits;
+  kbInsufficient = !retrieved.eval.ok;
+  searchQuery = retrieved.usedQuery || searchQuery;
+}
+
+const web =
+  plan.allowWeb &amp;&amp; (!plan.allowRetrieve || kbInsufficient)
+    ? await this.webSearch.search(searchQuery)
+    : undefined;
+
+// intent===kb 且不足 → 直接「知识库里没有相关内容」
+// 否则拼 知识库资料 / 联网结果 + 用户问题，按 intent 选 SystemPrompt</code></pre>
+            </div>
+        <p>注入 <code>WebSearchService</code>；按 intent / 是否有 KB / 是否有 web 拼
+        <code>buildSystemPrompt</code>（对照 origin 全文）。</p>
+      </section>
+
+      <section id="isolate">
+        <h2>6. invokeIsolated：防止内部模型串进回答流</h2>
+        <p>
+          Agent 流式时 AsyncLocalStorage 带着 callbacks；工具里再
+          <code>invoke</code> 评估/改写模型，结构化 JSON 可能漏进 messages 流变成「回答正文」。
+          origin 用空 callbacks + <code>kh-internal</code> tag 隔离。
+        </p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/**
+ * Agent 流式运行时，当前 callbacks 存在 AsyncLocalStorage 里。
+ * 工具里再 invoke 评估/改写模型会默认继承这套上下文，内部 JSON 会进 messages 流、变成回答正文。
+ * runWithConfig 在这段调用里换成空 callbacks；tags/metadata 双保险过滤。
+ */
+function invokeIsolated&lt;T&gt;(run: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  return AsyncLocalStorageProviderSingleton.runWithConfig(
+    {
+      callbacks: [],
+      tags: ['kh-internal'],
+      metadata: { khInternal: true },
+    },
+    run,
+    true,
+  );
+}
+// classify / gradeHits / rewriteAfterRetrieve 内的 invoke 都包一层 invokeIsolated</code></pre>
+            </div>
+      </section>
+
+      <section id="frontend">
+        <h2>7. 前端过程卡（对照 frontend-origin）</h2>
+        <p>在课 17 的 <code>ChatMessageParts</code> 上增加：</p>
+        <table>
+          <thead><tr><th>part</th><th>UI</th></tr></thead>
+          <tbody>
+            <tr><td><code>data-intent</code></td><td>意图卡：闲聊 / 知识库 / 联网…</td></tr>
+            <tr><td><code>data-eval</code></td><td>评估卡：切题 / 不足 / 改写后再查…</td></tr>
+            <tr><td><code>data-status</code> stage=rewrite</td><td>「正在改写检索词…」</td></tr>
+            <tr><td>tool <code>retrieve_knowledge</code></td><td>检索卡片（可复用 Retrieve 样式）</td></tr>
+            <tr><td>tool <code>rewrite_query</code></td><td>改写卡片：旧词 → 新词</td></tr>
+            <tr><td>tool <code>web_search</code></td><td>联网卡（课 17）</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          闲聊不应出现知识库卡。过程条顺序：意图 → 知识库 → 评估 →（改写 → 再检索）→（联网）。
+        </div>
+      </section>
+
+      <section id="verify">
+        <h2>8. 验收自测（对齐 agentic-rag.md）</h2>
+        <p>测前发布 <code>test-files/</code> 六篇制度 PDF。时间不够跑最小集：</p>
+        <ol>
+          <li>你好 → 闲聊，无检索</li>
+          <li>出差预估费用超过五千谁还要加签？ → 切题知识库</li>
+          <li>加班餐补怎么报、标准是多少？ → 不足 → 改写再查</li>
+          <li>公司年会抽奖规则是什么？ → 库空，不编、不联网</li>
+          <li>今天人民币兑美元汇率 → 联网</li>
+        </ol>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 后端日志关键字
+# 意图：kb query=...
+# 检索评估：切题|不切题 ...
+# 检索改写：旧词 → 新词
+
+# 流式看 Network：data-intent / data-eval / tool-*</code></pre>
+            </div>
+        <div class="callout-ok">
+          完整 24 题见 origin <code>agentic-rag.md</code>；记忆/指代题仍见课 19 <code>chat-memory.md</code>。
+        </div>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么评估「切题」而不是「有条数」？</h3>
+        <p>混合检索常因词沾边召回错误制度（差旅 vs 加班餐补）。不切题的 hits 不能当引用依据。</p>
+        <h3>为什么知识库最多两次？</h3>
+        <p>防 Agent 死循环打爆账单；两次仍不足应承认没有或按意图联网。</p>
+        <h3>为什么流式用工具环、非流式用 retrieveUntilRelevant？</h3>
+        <p>流式要过程可视化与模型自主调度；非流式要同一套语义但不需要 tool UI，后端同步跑完更简单。</p>
+        <h3>为什么意图在 Agent 之前？</h3>
+        <p>工具列表按 plan 挂载：闲聊根本没有 retrieve 工具，比「靠 prompt 禁止」更硬。</p>
+        <h3>对照阅读顺序（origin v17）</h3>
+        <ol>
+          <li><code>agentic-rag.md</code></li>
+          <li><code>chat-query-rewrite.service.ts</code>（classify / grade / rewriteAfter）</li>
+          <li><code>agentic-retrieve.ts</code></li>
+          <li><code>ai-stream.service.ts</code>（createTurnAgent / systemForPlan）</li>
+          <li><code>ai-chat.service.ts</code>（非流式）</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与课 19 / origin 差异</h2>
+        <table>
+          <thead><tr><th>点</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>改写服务</td><td>课 19 只有「指代改写」；v17 升级为意图+评估+不足改写，API 不兼容，需整文件替换</td></tr>
+            <tr><td>流式检索时机</td><td>v16 在 Agent 前 retrieve；v17 改由工具调度</td></tr>
+            <tr><td>runLimit</td><td>流式 modelCallLimit 提到 6（多了工具轮次）</td></tr>
+            <tr><td>图谱</td><td>不参与对话，不要用图谱页对照验收</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>回答里出现评估 JSON</td><td>缺 <code>invokeIsolated</code>；工具内模型继承了 Agent callbacks</td></tr>
+            <tr><td>闲聊仍出知识库卡</td><td>intent 是否判错；tools 是否仍无条件挂了 retrieve</td></tr>
+            <tr><td>词沾边当切题</td><td>GRADE_PROMPT；是否评估失败被「有召回放行」掩盖</td></tr>
+            <tr><td>第三次还在检索</td><td>retrieveCount 上限；systemPrompt 是否写清</td></tr>
+            <tr><td>kb 空题去联网</td><td>intent=kb 时 allowWeb=false；system 禁止联网</td></tr>
+            <tr><td>部门题判成 profile</td><td>ROUTE_PROMPT 易混条；主语是否用户本人</td></tr>
+            <tr><td>非流式与流式行为不一致</td><td>非流式是否走了 retrieveUntilRelevant 而非裸 retrieve</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>agentic-retrieve.ts</code></td><td>新建</td></tr>
+            <tr><td>classify / gradeHits / rewriteAfterRetrieve + invokeIsolated</td><td>chat-query-rewrite.service</td></tr>
+            <tr><td>retrieve_knowledge + rewrite_query 工具 + 最多 2 次</td><td>ai-stream createTurnAgent</td></tr>
+            <tr><td>data-intent / data-eval</td><td>ai-stream execute / 前端</td></tr>
+            <tr><td>systemForPlan 按意图约束</td><td>ai-stream</td></tr>
+            <tr><td>非流式 retrieveUntilRelevant + 按需 web</td><td>ai-chat</td></tr>
+            <tr><td>agentic-rag.md 最小集 5 题</td><td>自测通过</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var codeEl = block.querySelector('pre code');
+        if (!btn || !codeEl) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(codeEl.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () {
+              btn.textContent = '复制';
+              btn.classList.remove('copied');
+            }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 80;
+        var cur = sections[0];
+        sections.forEach(function (s) {
+          if (s.el.offsetTop <= y) cur = s;
+        });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (cur) cur.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+
+  </script>
+</body>
+</html>
