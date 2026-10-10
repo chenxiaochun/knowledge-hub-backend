@@ -20,6 +20,7 @@ import {
   modelCallLimitMiddleware,
   summarizationMiddleware,
   tool,
+  toolCallLimitMiddleware,
 } from 'langchain';
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { ChunkHit } from 'src/pipeline/types/pipeline.types';
@@ -129,6 +130,8 @@ export class AiStreamService {
     const logger = this.logger;
     const tools: StructuredToolInterface[] = [];
     let retrieveCount = 0;
+    let rewriteCount = 0;
+    let webSearchCount = 0;
     let lastRetrieve: Awaited<ReturnType<typeof retrieveAndGrade>> | undefined;
 
     if (plan.allowRetrieve) {
@@ -136,14 +139,17 @@ export class AiStreamService {
         tool(
           async (input: { query: string; topK?: number }) => {
             if (retrieveCount >= 2) {
+              logger.warn(`retrieve_knowledge 已达上限仍被调用：query=${input.query.slice(0, 60)}`);
               return {
                 query: input.query,
                 items: [],
                 insufficient: true,
-                error: '本轮知识库最多检索两次，请根据已有评估作答或联网',
+                error: '本轮知识库最多检索两次，请停止调用检索/改写工具，直接作答或 web_search',
+                stopTools: true,
               };
             }
             retrieveCount += 1;
+            logger.log(`retrieve_knowledge #${retrieveCount}：query=${input.query.slice(0, 80)}`);
             const result = await retrieveAndGrade({
               question,
               query: input.query,
@@ -170,16 +176,23 @@ export class AiStreamService {
               return packRetrieveResult([], result.usedQuery, persistSources, writer, {
                 insufficient: true,
                 eval: result.eval,
+                next:
+                  retrieveCount < 2
+                    ? '可调用 rewrite_query 后再 retrieve_knowledge 一次'
+                    : plan.allowWeb
+                      ? '知识库已两次不足，请 web_search 一次后作答，勿再检索'
+                      : '知识库已两次不足，请直接说明没有相关内容，勿再检索',
               });
             }
             return packRetrieveResult(result.hits, result.usedQuery, persistSources, writer, {
               eval: result.eval,
+              next: '资料已切题，请用 context 作答并标 [n]，勿再调用工具',
             });
           },
           {
             name: 'retrieve_knowledge',
             description:
-              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
+              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次；达上限后禁止再调。',
             schema: z.object({
               query: z.string().min(1).describe('适合检索的关键词或短句'),
               topK: z.number().int().min(1).max(10).optional().describe('条数，默认与请求一致'),
@@ -195,10 +208,24 @@ export class AiStreamService {
             }
             if (lastRetrieve.eval.ok) {
               return {
-                error: '当前资料已切题，无需改写',
+                error: '当前资料已切题，无需改写，请直接作答',
                 query: lastRetrieve.usedQuery,
               };
             }
+            if (retrieveCount >= 2) {
+              return {
+                error: '知识库已检索两次，禁止再改写；请作答或 web_search',
+                previousQuery: lastRetrieve.usedQuery,
+              };
+            }
+            if (rewriteCount >= 1) {
+              logger.warn('rewrite_query 已达上限仍被调用');
+              return {
+                error: '本轮最多改写一次，请用已有 query 再 retrieve_knowledge，或作答/联网',
+                previousQuery: lastRetrieve.usedQuery,
+              };
+            }
+            rewriteCount += 1;
             writer.write({
               type: 'data-status',
               data: { stage: 'rewrite', text: '正在改写检索词…' },
@@ -211,7 +238,7 @@ export class AiStreamService {
             );
             if (!retryQuery) {
               return {
-                error: '无法改写出与上次不同的检索词',
+                error: '无法改写出与上次不同的检索词，请直接作答或 web_search',
                 previousQuery: lastRetrieve.usedQuery,
                 reason: lastRetrieve.eval.text,
               };
@@ -221,12 +248,13 @@ export class AiStreamService {
               previousQuery: lastRetrieve.usedQuery,
               reason: lastRetrieve.eval.text,
               focus: input.focus,
+              next: '请立刻用返回的 query 再调用一次 retrieve_knowledge',
             };
           },
           {
             name: 'rewrite_query',
             description:
-              '根据上次检索评估改写检索词。仅在 retrieve_knowledge 返回 insufficient 后调用，再把返回的 query 交给 retrieve_knowledge。',
+              '根据上次检索评估改写检索词。仅在首次 retrieve_knowledge 返回 insufficient 后调用一次，再把返回的 query 交给 retrieve_knowledge。本轮最多一次。',
             schema: z.object({
               focus: z.string().optional().describe('希望改写时强调的缺口，可空'),
             }),
@@ -238,12 +266,26 @@ export class AiStreamService {
     if (plan.allowWeb) {
       tools.push(
         tool(
-          async (input: { query: string; count?: number }) =>
-            search.search({ query: input.query, count: input.count ?? 5 }),
+          async (input: { query: string; count?: number }) => {
+            if (webSearchCount >= 1) {
+              logger.warn(`web_search 已达上限仍被调用：query=${input.query.slice(0, 60)}`);
+              return {
+                query: input.query,
+                items: [],
+                error: '本轮最多联网一次，请根据已有结果直接作答，勿再调用工具',
+              };
+            }
+            webSearchCount += 1;
+            const result = await search.search({ query: input.query, count: input.count ?? 5 });
+            return {
+              ...result,
+              next: '请根据以上联网结果作答，勿再调用任何工具',
+            };
+          },
           {
             name: 'web_search',
             description:
-              '联网搜索公开信息（Bocha）。仅在知识库循环结束后仍 insufficient，或本轮只需公开时效信息时调用。不要用网页替代已切题的知识库资料。',
+              '联网搜索公开信息（Bocha）。仅在知识库循环结束后仍 insufficient，或本轮只需公开时效信息时调用一次。调用后必须作答，不要重复搜索。',
             schema: z.object({
               query: z.string().min(1).describe('搜索关键词'),
               count: z.number().int().min(1).max(10).optional().describe('条数，默认 5'),
@@ -265,7 +307,9 @@ export class AiStreamService {
           summaryPrompt:
             '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
         }),
+        // 业务预算：模型/工具次数；recursionLimit 另作图步数兜底
         modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
+        toolCallLimitMiddleware({ runLimit: 8, exitBehavior: 'end' }),
       ],
     });
   }
@@ -363,6 +407,8 @@ export class AiStreamService {
           .filter(Boolean)
           .join('\n\n');
 
+        // recursionLimit：LangGraph 超步数（默认 25）。beforeModel 摘要会额外占步，
+        // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
         const langchainStream = await agent.stream(
           {
             messages: [
@@ -371,7 +417,7 @@ export class AiStreamService {
               new HumanMessage(human),
             ],
           },
-          { streamMode: ['messages', 'tools'] },
+          { streamMode: ['messages', 'tools'], recursionLimit: 40 },
         );
 
         writer.merge(
@@ -564,9 +610,10 @@ function systemForPlan(plan: ChatRoutePlan) {
   if (plan.allowRetrieve) {
     prompt +=
       `建议检索词「${plan.query}」，可改写成更准的 query。` +
-      '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]；' +
-      '③ 若 insufficient，先 rewrite_query，再用返回的新词再次 retrieve_knowledge（知识库最多两次）；' +
-      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。' +
+      '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]，立刻停止调工具；' +
+      '③ 若 insufficient，rewrite_query 最多一次，再用新词 retrieve_knowledge 一次（知识库总共最多两次）；' +
+      '④ 两次后仍不足再 web_search 最多一次，然后必须作答。' +
+      '禁止在工具返回 error/stopTools/next 要求停止后继续调工具。不要第三次检索，不要第二次改写或联网。' +
       '不要用记忆替代文档。';
   } else {
     prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
@@ -581,11 +628,11 @@ function systemForPlan(plan: ChatRoutePlan) {
     prompt += '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
   }
   if (plan.intent === 'web') {
-    prompt += '用 web_search 查公开信息，用标题+链接说明，不要编造。';
+    prompt += '用 web_search 查一次公开信息后作答，用标题+链接说明，不要编造，不要重复搜索。';
   }
   if (plan.intent === 'kb_then_web') {
     prompt +=
-      '先走完知识库循环；两次后仍 insufficient 再 web_search。联网结果用标题+链接说明，不要把网页写成内部制度。';
+      '先走完知识库循环；两次后仍 insufficient 再 web_search 一次后作答。联网结果用标题+链接说明，不要把网页写成内部制度。';
   }
   if (!plan.allowWeb) {
     prompt += '不要调用 web_search。';

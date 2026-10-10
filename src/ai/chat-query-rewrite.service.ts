@@ -134,7 +134,10 @@ const GRADE_PROMPT =
   '- 切题：同一主题、同一制度/岗位/流程，能支撑作答（不必覆盖每个细节）\n' +
   '- 不切题：只是词沾边（如问加班餐补却命中差旅报销）、或完全另一件事\n' +
   '- 只根据给定标题和摘录判断，不要假设库里还有别的文档\n' +
-  '- 输出不要解释字段以外的内容';
+  '- 输出不要解释字段以外的内容\n' +
+  '\n' +
+  '请严格以 JSON 对象格式输出，字段：relevant（boolean）、reason（string）。' +
+  '不要 markdown 代码块，不要额外解释。';
 
 /** 不足时换一种问法再查知识库 */
 const RETRY_REWRITE_PROMPT =
@@ -144,20 +147,24 @@ const RETRY_REWRITE_PROMPT =
   '- 不要重复上次检索词\n' +
   '- 可换同义、补全制度/岗位/补贴类型等核心实体\n' +
   '- 不要编造条款号、专有名词\n' +
-  '- 一句中文，尽量不超过 40 字';
+  '- 一句中文，尽量不超过 40 字\n' +
+  '\n' +
+  '请严格以 JSON 对象格式输出，字段：query（string）。' +
+  '不要 markdown 代码块，不要额外解释。';
 
 /** 本轮意图 + 建议检索词（进 Agent 前只跑一次） */
 const ROUTE_PROMPT =
   '你是企业知识库的意图与检索改写器。根据对话判断本轮意图，并给出一条可检索短查询。\n' +
   '\n' +
   '## intent\n' +
-  '- chitchat：问好、致谢、与库无关的闲聊\n' +
+  '- chitchat：问好、致谢、与库无关的闲聊（如「你好」「谢谢」「在吗」）\n' +
   '- profile：只问/改「我自己」的名字、我所在部门、回答长短偏好。主语必须是用户本人\n' +
   '- kb：公司制度、流程、岗位、内部系统、文档\n' +
   '- web：只要最新公开信息，明显不是内部制度\n' +
   '- kb_then_web：像内部问题但也可能要外部时效（政策新闻+内部流程）\n' +
   '\n' +
   '## 易混\n' +
+  '- 「你好 / 谢谢 / 在吗」→ chitchat，不要查知识库\n' +
   '- 「我是哪个部门 / 以后回答短一点」→ profile\n' +
   '- 「预算审核员属于哪个部门」→ kb，不要因为出现「部门」就判 profile\n' +
   '- 记忆里的用户部门不能改变本题意图\n' +
@@ -167,7 +174,10 @@ const ROUTE_PROMPT =
   '- 不要编造上文没有的专有名词、条款号\n' +
   '- 不要复述助手已给出的制度条文\n' +
   '- 闲聊/偏好：用原问题即可\n' +
-  '- 输出不要解释';
+  '- 输出不要解释\n' +
+  '\n' +
+  '请严格以 JSON 对象格式输出，字段：intent（string）、standalone_query（string）。' +
+  '不要 markdown 代码块，不要额外解释。';
 
 @Injectable()
 export class ChatQueryRewriteService {
@@ -196,8 +206,14 @@ export class ChatQueryRewriteService {
     ) as ChatQueryRewriteService['rewriter'];
   }
 
-  /** 失败时按 kb 处理，宁可多检索也不漏内部制度。 */
+  /** 失败时：明显闲聊走 chitchat，否则按 kb，宁可多检索也不漏内部制度。 */
   async classify(question: string, history: BaseMessage[]): Promise<ChatRoutePlan> {
+    if (isObviousChitchat(question)) {
+      const plan = this.toPlan('chitchat', question);
+      this.logger.log(`意图：${plan.intent}（规则） query=${plan.query.slice(0, 80)}`);
+      return plan;
+    }
+
     const fallback = this.toPlan('kb', question);
     if (!this.router) return fallback;
 
@@ -350,4 +366,13 @@ function distinctQuery(next: string, previous: string): string {
   if (!query) return '';
   if (query === previous.replace(/\s+/g, ' ').trim()) return '';
   return query;
+}
+
+/** 纯寒暄短句，不调模型也不挂检索工具 */
+function isObviousChitchat(question: string): boolean {
+  const text = question.replace(/\s+/g, '').replace(/[!！?？.。,~～]+$/g, '');
+  if (!text || text.length > 12) return false;
+  return /^(你好|您好|嗨|哈喽|hello|hi|在吗|在不在|早上好|中午好|下午好|晚上好|谢谢|多谢|感谢|拜拜|再见|ok|好的|嗯|哦)$/i.test(
+    text,
+  );
 }
