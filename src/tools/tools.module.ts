@@ -63,6 +63,11 @@ import { WebSearchService } from './web-search.service';
     'ASR_CLIENT_TOOL',
     'MAIL_TOOL',
     'GENERATE_IMAGE_TOOL',
+    WebSearchService,
+    LlmService,
+    AsrClientService,
+    MailService,
+    CanvasImageService,
   ],
 })
 export class ToolsModule {}

@@ -1,3 +1,4 @@
+import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { Response } from 'express';
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -6,19 +7,28 @@ import { Inject } from '@nestjs/common';
 import { toUIMessageStream } from '@ai-sdk/langchain';
 import { Tool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
-import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessage } from 'ai';
+import {
+  createUIMessageStream,
+  pipeUIMessageStreamToResponse,
+  UIMessageStreamWriter,
+  type UIMessage,
+} from 'ai';
 import {
   BaseMessage,
   createAgent,
   HumanMessage,
   modelCallLimitMiddleware,
   summarizationMiddleware,
+  tool,
 } from 'langchain';
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { ChunkHit } from 'src/pipeline/types/pipeline.types';
 import { TtsStreamPublisher } from 'src/speech/tts-stream.publisher';
 import { MailService } from 'src/tools/mail.service';
+import { WebSearchService } from 'src/tools/web-search.service';
+import z from 'zod';
 
+import { retrieveAndGrade, RetrieveEval } from './agentic-retrieve';
 import {
   excerptRagContent,
   extractGeneratedImagesFromParts,
@@ -27,7 +37,7 @@ import {
 } from './ai-stream.util';
 import { ChatLongMemoryService } from './chat-long-memory.service';
 import { dbRowsToMessages } from './chat-memory.util';
-import { ChatQueryRewriteService } from './chat-query-rewrite.service';
+import { ChatQueryRewriteService, ChatRoutePlan } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
 import { ChatImageDto, ChatSourceDto } from './dto/chat-response.dto';
@@ -44,6 +54,14 @@ type KhUIMessage = UIMessage<
     retrieve: { query: string; items: Array<ChatSourceDto> };
     session: { sessionId: string };
     image: ChatImageDto;
+    intent: {
+      intent: ChatRoutePlan['intent'];
+      label: string;
+      query: string;
+      allowRetrieve: boolean;
+      allowWeb: boolean;
+    };
+    eval: RetrieveEval;
   }
 >;
 
@@ -72,6 +90,8 @@ export class AiStreamService {
     private readonly shortMemory: ChatShortMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly longMemory: ChatLongMemoryService,
+
+    private readonly webSearchService: WebSearchService,
   ) {
     this.agent = createAgent({
       model: this.llmTool,
@@ -87,6 +107,165 @@ export class AiStreamService {
           summaryPrompt:
             '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
         }),
+      ],
+    });
+  }
+
+  /**
+   * 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。
+   */
+  private createTurnAgent(
+    user: AuthUser,
+    topK: number,
+    persistSources: ChatSourceDto[],
+    writer: UIMessageStreamWriter<KhUIMessage>,
+    plan: ChatRoutePlan,
+    question: string,
+  ) {
+    if (!this.llmTool) return undefined;
+    const retrieval = this.retrieval;
+    const queryRewrite = this.queryRewrite;
+    const search = this.webSearchService;
+    const logger = this.logger;
+    const tools: StructuredToolInterface[] = [];
+    let retrieveCount = 0;
+    let lastRetrieve: Awaited<ReturnType<typeof retrieveAndGrade>> | undefined;
+
+    if (plan.allowRetrieve) {
+      tools.push(
+        tool(
+          async (input: { query: string; topK?: number }) => {
+            if (retrieveCount >= 2) {
+              return {
+                query: input.query,
+                items: [],
+                insufficient: true,
+                error: '本轮知识库最多检索两次，请根据已有评估作答或联网',
+              };
+            }
+            retrieveCount += 1;
+            const result = await retrieveAndGrade({
+              question,
+              query: input.query,
+              topK: input.topK ?? topK,
+              user,
+              retrieval,
+              rewrite: queryRewrite,
+              retried: retrieveCount > 1,
+              previousQuery: lastRetrieve?.usedQuery,
+            });
+            lastRetrieve = result;
+            writer.write({ type: 'data-eval', data: result.eval });
+            if (result.eval.reason === 'error') {
+              logger.warn(`RAG 检索失败：${result.eval.text}`);
+              return {
+                query: result.usedQuery,
+                items: [],
+                error: result.eval.text,
+                insufficient: true,
+                eval: result.eval,
+              };
+            }
+            if (!result.eval.ok) {
+              return packRetrieveResult([], result.usedQuery, persistSources, writer, {
+                insufficient: true,
+                eval: result.eval,
+              });
+            }
+            return packRetrieveResult(result.hits, result.usedQuery, persistSources, writer, {
+              eval: result.eval,
+            });
+          },
+          {
+            name: 'retrieve_knowledge',
+            description:
+              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
+            schema: z.object({
+              query: z.string().min(1).describe('适合检索的关键词或短句'),
+              topK: z.number().int().min(1).max(10).optional().describe('条数，默认与请求一致'),
+            }),
+          },
+        ),
+      );
+      tools.push(
+        tool(
+          async (input: { focus?: string }) => {
+            if (!lastRetrieve) {
+              return { error: '请先调用 retrieve_knowledge' };
+            }
+            if (lastRetrieve.eval.ok) {
+              return {
+                error: '当前资料已切题，无需改写',
+                query: lastRetrieve.usedQuery,
+              };
+            }
+            writer.write({
+              type: 'data-status',
+              data: { stage: 'rewrite', text: '正在改写检索词…' },
+            });
+            const retryQuery = await queryRewrite.rewriteAfterRetrieve(
+              question,
+              lastRetrieve.usedQuery,
+              lastRetrieve.grade,
+              lastRetrieve.rawHits,
+            );
+            if (!retryQuery) {
+              return {
+                error: '无法改写出与上次不同的检索词',
+                previousQuery: lastRetrieve.usedQuery,
+                reason: lastRetrieve.eval.text,
+              };
+            }
+            return {
+              query: retryQuery,
+              previousQuery: lastRetrieve.usedQuery,
+              reason: lastRetrieve.eval.text,
+              focus: input.focus,
+            };
+          },
+          {
+            name: 'rewrite_query',
+            description:
+              '根据上次检索评估改写检索词。仅在 retrieve_knowledge 返回 insufficient 后调用，再把返回的 query 交给 retrieve_knowledge。',
+            schema: z.object({
+              focus: z.string().optional().describe('希望改写时强调的缺口，可空'),
+            }),
+          },
+        ),
+      );
+    }
+
+    if (plan.allowWeb) {
+      tools.push(
+        tool(
+          async (input: { query: string; count?: number }) =>
+            search.search({ query: input.query, count: input.count ?? 5 }),
+          {
+            name: 'web_search',
+            description:
+              '联网搜索公开信息（Bocha）。仅在知识库循环结束后仍 insufficient，或本轮只需公开时效信息时调用。不要用网页替代已切题的知识库资料。',
+            schema: z.object({
+              query: z.string().min(1).describe('搜索关键词'),
+              count: z.number().int().min(1).max(10).optional().describe('条数，默认 5'),
+            }),
+          },
+        ),
+      );
+    }
+
+    return createAgent({
+      model: this.llmTool,
+      tools,
+      systemPrompt: systemForPlan(plan),
+      middleware: [
+        summarizationMiddleware({
+          model: this.llmTool,
+          trigger: { messages: 12 },
+          keep: { messages: 6 },
+          summaryPrompt:
+            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+        }),
+        modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
       ],
     });
   }
@@ -143,52 +322,30 @@ export class AiStreamService {
 
         const sessionId = persistSessionId!;
 
-        // ——— 2) 记忆 + 改写 + 检索 ———
-        writer.write({
-          type: 'data-status',
-          data: { stage: 'rewrite', text: '正在理解问题…' },
-        });
-
-        const turn = await this.prepareAgentTurn({
-          userId: user.userId,
-          sessionId,
-          question,
-          topK,
-        });
-        workingHistory = turn.history;
+        // ——— 2) 历史 + 意图路由（检索改由 Agent 工具环调度）———
+        const history = await this.loadWorkingHistory(user.userId, sessionId);
+        workingHistory = history;
 
         writer.write({
           type: 'data-status',
-          data: { stage: 'retrieve', text: '正在检索知识库…' },
+          data: { stage: 'intent', text: '正在识别意图…' },
         });
-
-        const sources = this.toSources(turn.hits);
-        persistSources = sources;
+        const plan = await this.queryRewrite.classify(question, history);
         writer.write({
-          type: 'data-retrieve',
+          type: 'data-intent',
           data: {
-            query: turn.plan.query,
-            items: sources.map((src) => ({
-              index: src.index,
-              documentId: src.documentId,
-              documentTitle: src.documentTitle,
-              heading: src.heading,
-              excerpt: src.excerpt,
-              score: src.score,
-            })),
+            intent: plan.intent,
+            label: plan.label,
+            query: plan.query,
+            allowRetrieve: plan.allowRetrieve,
+            allowWeb: plan.allowWeb,
           },
         });
-        writer.write({ type: 'data-sources', data: sources });
-        for (const src of sources) {
-          writer.write({
-            type: 'source-document',
-            sourceId: src.documentId,
-            mediaType: 'text/markdown',
-            title: `[${src.index}] ${src.documentTitle}`,
-          });
-        }
 
-        if (!this.agent) {
+        const memHits = await this.longMemory.search(user.userId, sessionId, question);
+        const agent = this.createTurnAgent(user, topK, persistSources, writer, plan, question);
+
+        if (!agent) {
           writer.write({
             type: 'error',
             errorText: '未配置 LLM Key，无法生成回答',
@@ -197,22 +354,28 @@ export class AiStreamService {
           return;
         }
 
-        // ——— 3) Agent 流 → UI Message 流 ———
-        const langchainStream = await this.agent.stream(
+        // ——— 3) 按意图挂工具的 Agent 流 → UI Message 流 ———
+        const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+        const human = [
+          plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
+          `用户问题：${question}`,
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        const langchainStream = await agent.stream(
           {
             messages: [
-              ...(turn.memoryMsg ? [turn.memoryMsg] : []),
-              ...turn.history,
-              new HumanMessage(turn.prompt),
+              ...(memoryMsg ? [memoryMsg] : []),
+              ...history,
+              new HumanMessage(human),
             ],
           },
-          // messages：token/思考；tools：tool 调用（第 6 步挂上后才有）
           { streamMode: ['messages', 'tools'] },
         );
 
         writer.merge(
           toUIMessageStream(mapReasoningStream(langchainStream) as never, {
-            // 外层已写 start；结束由 createUIMessageStream 收口
             sendStart: false,
             sendFinish: false,
             onError: (error) => {
@@ -339,4 +502,94 @@ export class AiStreamService {
     }
     return history;
   }
+}
+
+/** 命中写入 citations，并推 data-sources；context 给模型，excerpt 给前端。 */
+function packRetrieveResult(
+  hits: ChunkHit[],
+  query: string,
+  persistSources: ChatSourceDto[],
+  writer: UIMessageStreamWriter<KhUIMessage>,
+  extra: Record<string, unknown> = {},
+) {
+  const offset = persistSources.length;
+  const sources = hits.map((hit, i) => ({
+    index: offset + i + 1,
+    documentId: hit.documentId,
+    documentTitle: hit.documentTitle,
+    heading: hit.heading,
+    excerpt: excerptRagContent(hit.content),
+    score: hit.score,
+  }));
+  persistSources.push(...sources);
+  writer.write({
+    type: 'data-sources',
+    data: persistSources,
+  });
+  for (const src of sources) {
+    writer.write({
+      type: 'source-document',
+      sourceId: src.documentId,
+      mediaType: 'text/markdown',
+      title: `[${src.index}] ${src.documentTitle}`,
+    });
+  }
+  return {
+    query,
+    items: sources.map((src) => ({
+      index: src.index,
+      documentId: src.documentId,
+      documentTitle: src.documentTitle,
+      heading: src.heading,
+      excerpt: src.excerpt,
+    })),
+    context: hits
+      .map((hit, i) => {
+        const src = sources[i];
+        const heading = hit.heading ? ` / ${hit.heading}` : '';
+        const snippet = hit.content.length > 800 ? `${hit.content.slice(0, 800)}...` : hit.content;
+        return `[${src.index}] ${hit.documentTitle}${heading}\n${snippet}`;
+      })
+      .join('\n\n'),
+    ...extra,
+  };
+}
+
+/** Agent 循环：检索 → 评估 → 不足则改写再检索 → 仍不足才联网 → 作答。 */
+function systemForPlan(plan: ChatRoutePlan) {
+  let prompt =
+    '你是企业知识库助手，必须按 Agentic RAG 循环作答，不要跳步。' +
+    '结合对话历史和记忆里的用户背景，但制度/流程以本轮检索资料为准。' +
+    `本轮意图：${plan.label}。`;
+  if (plan.allowRetrieve) {
+    prompt +=
+      `建议检索词「${plan.query}」，可改写成更准的 query。` +
+      '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]；' +
+      '③ 若 insufficient，先 rewrite_query，再用返回的新词再次 retrieve_knowledge（知识库最多两次）；' +
+      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。' +
+      '不要用记忆替代文档。';
+  } else {
+    prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
+  }
+  if (plan.intent === 'chitchat') {
+    prompt += '这是闲聊，直接回应，不要调用任何工具。';
+  }
+  if (plan.intent === 'profile') {
+    prompt += '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。';
+  }
+  if (plan.intent === 'kb') {
+    prompt += '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
+  }
+  if (plan.intent === 'web') {
+    prompt += '用 web_search 查公开信息，用标题+链接说明，不要编造。';
+  }
+  if (plan.intent === 'kb_then_web') {
+    prompt +=
+      '先走完知识库循环；两次后仍 insufficient 再 web_search。联网结果用标题+链接说明，不要把网页写成内部制度。';
+  }
+  if (!plan.allowWeb) {
+    prompt += '不要调用 web_search。';
+  }
+  prompt += '资料不够就明确说不知道。';
+  return prompt;
 }

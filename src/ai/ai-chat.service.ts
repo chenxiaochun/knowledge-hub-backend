@@ -4,11 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { BaseMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { AuthUser } from 'src/auth/auth-user.interface';
+import { WebSearchResult, WebSearchService } from 'src/tools/web-search.service';
 
 import { ChunkHit } from '../pipeline/types/pipeline.types';
+import { retrieveUntilRelevant } from './agentic-retrieve';
 import { ChatLongMemoryService } from './chat-long-memory.service';
 import { dbRowsToMessages } from './chat-memory.util';
-import { ChatQueryRewriteService } from './chat-query-rewrite.service';
+import { ChatQueryRewriteService, ChatRoutePlan } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
 import { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
@@ -16,10 +18,6 @@ import { HybridRetrievalService } from './hybrid-retrieval.service';
 
 const EXCERPT_LEN = 200;
 const CITATION_RE = /\[(\d+)\]/g;
-const CHAT_SYSTEM =
-  '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
-  '制度/流程/负责人等事实只根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
-  '依据某条资料必须在句末标注 [1]、[2]。编号与资料列表一致，不要编造标题或链接。';
 
 @Injectable()
 export class AiChatService {
@@ -33,6 +31,7 @@ export class AiChatService {
     private readonly shortMemory: ChatShortMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly longMemory: ChatLongMemoryService,
+    private readonly webSearchService: WebSearchService,
   ) {
     const apiKey = config.get('OPENAI_API_KEY') || config.get('DASHSCOPE_API_KEY') || undefined;
     if (!apiKey) return;
@@ -62,26 +61,53 @@ export class AiChatService {
       throw new ServiceUnavailableException('未配置 LLM API Key');
     }
 
-    const history = user
-      ? await this.loadWorkingHistory(user.userId, sessionId)
-      : [];
-    const plan = await this.queryRewrite.rewrite(trimmed, history);
-    const [hits, memHits] = await Promise.all([
-      plan.needRetrieve
-        ? this.retrieval.retrieve(plan.query, topK)
-        : Promise.resolve([] as ChunkHit[]),
-      user
-        ? this.longMemory.search(user.userId, sessionId, plan.query)
-        : Promise.resolve({ user: [] as string[], session: [] as string[] }),
-    ]);
+    const history = user ? await this.loadWorkingHistory(user.userId, sessionId) : [];
+    const plan = await this.queryRewrite.classify(trimmed, history);
 
+    let hits = [] as ChunkHit[];
+    let kbInsufficient = false;
+    let searchQuery = plan.query || trimmed;
+
+    if (plan.allowRetrieve) {
+      const retrieved = await retrieveUntilRelevant({
+        question: trimmed,
+        query: plan.query,
+        topK,
+        user,
+        retrieval: this.retrieval,
+        rewrite: this.queryRewrite,
+      });
+      hits = retrieved.hits;
+      kbInsufficient = !retrieved.eval.ok;
+      searchQuery = retrieved.usedQuery || searchQuery;
+    }
+
+    // 纯知识库意图且两轮仍不足：直接承认没有，不调 LLM、不联网
+    if (plan.intent === 'kb' && kbInsufficient) {
+      const emptyAnswer = '知识库里没有相关内容。';
+      return this.persistAndReturn({
+        user,
+        sessionId,
+        history,
+        question: trimmed,
+        answer: emptyAnswer,
+        sources: [],
+      });
+    }
+
+    const web =
+      plan.allowWeb && (!plan.allowRetrieve || kbInsufficient)
+        ? await this.webSearchService.search({ query: searchQuery })
+        : undefined;
+
+    const memHits = user
+      ? await this.longMemory.search(user.userId, sessionId, trimmed)
+      : { user: [] as string[], session: [] as string[] };
     const memoryMsg = this.longMemory.buildSystemMessage(memHits);
-    const userTurn = hits.length
-      ? `检索到的资料：\n${this.buildContext(hits)}\n\n用户问题：${trimmed}`
-      : `用户问题：${trimmed}`;
 
+    const userTurn = this.buildUserTurn(trimmed, hits, web);
     const response = await this.llm.invoke([
-      new SystemMessage(CHAT_SYSTEM),
+      new SystemMessage(systemPromptForPlan(plan, Boolean(hits.length), Boolean(web?.items?.length))),
       ...(memoryMsg ? [memoryMsg] : []),
       ...history,
       new HumanMessage(userTurn),
@@ -91,16 +117,53 @@ export class AiChatService {
       typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
     const sources = hits.length ? this.toCitedSources(answer, hits) : [];
 
+    return this.persistAndReturn({
+      user,
+      sessionId,
+      history,
+      question: trimmed,
+      answer,
+      sources,
+    });
+  }
+
+  private async persistAndReturn(params: {
+    user?: AuthUser;
+    sessionId?: string;
+    history: BaseMessage[];
+    question: string;
+    answer: string;
+    sources: ChatSourceDto[];
+  }): Promise<ChatResponseDto> {
+    const { user, sessionId, history, question, answer, sources } = params;
     const session = user
-      ? await this.sessions.appendTurn(user.userId, sessionId, trimmed, answer, sources)
+      ? await this.sessions.appendTurn(user.userId, sessionId, question, answer, sources)
       : null;
 
     if (user && session) {
-      await this.shortMemory.appendTurn(user.userId, session.id, history, trimmed, answer);
-      void this.longMemory.rememberTurn(user.userId, session.id, trimmed, answer);
+      await this.shortMemory.appendTurn(user.userId, session.id, history, question, answer);
+      void this.longMemory.rememberTurn(user.userId, session.id, question, answer);
     }
 
     return { sessionId: session?.id ?? sessionId ?? null, answer, sources };
+  }
+
+  private buildUserTurn(question: string, hits: ChunkHit[], web?: WebSearchResult): string {
+    const parts: string[] = [];
+    if (hits.length) {
+      parts.push(`检索到的资料：\n${this.buildContext(hits)}`);
+    }
+    if (web?.items?.length) {
+      parts.push(
+        `联网搜索结果：\n${web.items
+          .map((item, i) => `${i + 1}. ${item.title}\n${item.url}\n${item.snippet}`)
+          .join('\n\n')}`,
+      );
+    } else if (web?.error) {
+      parts.push(`联网搜索失败：${web.error}`);
+    }
+    parts.push(`用户问题：${question}`);
+    return parts.join('\n\n');
   }
 
   /**
@@ -157,4 +220,40 @@ export class AiChatService {
     }
     return history;
   }
+}
+
+/** 非流式按意图拼系统提示（与流式 systemForPlan 语义对齐，但不谈工具名）。 */
+function systemPromptForPlan(plan: ChatRoutePlan, hasKb: boolean, hasWeb: boolean): string {
+  let prompt =
+    '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
+    `本轮意图：${plan.label}。`;
+
+  if (plan.intent === 'chitchat') {
+    prompt += '这是闲聊，直接自然回应，不要编造制度或外部事实。';
+    return prompt;
+  }
+  if (plan.intent === 'profile') {
+    prompt += '这是个人偏好或身份问题，根据记忆回答，不要编造制度。';
+    return prompt;
+  }
+
+  if (hasKb) {
+    prompt +=
+      '制度/流程/负责人等事实只根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
+      '依据某条资料必须在句末标注 [1]、[2]。编号与资料列表一致，不要编造标题或链接。';
+  }
+  if (hasWeb) {
+    prompt += '联网结果用标题+链接说明，不要编造，不要把网页写成内部制度。';
+  }
+  if (plan.intent === 'kb' && !hasKb) {
+    prompt += '知识库没有相关内容时明确说不知道，禁止编造制度。';
+  }
+  if (plan.intent === 'web' && !hasWeb) {
+    prompt += '若没有可用的联网结果，明确说明无法查到，不要编造。';
+  }
+  if (plan.intent === 'kb_then_web' && !hasKb && !hasWeb) {
+    prompt += '知识库与联网均无可靠资料时，明确说不知道，不要编造。';
+  }
+  prompt += '资料不够就明确说不知道。';
+  return prompt;
 }

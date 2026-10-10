@@ -254,6 +254,33 @@ export class ChatQueryRewriteService {
     }
   }
 
+  /** 有命中再判切题；空结果不调模型。评估失败时有召回则放行，避免误杀。 */
+  async gradeHits(question: string, hits: ChunkHit[]): Promise<HitGrade> {
+    if (!hits.length) {
+      return { ok: false, reason: 'empty', text: '未检索到资料' };
+    }
+    if (!this.grader) {
+      return { ok: true, reason: 'relevant', text: '有召回（未配置评估模型）' };
+    }
+    try {
+      const result = await invokeIsolated(() =>
+        this.grader!.invoke([
+          new SystemMessage(GRADE_PROMPT),
+          new HumanMessage(`用户问题：${question}\n\n命中资料：\n${summarizeHits(hits)}`),
+        ]),
+      );
+      const ok = result.relevant;
+      const text = result.reason.trim() || (ok ? '资料切题' : '资料不切题');
+      this.logger.log(`检索评估：${ok ? '切题' : '不切题'} ${text.slice(0, 80)}`);
+      return { ok, reason: ok ? 'relevant' : 'irrelevant', text };
+    } catch (error) {
+      this.logger.warn(
+        `检索评估失败，按有召回放行：${error instanceof Error ? error.message : error}`,
+      );
+      return { ok: true, reason: 'relevant', text: '评估失败，按有召回处理' };
+    }
+  }
+
   /**
    * 首轮空或不切题后改写检索词。
    * 失败或与上次相同则回退用户原问题；原问题也相同则返回空字符串表示无法再查。

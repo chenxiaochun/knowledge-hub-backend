@@ -833,127 +833,278 @@ function toEval(
 // 前端 ChatMessageParts：data-intent → 意图卡；data-eval → 评估卡；tool-retrieve_knowledge / tool-rewrite_query</code></pre>
             </div>
 
-        <h3>4.2 按意图组装「这一轮的 Agent」（骨架，完整看 origin）</h3>
+        <h3>4.2 按意图组装「这一轮的 Agent」（完整可粘贴）</h3>
+        <p class="file-path">src/ai/ai-stream.service.ts · <code>createTurnAgent</code></p>
+        <p>
+          对齐 origin <code>v17</code>。前提：类上已有 <code>this.llm</code> / <code>this.compactLlm</code>
+          （构造函数里建好；摘要模型不要开思考）。
+          这一轮根据意图挂工具——闲聊根本没有搜库工具；允许查库才挂
+          <code>retrieve_knowledge</code> + <code>rewrite_query</code>；允许上网才挂 <code>web_search</code>。
+        </p>
+        <ul>
+          <li>搜库工具自己<strong>不会</strong>自动再查，只做「搜一次 + 评估」；不够时由模型再调改词工具。</li>
+          <li>本轮搜库最多两次（<code>retrieveCount</code>）。</li>
+          <li>每次评估结果用 <code>data-eval</code> 推给前端过程条。</li>
+          <li>闭包里用局部变量接住 <code>retrieval</code> / <code>queryRewrite</code> 等，避免 tool 回调里 <code>this</code> 丢了。</li>
+        </ul>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
-              <pre><code class="lang-ts">/** 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。 */
-private createTurnAgent(
-  user: AuthUser,
-  topK: number,
-  persistSources: ChatSource[],
-  writer: UIMessageStreamWriter&lt;KhUIMessage&gt;,
-  plan: ChatRoutePlan,
-  question: string,
-) {
-  // …llm / compactLlm 已在构造函数建好
-  const tools: StructuredToolInterface[] = [];
-  let retrieveCount = 0;
-  let lastRetrieve: Awaited&lt;ReturnType&lt;typeof retrieveAndGrade&gt;&gt; | undefined;
+              <pre><code class="lang-ts">  /**
+   * 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。
+   */
+  private createTurnAgent(
+    user: AuthUser,
+    topK: number,
+    persistSources: ChatSource[],
+    writer: UIMessageStreamWriter&lt;KhUIMessage&gt;,
+    plan: ChatRoutePlan,
+    question: string,
+  ) {
+    if (!this.llm || !this.compactLlm) return undefined;
+    const retrieval = this.retrieval;
+    const queryRewrite = this.queryRewrite;
+    const search = this.webSearch;
+    const logger = this.logger;
+    const tools: StructuredToolInterface[] = [];
+    let retrieveCount = 0;
+    let lastRetrieve: Awaited&lt;ReturnType&lt;typeof retrieveAndGrade&gt;&gt; | undefined;
 
-  if (plan.allowRetrieve) {
-    tools.push(
-      tool(
-        async (input: { query: string; topK?: number }) =&gt; {
-          if (retrieveCount &gt;= 2) {
-            return {
+    if (plan.allowRetrieve) {
+      tools.push(
+        tool(
+          async (input: { query: string; topK?: number }) =&gt; {
+            if (retrieveCount &gt;= 2) {
+              return {
+                query: input.query,
+                items: [],
+                insufficient: true,
+                error: '本轮知识库最多检索两次，请根据已有评估作答或联网',
+              };
+            }
+            retrieveCount += 1;
+            const result = await retrieveAndGrade({
+              question,
               query: input.query,
-              items: [],
-              insufficient: true,
-              error: '本轮知识库最多检索两次，请根据已有评估作答或联网',
-            };
-          }
-          retrieveCount += 1;
-          const result = await retrieveAndGrade({
-            question,
-            query: input.query,
-            topK: input.topK ?? topK,
-            user,
-            retrieval: this.retrieval,
-            rewrite: this.queryRewrite,
-            retried: retrieveCount &gt; 1,
-            previousQuery: lastRetrieve?.usedQuery,
-          });
-          lastRetrieve = result;
-          writer.write({ type: 'data-eval', data: result.eval });
-          if (!result.eval.ok) {
-            return packRetrieveResult([], result.usedQuery, persistSources, writer, {
-              insufficient: true,
-              eval: result.eval,
+              topK: input.topK ?? topK,
+              user,
+              retrieval,
+              rewrite: queryRewrite,
+              retried: retrieveCount &gt; 1,
+              previousQuery: lastRetrieve?.usedQuery,
             });
-          }
-          return packRetrieveResult(result.hits, result.usedQuery, persistSources, writer, {
-            eval: result.eval,
-          });
-        },
-        {
-          name: 'retrieve_knowledge',
-          description:
-            '检索企业知识库一次并评估是否切题。不会自动再查。' +
-            'eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
-          schema: z.object({
-            query: z.string().min(1).describe('适合检索的关键词或短句'),
-            topK: z.number().int().min(1).max(10).optional(),
-          }),
-        },
-      ),
-    );
-    tools.push(
-      tool(
-        async (input: { focus?: string }) =&gt; {
-          if (!lastRetrieve) return { error: '请先调用 retrieve_knowledge' };
-          if (lastRetrieve.eval.ok) {
-            return { error: '当前资料已切题，无需改写', query: lastRetrieve.usedQuery };
-          }
-          writer.write({
-            type: 'data-status',
-            data: { stage: 'rewrite', text: '正在改写检索词…' },
-          });
-          const retryQuery = await this.queryRewrite.rewriteAfterRetrieve(
-            question,
-            lastRetrieve.usedQuery,
-            lastRetrieve.grade,
-            lastRetrieve.rawHits,
-          );
-          if (!retryQuery) {
-            return { error: '无法改写出与上次不同的检索词' };
-          }
-          return {
-            query: retryQuery,
-            previousQuery: lastRetrieve.usedQuery,
-            reason: lastRetrieve.eval.text,
-            focus: input.focus,
-          };
-        },
-        {
-          name: 'rewrite_query',
-          description:
-            '根据上次检索评估改写检索词。仅在 retrieve_knowledge 返回 insufficient 后调用，' +
-            '再把返回的 query 交给 retrieve_knowledge。',
-          schema: z.object({
-            focus: z.string().optional().describe('希望改写时强调的缺口，可空'),
-          }),
-        },
-      ),
-    );
-  }
+            lastRetrieve = result;
+            writer.write({ type: 'data-eval', data: result.eval });
+            if (result.eval.reason === 'error') {
+              logger.warn(`RAG 检索失败：${result.eval.text}`);
+              return {
+                query: result.usedQuery,
+                items: [],
+                error: result.eval.text,
+                insufficient: true,
+                eval: result.eval,
+              };
+            }
+            if (!result.eval.ok) {
+              return packRetrieveResult(
+                [],
+                result.usedQuery,
+                persistSources,
+                writer,
+                { insufficient: true, eval: result.eval },
+              );
+            }
+            return packRetrieveResult(
+              result.hits,
+              result.usedQuery,
+              persistSources,
+              writer,
+              { eval: result.eval },
+            );
+          },
+          {
+            name: 'retrieve_knowledge',
+            description:
+              '检索企业知识库一次（仅当前用户可见文档）并评估是否切题。不会自动再查。eval.ok 为 false 时先 rewrite_query，再用新词再调本工具。本轮最多两次。',
+            schema: z.object({
+              query: z.string().min(1).describe('适合检索的关键词或短句'),
+              topK: z
+                .number()
+                .int()
+                .min(1)
+                .max(10)
+                .optional()
+                .describe('条数，默认与请求一致'),
+            }),
+          },
+        ),
+      );
+      tools.push(
+        tool(
+          async (input: { focus?: string }) =&gt; {
+            if (!lastRetrieve) {
+              return { error: '请先调用 retrieve_knowledge' };
+            }
+            if (lastRetrieve.eval.ok) {
+              return {
+                error: '当前资料已切题，无需改写',
+                query: lastRetrieve.usedQuery,
+              };
+            }
+            writer.write({
+              type: 'data-status',
+              data: { stage: 'rewrite', text: '正在改写检索词…' },
+            });
+            const retryQuery = await queryRewrite.rewriteAfterRetrieve(
+              question,
+              lastRetrieve.usedQuery,
+              lastRetrieve.grade,
+              lastRetrieve.rawHits,
+            );
+            if (!retryQuery) {
+              return {
+                error: '无法改写出与上次不同的检索词',
+                previousQuery: lastRetrieve.usedQuery,
+                reason: lastRetrieve.eval.text,
+              };
+            }
+            return {
+              query: retryQuery,
+              previousQuery: lastRetrieve.usedQuery,
+              reason: lastRetrieve.eval.text,
+              focus: input.focus,
+            };
+          },
+          {
+            name: 'rewrite_query',
+            description:
+              '根据上次检索评估改写检索词。仅在 retrieve_knowledge 返回 insufficient 后调用，再把返回的 query 交给 retrieve_knowledge。',
+            schema: z.object({
+              focus: z
+                .string()
+                .optional()
+                .describe('希望改写时强调的缺口，可空'),
+            }),
+          },
+        ),
+      );
+    }
 
-  if (plan.allowWeb) {
-    tools.push(/* web_search 同课 17，description 强调：库循环结束后仍不足才调 */);
-  }
+    if (plan.allowWeb) {
+      tools.push(
+        tool(
+          async (input: { query: string; count?: number }) =&gt;
+            search.search(input.query, input.count ?? 5),
+          {
+            name: 'web_search',
+            description:
+              '联网搜索公开信息（Bocha）。仅在知识库循环结束后仍 insufficient，或本轮只需公开时效信息时调用。不要用网页替代已切题的知识库资料。',
+            schema: z.object({
+              query: z.string().min(1).describe('搜索关键词'),
+              count: z
+                .number()
+                .int()
+                .min(1)
+                .max(10)
+                .optional()
+                .describe('条数，默认 5'),
+            }),
+          },
+        ),
+      );
+    }
 
-  return createAgent({
-    model: this.llm,
-    tools,
-    systemPrompt: systemForPlan(plan),
-    middleware: [
-      summarizationMiddleware({ model: this.compactLlm, trigger: { messages: 12 }, keep: { messages: 6 }, … }),
-      modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
-    ],
-  });
-}</code></pre>
+    return createAgent({
+      model: this.llm,
+      tools,
+      systemPrompt: systemForPlan(plan),
+      middleware: [
+        summarizationMiddleware({
+          model: this.compactLlm,
+          trigger: { messages: 12 },
+          keep: { messages: 6 },
+          summaryPrompt:
+            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
+        }),
+        modelCallLimitMiddleware({ runLimit: 6, exitBehavior: 'end' }),
+      ],
+    });
+  }
+</code></pre>
             </div>
 
+        <p><strong>配套：把切题结果打包给模型 + 前端</strong>（<code>createTurnAgent</code> 里会调用）</p>
+        <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">function excerpt(content: string) {
+  const text = content.replace(/\s+/g, ' ').trim();
+  if (text.length &lt;= EXCERPT_LEN) return text;
+  return `${text.slice(0, EXCERPT_LEN)}...`;
+}
+
+/** 命中写入 citations，并推 data-sources；context 给模型，excerpt 给前端。 */
+function packRetrieveResult(
+  hits: ChunkHit[],
+  query: string,
+  persistSources: ChatSource[],
+  writer: UIMessageStreamWriter&lt;KhUIMessage&gt;,
+  extra: Record&lt;string, unknown&gt; = {},
+) {
+  const offset = persistSources.length;
+  const sources = hits.map((hit, i) =&gt; ({
+    index: offset + i + 1,
+    documentId: hit.documentId,
+    documentTitle: hit.documentTitle,
+    heading: hit.heading,
+    excerpt: excerpt(hit.content),
+    score: hit.score,
+  }));
+  persistSources.push(...sources);
+  writer.write({
+    type: 'data-sources',
+    data: persistSources,
+  });
+  for (const src of sources) {
+    writer.write({
+      type: 'source-document',
+      sourceId: src.documentId,
+      mediaType: 'text/markdown',
+      title: `[${src.index}] ${src.documentTitle}`,
+    });
+  }
+  return {
+    query,
+    items: sources.map((src) =&gt; ({
+      index: src.index,
+      documentId: src.documentId,
+      documentTitle: src.documentTitle,
+      heading: src.heading,
+      excerpt: src.excerpt,
+    })),
+    context: hits
+      .map((hit, i) =&gt; {
+        const src = sources[i];
+        const heading = hit.heading ? ` / ${hit.heading}` : '';
+        const snippet =
+          hit.content.length &gt; 800
+            ? `${hit.content.slice(0, 800)}...`
+            : hit.content;
+        return `[${src.index}] ${hit.documentTitle}${heading}\n${snippet}`;
+      })
+      .join('\n\n'),
+    ...extra,
+  };
+}
+</code></pre>
+            </div>
+
+        <div class="callout-tip">
+          <code>hits</code> 为空时也会走 <code>packRetrieveResult</code>（不切题时），
+          这样前端仍能收到评估信息，但不会把错文档写进引用列表。
+          <code>context</code> 字段是给模型写带 <code>[n]</code> 回答用的正文摘录。
+        </div>
+
         <h3>4.3 给模型的系统提示（按意图换说法）</h3>
+        <p>和工具列表配套：意图是闲聊就写死「别调工具」；是纯知识库就写死「两轮后也不要联网」。</p>
         <div class="code-block">
               <button type="button" class="copy-btn">复制</button>
               <pre><code class="lang-ts">/** Agent 循环：检索 → 评估 → 不足则改写再检索 → 仍不足才联网 → 作答。 */
@@ -967,24 +1118,38 @@ function systemForPlan(plan: ChatRoutePlan) {
       `建议检索词「${plan.query}」，可改写成更准的 query。` +
       '循环：① retrieve_knowledge；② 若 eval.ok 则用 context 作答并标 [n]；' +
       '③ 若 insufficient，先 rewrite_query，再用返回的新词再次 retrieve_knowledge（知识库最多两次）；' +
-      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。';
+      '④ 两次后仍不足再考虑联网。eval.ok 后不要再检索、不要改写。不要第三次 retrieve_knowledge。' +
+      '不要用记忆替代文档。';
   } else {
     prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
   }
-  if (plan.intent === 'chitchat') prompt += '这是闲聊，直接回应，不要调用任何工具。';
-  if (plan.intent === 'profile') prompt += '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。';
+  if (plan.intent === 'chitchat') {
+    prompt += '这是闲聊，直接回应，不要调用任何工具。';
+  }
+  if (plan.intent === 'profile') {
+    prompt += '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。';
+  }
   if (plan.intent === 'kb') {
-    prompt += '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
+    prompt +=
+      '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
   }
-  if (plan.intent === 'web') prompt += '用 web_search 查公开信息，用标题+链接说明，不要编造。';
+  if (plan.intent === 'web') {
+    prompt += '用 web_search 查公开信息，用标题+链接说明，不要编造。';
+  }
   if (plan.intent === 'kb_then_web') {
-    prompt += '先走完知识库循环；两次后仍 insufficient 再 web_search。联网结果不要写成内部制度。';
+    prompt +=
+      '先走完知识库循环；两次后仍 insufficient 再 web_search。联网结果用标题+链接说明，不要把网页写成内部制度。';
   }
-  if (!plan.allowWeb) prompt += '不要调用 web_search。';
+  if (!plan.allowWeb) {
+    prompt += '不要调用 web_search。';
+  }
   prompt += '资料不够就明确说不知道。';
   return prompt;
-}</code></pre>
+}
+
+</code></pre>
             </div>
+
 
         <h3>4.4 流式主流程里怎么串起来</h3>
         <div class="code-block">
@@ -1021,11 +1186,6 @@ writer.merge(toUIMessageStream(mapReasoningStream(langchainStream) as never, {
   sendFinish: false,
 }) as never);</code></pre>
             </div>
-        <p>
-          <code>packRetrieveResult</code> 干的事很实在：
-          只有切题的结果才记进引用列表，推给前端做引用区，
-          同时把带正文的 <code>context</code> 还给模型，方便它写带 <code>[n]</code> 的回答。
-        </p>
       </section>
 
       <section id="chat">
