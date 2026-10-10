@@ -107,7 +107,9 @@ export class AiChatService {
 
     const userTurn = this.buildUserTurn(trimmed, hits, web);
     const response = await this.llm.invoke([
-      new SystemMessage(systemPromptForPlan(plan, Boolean(hits.length), Boolean(web?.items?.length))),
+      new SystemMessage(
+        systemPromptForPlan(plan, Boolean(hits.length), Boolean(web?.items?.length)),
+      ),
       ...(memoryMsg ? [memoryMsg] : []),
       ...history,
       new HumanMessage(userTurn),
@@ -225,8 +227,7 @@ export class AiChatService {
 /** 非流式按意图拼系统提示（与流式 systemForPlan 语义对齐，但不谈工具名）。 */
 function systemPromptForPlan(plan: ChatRoutePlan, hasKb: boolean, hasWeb: boolean): string {
   let prompt =
-    '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
-    `本轮意图：${plan.label}。`;
+    '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' + `本轮意图：${plan.label}。`;
 
   if (plan.intent === 'chitchat') {
     prompt += '这是闲聊，直接自然回应，不要编造制度或外部事实。';

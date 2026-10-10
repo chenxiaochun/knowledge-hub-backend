@@ -66,18 +66,9 @@ type KhUIMessage = UIMessage<
   }
 >;
 
-const SYSTEM =
-  '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' +
-  '制度/流程/负责人等事实优先根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
-  '资料不足、需要时效性或外部公开信息时，调用 web_search。' +
-  '用户明确要求生成配图、海报、示意图且与知识库无关时，调用 generate_image，并在回复中给出返回的 url。' +
-  '依据资料的陈述句末标 [n]，与资料编号一致。' +
-  '联网结果用标题+链接说明，不要编造。资料不够就明确说不知道。';
-
 @Injectable()
 export class AiStreamService {
   private readonly logger = new Logger(AiStreamService.name);
-  private readonly agent: ReturnType<typeof createAgent>;
 
   constructor(
     @Inject('WEB_SEARCH_TOOL') private readonly webSearchTool: Tool,
@@ -93,24 +84,7 @@ export class AiStreamService {
     private readonly longMemory: ChatLongMemoryService,
 
     private readonly webSearchService: WebSearchService,
-  ) {
-    this.agent = createAgent({
-      model: this.llmTool,
-      tools: [this.webSearchTool, this.mailTool.tool, this.generateImageTool],
-      systemPrompt: SYSTEM,
-      middleware: [
-        // 单次最多调 4 次模型，避免 web_search 循环打爆；超限正常结束
-        modelCallLimitMiddleware({ runLimit: 4, exitBehavior: 'end' }),
-        summarizationMiddleware({
-          model: this.llmTool,
-          trigger: { messages: 12 },
-          keep: { messages: 6 },
-          summaryPrompt:
-            '用中文简洁总结对话：话题、已确认结论、待办。不要写入知识库条文。\n\n待摘要的对话：\n{messages}\n\n摘要：',
-        }),
-      ],
-    });
-  }
+  ) {}
 
   /**
    * 按本轮意图挂工具。检索、改写、再检索由 Agent 循环调度，工具本身只做一步。
@@ -295,6 +269,9 @@ export class AiStreamService {
       );
     }
 
+    // 与意图无关的通用工具：发邮件、生图（用户明确要求时才调用）
+    tools.push(this.mailTool.tool, this.generateImageTool);
+
     return createAgent({
       model: this.llmTool,
       tools,
@@ -411,11 +388,7 @@ export class AiStreamService {
         // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
         const langchainStream = await agent.stream(
           {
-            messages: [
-              ...(memoryMsg ? [memoryMsg] : []),
-              ...history,
-              new HumanMessage(human),
-            ],
+            messages: [...(memoryMsg ? [memoryMsg] : []), ...history, new HumanMessage(human)],
           },
           { streamMode: ['messages', 'tools'], recursionLimit: 40 },
         );
@@ -619,10 +592,12 @@ function systemForPlan(plan: ChatRoutePlan) {
     prompt += '不要调用 retrieve_knowledge 或 rewrite_query。';
   }
   if (plan.intent === 'chitchat') {
-    prompt += '这是闲聊，直接回应，不要调用任何工具。';
+    prompt +=
+      '这是闲聊，直接回应；不要调用检索/改写/联网工具。仅当用户明确要求发邮件或生图时才可调用对应工具。';
   }
   if (plan.intent === 'profile') {
-    prompt += '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。';
+    prompt +=
+      '这是个人偏好或身份问题，根据记忆回答，不要检索知识库。仅当用户明确要求发邮件或生图时才可调用对应工具。';
   }
   if (plan.intent === 'kb') {
     prompt += '两次检索后仍 insufficient：明确说知识库没有相关内容，禁止编造制度，不要联网。';
@@ -637,6 +612,8 @@ function systemForPlan(plan: ChatRoutePlan) {
   if (!plan.allowWeb) {
     prompt += '不要调用 web_search。';
   }
-  prompt += '资料不够就明确说不知道。';
+  prompt +=
+    '用户明确要求发送邮件时调用邮件工具；明确要求生成配图、海报、示意图时调用 generate_image，并在回复中给出返回的 url。' +
+    '不要主动发邮件或生图。资料不够就明确说不知道。';
   return prompt;
 }
