@@ -14,6 +14,11 @@ import type {
   GraphSubgraphResultDto,
 } from './dto/graph-sub-search.dto';
 
+import {
+  DocumentAccessScope,
+  neo4jAccessParams,
+  neo4jDocumentAccessWhere,
+} from '../document/document-access';
 import { DocumentStatus } from '../document/document-status';
 import { DocumentEntity } from '../document/entities/document.entity';
 import {
@@ -22,6 +27,18 @@ import {
 } from '../document/schemas/document-content.schema';
 import { ChunkingService } from '../pipeline/chunking.service';
 import { ExtractionService } from './extraction.service';
+
+/** 对话 RAG 用的图谱命中：实体 + 关系类型 + 来源文档 */
+export type GraphChatHit = {
+  query: string;
+  entities: Array<{
+    name: string;
+    type: string | null;
+    description: string | null;
+  }>;
+  relations: Array<{ source: string; relation: string; target: string }>;
+  documents: Array<{ documentId: string; title: string }>;
+};
 
 @Injectable()
 export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
@@ -320,6 +337,125 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
       }
 
       return { nodes, edges };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * 对话 RAG：按短实体名找可见实体，再查这些实体之间的关系与来源文档。
+   * 只做相等 / 前缀 / 后缀，避免「发票」CONTAINS 命中整篇制度标题。
+   */
+  async retrieveForChat(
+    keyword: string | string[],
+    limit = 8,
+    scope?: DocumentAccessScope,
+  ): Promise<GraphChatHit> {
+    const kws = splitGraphKeywords(keyword);
+    const empty: GraphChatHit = {
+      query: kws.join(' / '),
+      entities: [],
+      relations: [],
+      documents: [],
+    };
+    if (!this.driver) {
+      this.logger.warn('跳过图谱对话检索（Neo4j 不可用）');
+      return empty;
+    }
+    if (!kws.length) return empty;
+
+    const cap = Math.min(Math.max(limit, 1), 20);
+    const vis = neo4jAccessParams(scope);
+    const session = this.driver.session();
+    try {
+      const entResult = await session.run(
+        `
+      MATCH (e:KnowledgeEntity)
+      WHERE any(kw IN $kws WHERE
+        toLower(e.name) = toLower(kw)
+        OR toLower(replace(replace(e.name, '《', ''), '》', '')) STARTS WITH toLower(kw)
+        OR toLower(e.name) ENDS WITH toLower(kw)
+        OR any(a IN coalesce(e.aliases, []) WHERE
+          toLower(toString(a)) = toLower(kw)
+          OR toLower(toString(a)) STARTS WITH toLower(kw)
+          OR toLower(toString(a)) ENDS WITH toLower(kw)
+        )
+      )
+      AND (
+        $unrestricted OR EXISTS {
+          MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e)
+          WHERE ${neo4jDocumentAccessWhere('d')}
+        }
+      )
+      RETURN e.name AS name, e.type AS type, e.description AS description
+      ORDER BY
+        CASE
+          WHEN any(kw IN $kws WHERE toLower(e.name) = toLower(kw)) THEN 0
+          WHEN any(kw IN $kws WHERE toLower(e.name) STARTS WITH toLower(kw)
+            OR toLower(e.name) ENDS WITH toLower(kw)) THEN 1
+          ELSE 2
+        END,
+        size(e.name)
+      LIMIT $limit
+      `,
+        { kws, limit: neo4j.int(cap), ...vis },
+      );
+      const entities = entResult.records.map((record) => ({
+        name: record.get('name') as string,
+        type: (record.get('type') as string) ?? null,
+        description: (record.get('description') as string) ?? null,
+      }));
+      const names = entities.map((e) => e.name);
+      if (!names.length) {
+        this.logger.log(`图谱对话检索无实体：kws=${kws.join('/')}`);
+        return empty;
+      }
+
+      // 只取本轮命中实体之间的 RELATED_TO
+      const relResult = await session.run(
+        `
+      MATCH (a:KnowledgeEntity)-[r:RELATED_TO]->(b:KnowledgeEntity)
+      WHERE a.name IN $names AND b.name IN $names
+      RETURN a.name AS source,
+             coalesce(nullif(r.relation, 'RELATED_TO'), '关联') AS relation,
+             b.name AS target
+      `,
+        { names },
+      );
+      const seen = new Set<string>();
+      const relations: GraphChatHit['relations'] = [];
+      for (const record of relResult.records) {
+        const source = record.get('source') as string;
+        const relation = record.get('relation') as string;
+        const target = record.get('target') as string;
+        const key = `${source}\t${relation}\t${target}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        relations.push({ source, relation, target });
+      }
+
+      const docResult = await session.run(
+        `
+      MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]->(:DocumentChunk)-[:MENTIONS]->(e:KnowledgeEntity)
+      WHERE e.name IN $names
+        AND ($unrestricted OR ${neo4jDocumentAccessWhere('d')})
+      RETURN DISTINCT d.id AS documentId, d.title AS title
+      LIMIT 8
+      `,
+        { names, ...vis },
+      );
+      const documents = docResult.records.map((record) => ({
+        documentId: record.get('documentId') as string,
+        title: (record.get('title') as string) ?? '',
+      }));
+
+      this.logger.log(
+        `图谱对话检索：kws=${kws.join('/')} entities=${entities.length} rels=${relations.length}`,
+      );
+      return { query: kws.join(' / '), entities, relations, documents };
+    } catch (error) {
+      this.logger.warn(`图谱对话检索失败：${error}`);
+      return empty;
     } finally {
       await session.close();
     }
@@ -665,4 +801,54 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
     if (neo4j.isInt(value)) return value.toNumber();
     return fallback;
   }
+}
+
+/** 给模型看的图谱上下文：只写关系与来源，不当制度原文。 */
+export function formatGraphContext(hit: GraphChatHit): string {
+  if (!hit.entities.length && !hit.relations.length) return '';
+  const lines: string[] = [];
+  if (hit.relations.length) {
+    lines.push('关系：');
+    for (const rel of hit.relations) {
+      lines.push(`- ${rel.source} → ${rel.target}（${rel.relation}）`);
+    }
+  } else {
+    lines.push('实体：' + hit.entities.map((e) => e.name).join('、'));
+  }
+  if (hit.documents.length) {
+    const titles = hit.documents.map((d) => d.title).filter(Boolean);
+    if (titles.length) lines.push(`来源文档：${titles.join('；')}`);
+  }
+  return lines.join('\n');
+}
+
+/** 给模型看的图谱系统提示：只写关系与来源，不当制度原文。 */
+export function formatGraphSystemText(hit: GraphChatHit): string {
+  const body = formatGraphContext(hit);
+  if (!body) return '';
+  return (
+    `【本轮知识图谱】\n${body}\n\n` +
+    '以上只说明实体之间的关系，不能当制度原文；制度/流程以知识库检索资料为准。'
+  );
+}
+
+/** 模型常把「发票 报销」写成一项；图匹配要拆成短名
+ * 拆成短名：把长词拆成短词，避免模型把「发票 报销」写成一项。
+ */
+function splitGraphKeywords(keyword: string | string[]): string[] {
+  const seen = new Set<string>();
+  const kws: string[] = [];
+  const parts = Array.isArray(keyword) ? keyword : [keyword];
+  for (const part of parts) {
+    // 拆分词组：把长词拆成短词，避免模型把「发票 报销」写成一项。
+    for (const raw of String(part).split(/[\s/]+/)) {
+      const kw = raw.trim();
+      if (!kw) continue;
+      const key = kw.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      kws.push(kw);
+    }
+  }
+  return kws;
 }

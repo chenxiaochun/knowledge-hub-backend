@@ -7,4 +7,5 @@ export interface AuthUser {
   avatar?: string | null;
   roles: string[];
   permissions: string[];
+  teamIds: string[];
 }

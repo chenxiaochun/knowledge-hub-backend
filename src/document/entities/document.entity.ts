@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+
 import { bigintTransformer } from '../../common/transformers/bigint.transformer';
 import { DocumentStatus } from '../document-status';
 
@@ -21,6 +22,9 @@ export class DocumentEntity {
     transformer: bigintTransformer,
   })
   authorId?: string | null;
+
+  @Column({ name: 'team_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
+  teamId?: string | null;
 
   @Column({ name: 'file_url', type: 'varchar', nullable: true })
   fileUrl?: string | null;
@@ -48,4 +52,7 @@ export class DocumentEntity {
 
   @Column({ type: 'boolean', default: false })
   deleted!: boolean;
+
+  @Column({ name: 'is_public', type: 'boolean', default: false })
+  isPublic!: boolean;
 }
