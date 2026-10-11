@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 /**

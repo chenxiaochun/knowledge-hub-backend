@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 21 · Graph RAG：把知识图谱接进问答（origin v18）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    section.design-block { border-left: 4px solid #3b82f6; padding-left: 1rem; }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 21 · Graph RAG：把知识图谱接进问答 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./20-agentic-rag-v17.html">课 20</a>（建议已过
+      <a href="./07-pipeline-kg.html">课 7</a> /
+      <a href="./15-kg-overview-v12.html">课 15</a>）·
+      对照 origin 分支 <code>v18</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#why">为什么开这门课</a></li>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#concept">概念与流水线</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 20 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+        <li><a href="#align">对齐 v18 检查表</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="why">
+        <h2>为什么 v18 单独成课？</h2>
+        <p>对比 origin <code>v17 → v18</code>，主题是：</p>
+        <table>
+          <thead><tr><th>变更</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>GraphBuildService.retrieveForChat</code></td><td>按<strong>短实体名</strong>查可见实体 / 关系 / 来源文档</td></tr>
+            <tr><td>意图路由多出 <code>graphQueries</code> + <code>allowGraph</code></td><td>知识库问句 vs 图谱短词分开</td></tr>
+            <tr><td>非流式 <code>/ai/chat</code></td><td>意图后<strong>并行</strong>知识库 + 图谱</td></tr>
+            <tr><td>流式 Agent</td><td>新增工具 <code>retrieve_graph</code>，与 <code>retrieve_knowledge</code> 同一步并行</td></tr>
+            <tr><td>过程条 <code>data-graph</code></td><td>前端展示图谱卡（可空，不中断问答）</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          <strong>Graph RAG ≠ 用图谱替代全文检索</strong>。
+          v18 明确：制度原文仍以知识库 chunk 的 <code>[n]</code> 为准；图谱只补充「谁关联谁、从哪些文档抽出来」。
+          课 15 的 <code>/graph/overview</code> 是画布读模型；本课是把图<strong>接进对话链路</strong>。
+        </div>
+      </section>
+
+      <section id="goal">
+        <h2>目标与验收</h2>
+        <div class="callout-tip">
+          <strong>验收</strong>
+          <ol>
+            <li>知识库类问题：意图卡里 <code>allowGraph=true</code>，且有 <code>graphQueries</code>（短名，不是整句）</li>
+            <li>流式过程条顺序大致：意图 → <strong>图谱</strong> → 知识库 → 评估 →（不足才）改写 / 联网</li>
+            <li>图谱与知识库<strong>同一步并行</strong>，不因文档已命中就跳过图谱</li>
+            <li>Neo4j 未起 / 词对不上实体：图谱卡写「无匹配」或空实体，问答仍继续</li>
+            <li>闲聊 / 个人偏好 / 纯联网：不查图谱</li>
+            <li>回答里制度仍标 <code>[n]</code>；不要把图谱关系当成条款原文</li>
+          </ol>
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 20 Agentic RAG 已通；Neo4j 有已抽取实体（课 7 / 15）。
+          自测可对照 origin 根目录 <code>agentic-rag.md</code>（v18 已改成含图谱过程条说明）。
+          <strong>本课只写讲义，不替你改练习仓 <code>src/</code>。</strong>
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与流水线</h2>
+        <h3>两套检索词</h3>
+        <table>
+          <thead><tr><th></th><th>知识库</th><th>图谱</th></tr></thead>
+          <tbody>
+            <tr><td>字段</td><td><code>plan.query</code></td><td><code>plan.graphQueries[]</code></td></tr>
+            <tr><td>形态</td><td>一句短问（可含「如何」）</td><td>2～4 字实体名：发票、报销、差旅</td></tr>
+            <tr><td>匹配</td><td>BM25 + 向量 + RRF + rerank</td><td>name/aliases 相等、前缀、后缀（<strong>不用 CONTAINS</strong>）</td></tr>
+            <tr><td>产出</td><td>chunk + <code>[n]</code> 引用</td><td>实体、RELATED_TO、来源文档标题</td></tr>
+          </tbody>
+        </table>
+
+        <h3>端到端（流式）</h3>
+        <div class="flow">用户问题
+  → classify：intent + query + graphQueries + allowGraph
+  → Agent 第一步并行：
+       retrieve_knowledge(query)  ‖  retrieve_graph(短实体名)
+  → 知识库不足 → rewrite_query → 再 retrieve_knowledge（最多 2 次）
+  → 仍不足且允许 → web_search
+  → 作答：制度看知识库 [n]；关系看图谱上下文</div>
+
+        <h3>端到端（非流式 /ai/chat）</h3>
+        <div class="flow">classify 之后
+  Promise.all([
+    retrieveUntilRelevant(...),           // 知识库
+    graph.retrieveForChat(graphQueries),  // 图谱
+  ])
+  → 知识库不足且图谱也空 → 「知识库里没有相关内容」
+  → 否则把 formatGraphSystemText 作为额外 SystemMessage 喂给 LLM</div>
+      </section>
+
+      <section id="files">
+        <h2>文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th><th>职责</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/pipeline/graph-build.service.ts</code></td><td>改</td><td><code>GraphChatHit</code>、format*、<code>retrieveForChat</code></td></tr>
+            <tr><td><code>src/pipeline/pipeline.module.ts</code></td><td>核对</td><td>已 export <code>GraphBuildService</code>（课 7 通常有）</td></tr>
+            <tr><td><code>src/ai/chat-query-rewrite.service.ts</code></td><td>改</td><td><code>graphQueries</code> / <code>allowGraph</code> / ROUTE_PROMPT</td></tr>
+            <tr><td><code>src/ai/ai-chat.service.ts</code></td><td>改</td><td>并行检索 + 图谱 SystemMessage</td></tr>
+            <tr><td><code>src/ai/ai-stream.service.ts</code></td><td>改</td><td><code>retrieve_graph</code> 工具、<code>data-graph</code>、<code>systemForPlan</code></td></tr>
+            <tr><td>origin <code>agentic-rag.md</code></td><td>对照</td><td>自测题（含图谱过程条期望）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+
+          <li>
+            <h4>图谱命中类型与格式化（文件顶部导出）</h4>
+            <p class="file-path">src/pipeline/graph-build.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 对话 RAG 用的图谱命中：实体 + 关系类型 + 来源文档 */
+export type GraphChatHit = {
+  query: string;
+  entities: Array&lt;{
+    name: string;
+    type: string | null;
+    description: string | null;
+  }&gt;;
+  relations: Array&lt;{ source: string; relation: string; target: string }&gt;;
+  documents: Array&lt;{ documentId: string; title: string }&gt;;
+};
+
+/** 给模型看的图谱上下文：只写关系与来源，不当制度原文。 */
+export function formatGraphContext(hit: GraphChatHit): string {
+  if (!hit.entities.length &amp;&amp; !hit.relations.length) return '';
+  const lines: string[] = [];
+  if (hit.relations.length) {
+    lines.push('关系：');
+    for (const rel of hit.relations) {
+      lines.push(`- ${rel.source} → ${rel.target}（${rel.relation}）`);
+    }
+  } else {
+    lines.push('实体：' + hit.entities.map((e) =&gt; e.name).join('、'));
+  }
+  if (hit.documents.length) {
+    const titles = hit.documents.map((d) =&gt; d.title).filter(Boolean);
+    if (titles.length) lines.push(`来源文档：${titles.join('；')}`);
+  }
+  return lines.join('\n');
+}
+
+export function formatGraphSystemText(hit: GraphChatHit): string {
+  const body = formatGraphContext(hit);
+  if (!body) return '';
+  return (
+    `【本轮知识图谱】\n${body}\n\n` +
+    '以上只说明实体之间的关系，不能当制度原文；制度/流程以知识库检索资料为准。'
+  );
+}
+
+/** 模型常把「发票 报销」写成一项；图匹配要拆成短名 */
+function splitGraphKeywords(keyword: string | string[]): string[] {
+  const seen = new Set&lt;string&gt;();
+  const kws: string[] = [];
+  const parts = Array.isArray(keyword) ? keyword : [keyword];
+  for (const part of parts) {
+    for (const raw of String(part).split(/[\s/]+/)) {
+      const kw = raw.trim();
+      if (!kw) continue;
+      const key = kw.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      kws.push(kw);
+    }
+  }
+  return kws;
+}</code></pre>
+            </div>
+            <p>可选：流式多次调图时用 origin 的 <code>mergeGraphHits</code> 合并结果（同文件）。</p>
+          </li>
+
+          <li>
+            <h4>retrieveForChat（完整 · origin v18）</h4>
+            <p>加在 <code>GraphBuildService</code> 类内（<code>searchGraph</code> 与 <code>getOverview</code> 之间均可）。依赖课 18 的可见性：<code>neo4jAccessParams</code> / <code>neo4jDocumentAccessWhere</code>。</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/**
+ * 对话 RAG：按短实体名找可见实体，再查这些实体之间的关系与来源文档。
+ * 只做相等 / 前缀 / 后缀，避免「发票」CONTAINS 命中整篇制度标题。
+ */
+async retrieveForChat(
+  keyword: string | string[],
+  limit = 8,
+  scope?: DocumentAccessScope,
+): Promise&lt;GraphChatHit&gt; {
+  const kws = splitGraphKeywords(keyword);
+  const empty: GraphChatHit = {
+    query: kws.join(' / '),
+    entities: [],
+    relations: [],
+    documents: [],
+  };
+  if (!this.driver) {
+    this.logger.warn('跳过图谱对话检索（Neo4j 不可用）');
+    return empty;
+  }
+  if (!kws.length) return empty;
+
+  const cap = Math.min(Math.max(limit, 1), 20);
+  const vis = neo4jAccessParams(scope);
+  const session = this.driver.session();
+  try {
+    const entResult = await session.run(
+      `
+      MATCH (e:KnowledgeEntity)
+      WHERE any(kw IN $kws WHERE
+        toLower(e.name) = toLower(kw)
+        OR toLower(replace(replace(e.name, '《', ''), '》', '')) STARTS WITH toLower(kw)
+        OR toLower(e.name) ENDS WITH toLower(kw)
+        OR any(a IN coalesce(e.aliases, []) WHERE
+          toLower(toString(a)) = toLower(kw)
+          OR toLower(toString(a)) STARTS WITH toLower(kw)
+          OR toLower(toString(a)) ENDS WITH toLower(kw)
+        )
+      )
+      AND (
+        $unrestricted OR EXISTS {
+          MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]-&gt;(:DocumentChunk)-[:MENTIONS]-&gt;(e)
+          WHERE ${neo4jDocumentAccessWhere('d')}
+        }
+      )
+      RETURN e.name AS name, e.type AS type, e.description AS description
+      ORDER BY
+        CASE
+          WHEN any(kw IN $kws WHERE toLower(e.name) = toLower(kw)) THEN 0
+          WHEN any(kw IN $kws WHERE toLower(e.name) STARTS WITH toLower(kw)
+            OR toLower(e.name) ENDS WITH toLower(kw)) THEN 1
+          ELSE 2
+        END,
+        size(e.name)
+      LIMIT $limit
+      `,
+      { kws, limit: neo4j.int(cap), ...vis },
+    );
+    const entities = entResult.records.map((record) =&gt; ({
+      name: record.get('name') as string,
+      type: (record.get('type') as string) ?? null,
+      description: (record.get('description') as string) ?? null,
+    }));
+    const names = entities.map((e) =&gt; e.name);
+    if (!names.length) {
+      this.logger.log(`图谱对话检索无实体：kws=${kws.join('/')}`);
+      return empty;
+    }
+
+    // 只取本轮命中实体之间的 RELATED_TO
+    const relResult = await session.run(
+      `
+      MATCH (a:KnowledgeEntity)-[r:RELATED_TO]-&gt;(b:KnowledgeEntity)
+      WHERE a.name IN $names AND b.name IN $names
+      RETURN a.name AS source,
+             coalesce(nullif(r.relation, 'RELATED_TO'), '关联') AS relation,
+             b.name AS target
+      `,
+      { names },
+    );
+    const seen = new Set&lt;string&gt;();
+    const relations: GraphChatHit['relations'] = [];
+    for (const record of relResult.records) {
+      const source = record.get('source') as string;
+      const relation = record.get('relation') as string;
+      const target = record.get('target') as string;
+      const key = `${source}\t${relation}\t${target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      relations.push({ source, relation, target });
+    }
+
+    const docResult = await session.run(
+      `
+      MATCH (d:KnowledgeDocument)-[:HAS_CHUNK]-&gt;(:DocumentChunk)-[:MENTIONS]-&gt;(e:KnowledgeEntity)
+      WHERE e.name IN $names
+        AND ($unrestricted OR ${neo4jDocumentAccessWhere('d')})
+      RETURN DISTINCT d.id AS documentId, d.title AS title
+      LIMIT 8
+      `,
+      { names, ...vis },
+    );
+    const documents = docResult.records.map((record) =&gt; ({
+      documentId: record.get('documentId') as string,
+      title: (record.get('title') as string) ?? '',
+    }));
+
+    this.logger.log(
+      `图谱对话检索：kws=${kws.join('/')} entities=${entities.length} rels=${relations.length}`,
+    );
+    return { query: kws.join(' / '), entities, relations, documents };
+  } catch (error) {
+    this.logger.warn(`图谱对话检索失败：${error}`);
+    return empty;
+  } finally {
+    await session.close();
+  }
+}</code></pre>
+            </div>
+            <div class="callout-info">
+              Cypher 里的 <code>${neo4jDocumentAccessWhere('d')}</code> 是 TypeScript 模板字符串插值
+             （课 18 可见性工具函数）。不确定时打开 origin v18 同名方法整段复制最稳。
+            </div>
+          </li>
+
+          <li>
+            <h4>意图路由：拆出图谱短实体名</h4>
+            <p class="file-path">src/ai/chat-query-rewrite.service.ts</p>
+            <p><strong>ChatRoutePlan</strong> 增加字段：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export type ChatRoutePlan = {
+  intent: ChatIntent;
+  label: string;
+  query: string;
+  graphQueries: string[];
+  allowRetrieve: boolean;
+  allowGraph: boolean;
+  allowWeb: boolean;
+};</code></pre>
+            </div>
+            <p><strong>routeSchema</strong> 增加：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">graph_queries: z
+  .array(z.string())
+  .optional()
+  .describe('图谱短实体名：2～6 个、每个 2～8 字。闲聊/偏好/纯联网必须空数组'),</code></pre>
+            </div>
+            <p><strong>ROUTE_PROMPT</strong> 追加 <code>## graph_queries</code> 规则（对齐 v18）：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">'## graph_queries\n' +
+'- 只在 kb / kb_then_web 填写，其他意图必须空数组\n' +
+'- 每个词 2～4 个字的实体短名（人/岗/制度对象），不要整句、不要问号\n' +
+'- 必须拆开：发票如何报销 → 发票、报销\n' +
+'- 可补 1 个同域短名（报销可带差旅）\n' +
+'- 禁止：流程、要求、办法、如何、怎么、什么、是什么\n'</code></pre>
+            </div>
+            <p><strong>toPlan / classify</strong>：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">private toPlan(
+  intent: ChatIntent,
+  query: string,
+  graphQueries?: string[],
+): ChatRoutePlan {
+  const kb = intent === 'kb' || intent === 'kb_then_web';
+  return {
+    intent,
+    label: INTENT_LABEL[intent],
+    query,
+    graphQueries: kb
+      ? (graphQueries ?? []).map((q) =&gt; q.trim()).filter(Boolean)
+      : [],
+    allowRetrieve: kb,
+    allowGraph: kb,
+    allowWeb: intent === 'web' || intent === 'kb_then_web',
+  };
+}
+
+// classify 成功后：
+const plan = this.toPlan(result.intent, query, result.graph_queries);</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>非流式：并行知识库 + 图谱</h4>
+            <p class="file-path">src/ai/ai-chat.service.ts</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// constructor 注入 GraphBuildService
+const access = user ? accessFromUser(user) : undefined;
+const kbP = plan.allowRetrieve
+  ? retrieveUntilRelevant({ question: trimmed, query: plan.query, topK, user,
+      retrieval: this.retrieval, rewrite: this.queryRewrite })
+  : Promise.resolve(undefined);
+const graphP =
+  plan.allowGraph &amp;&amp; user &amp;&amp; access &amp;&amp; plan.graphQueries.length
+    ? this.graph.retrieveForChat(plan.graphQueries, 8, access)
+    : Promise.resolve(undefined);
+
+const [retrieved, graphHit] = await Promise.all([kbP, graphP]);
+// …从 retrieved 取 hits / kbInsufficient …
+const hasGraph = Boolean(graphHit?.entities.length || graphHit?.relations.length);
+
+// 仅当知识库不足且图谱也空时，才直接返回「没有相关内容」
+if (plan.intent === 'kb' &amp;&amp; kbInsufficient &amp;&amp; !hasGraph) { /* empty */ }
+
+const graphMsg = graphHit ? formatGraphSystemText(graphHit) : '';
+// invoke 时：...(graphMsg ? [new SystemMessage(graphMsg)] : [])</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h4>流式：retrieve_graph 工具 + 系统提示</h4>
+            <p class="file-path">src/ai/ai-stream.service.ts</p>
+            <p>① KhUIMessage 数据类型增加 <code>graph: GraphChatHit</code>；意图卡增加 <code>graphQueries</code> / <code>allowGraph</code>。</p>
+            <p>② <code>createTurnAgent</code> 在 <code>plan.allowGraph</code> 时挂工具：</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">if (plan.allowGraph) {
+  tools.push(
+    tool(
+      async (input: { query: string }) =&gt; {
+        const keywords = [
+          ...plan.graphQueries,
+          ...(input.query.trim() ? [input.query.trim()] : []),
+        ];
+        const hit = await graph.retrieveForChat(
+          keywords, 8, accessFromUser(user),
+        );
+        writer.write({ type: 'data-graph', data: hit });
+        return {
+          query: hit.query,
+          entities: hit.entities,
+          relations: hit.relations,
+          documents: hit.documents,
+          context: formatGraphContext(hit),
+          insufficient: !hit.entities.length &amp;&amp; !hit.relations.length,
+        };
+      },
+      {
+        name: 'retrieve_graph',
+        description:
+          '检索知识图谱实体与关系（仅当前用户可见文档抽取出的图）。' +
+          '入参必须是短实体名，多个用空格或 / 分隔，例如「发票 / 报销」，不要整句。' +
+          '首次检索知识库时必须与 retrieve_knowledge 在同一次并行调用。' +
+          '图谱只说明实体关系，不能当制度原文。',
+        schema: z.object({
+          query: z.string().min(1).describe('短实体名，多个用空格或 / 分隔'),
+        }),
+      },
+    ),
+  );
+}</code></pre>
+            </div>
+            <p>③ <code>retrieve_knowledge</code> 的 description 补一句：「首次必须与 retrieve_graph 在同一次并行调用」。</p>
+            <p>④ <code>systemForPlan</code>：当 <code>allowRetrieve &amp;&amp; allowGraph</code> 时强调并行；<code>!allowGraph</code> 时写「不要调用 retrieve_graph」。</p>
+            <p>⑤ ChatOpenAI <code>modelKwargs</code> 加 <code>parallel_tool_calls: true</code>（与 thinking 开关合并）。</p>
+            <p>⑥ <code>modelCallLimitMiddleware</code> runLimit 可从 6 提到 8（多一个图工具）。</p>
+          </li>
+
+          <li>
+            <h4>前端（可选核对）</h4>
+            <p>若练习仓前端已有 Agent 过程条：增加对 <code>data-graph</code> 的渲染（实体数 / 关系数 / 「无匹配实体」）。
+            意图卡展示 <code>graphQueries</code>。无前端也可只看 Nest 日志与 curl 非流式结果。</p>
+          </li>
+
+          <li>
+            <h4>自测</h4>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 流式：前端知识问答页，新开会话
+# 「出差预估费用超过五千谁还要加签？」
+# 期望：意图知识库；图谱卡出现（可无实体）；知识库引用差旅办法
+
+# 非流式快速看图谱是否进 prompt（日志）
+# 图谱对话检索：kws=差旅/报销 entities=… rels=…</code></pre>
+            </div>
+            <p>完整场景见 origin <code>agentic-rag.md</code>（v18 已写明：意图 → 图谱 → 知识库 → …）。</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design" class="design-block">
+        <h2>设计决策</h2>
+        <h3>为什么图谱和知识库要并行，而不是「库空了再查图」？</h3>
+        <p>
+          图回答的是关系骨架（谁管谁、实体怎么连），库回答的是条款原文。
+          两者互补；若等库结果再决定是否查图，既慢又容易漏关系。
+          v18 刻意：知识库类意图<strong>始终</strong>允许图谱，哪怕文档已命中。
+        </p>
+        <h3>为什么图谱必须用短实体名？</h3>
+        <p>
+          Neo4j 节点一般是「发票」「报销」「张敏」这种短名。
+          整句 <code>CONTAINS</code> 会误命中长标题；相等 / 前缀 / 后缀更稳。
+          所以路由要单独产出 <code>graphQueries</code>，不能复用 <code>standalone_query</code>。
+        </p>
+        <h3>为什么图谱不能当制度原文？</h3>
+        <p>
+          边上的 relation 来自 LLM 抽取，可能噪声；真正可引用的是 chunk。
+          产品规则：回答制度标 <code>[n]</code>；图谱只作关系提示与溯源文档标题。
+        </p>
+        <h3>空图为什么不失败？</h3>
+        <p>
+          Neo4j 未起、别名对不上、可见性过滤后无实体，都是常态。
+          返回 empty hit + 前端「无匹配」卡，保证问答主链路可降级为纯文档 RAG。
+        </p>
+        <h3>对照 origin v18 阅读顺序</h3>
+        <ol>
+          <li><code>graph-build.service.ts</code> — 顶部类型 / format* / <code>retrieveForChat</code></li>
+          <li><code>chat-query-rewrite.service.ts</code> — <code>graphQueries</code>、ROUTE_PROMPT、<code>toPlan</code></li>
+          <li><code>ai-chat.service.ts</code> — <code>Promise.all</code> 并行</li>
+          <li><code>ai-stream.service.ts</code> — <code>retrieve_graph</code>、<code>systemForPlan</code></li>
+          <li><code>agentic-rag.md</code> — 过程条与例题</li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与课 20（v17）差异</h2>
+        <table>
+          <thead><tr><th>课 20</th><th>本课 v18</th></tr></thead>
+          <tbody>
+            <tr><td>只有知识库工具环</td><td>+ 图谱工具，与知识库并行</td></tr>
+            <tr><td>路由只有 query</td><td>+ graphQueries / allowGraph</td></tr>
+            <tr><td>过程条：意图→知识库→评估…</td><td>意图→图谱→知识库→评估…</td></tr>
+            <tr><td>库空即结束（kb）</td><td>库空但图有命中仍可作答（关系侧）</td></tr>
+            <tr><td>图谱页 / overview 与对话无关</td><td>同一套 Neo4j 数据服务对话</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr><td>图谱永远无实体</td><td>Neo4j 是否有数据；graphQueries 是否整句；是否用了 CONTAINS；可见性是否过严</td></tr>
+            <tr><td>模型只调知识库不调图</td><td>systemForPlan / tool description 是否要求并行；<code>parallel_tool_calls</code>；allowGraph</td></tr>
+            <tr><td>注入 GraphBuildService 失败</td><td>PipelineModule 是否 export；AiModule imports PipelineModule</td></tr>
+            <tr><td>把图谱当制度引用</td><td>检查 formatGraphSystemText / Agent prompt 是否写明「不能当制度原文」</td></tr>
+            <tr><td>闲聊也出图谱卡</td><td>toPlan：非 kb 时 graphQueries=[]、allowGraph=false</td></tr>
+            <tr><td>Cypher 模板编译错</td><td>可见性片段必须用 origin 原模板字符串，勿手写坏 ${}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="align">
+        <h2>对齐 origin v18 检查表</h2>
+        <table>
+          <thead><tr><th>检查项</th><th>位置</th></tr></thead>
+          <tbody>
+            <tr><td><code>GraphChatHit</code> + formatGraphContext / SystemText</td><td><code>graph-build.service.ts</code></td></tr>
+            <tr><td><code>retrieveForChat</code>（短名匹配 + 可见性）</td><td>同上</td></tr>
+            <tr><td><code>graphQueries</code> / <code>allowGraph</code> / ROUTE_PROMPT</td><td><code>chat-query-rewrite.service.ts</code></td></tr>
+            <tr><td>非流式 Promise.all 并行</td><td><code>ai-chat.service.ts</code></td></tr>
+            <tr><td>kb 空且图空才短路返回</td><td>同上</td></tr>
+            <tr><td><code>retrieve_graph</code> 工具 + <code>data-graph</code></td><td><code>ai-stream.service.ts</code></td></tr>
+            <tr><td>systemForPlan 要求并行调用</td><td>同上</td></tr>
+            <tr><td><code>parallel_tool_calls: true</code></td><td>ChatOpenAI 配置</td></tr>
+            <tr><td>自测过程条含图谱</td><td><code>agentic-rag.md</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          链路回顾：课 7 建图 → 课 15 全景 → 课 14/20 文档 RAG → <strong>本课图文并检索</strong>。
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
