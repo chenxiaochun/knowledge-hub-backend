@@ -19,6 +19,7 @@ import {
   HumanMessage,
   modelCallLimitMiddleware,
   summarizationMiddleware,
+  SystemMessage,
   tool,
   toolCallLimitMiddleware,
 } from 'langchain';
@@ -32,6 +33,7 @@ import z from 'zod';
 import { accessFromUser } from '../document/document-access';
 import {
   formatGraphContext,
+  formatGraphSystemText,
   GraphBuildService,
   type GraphChatHit,
 } from '../graph/graph-build.service';
@@ -105,16 +107,20 @@ export class AiStreamService {
     writer: UIMessageStreamWriter<KhUIMessage>,
     plan: ChatRoutePlan,
     question: string,
+    /** 意图阶段已预取的图谱；工具再调时复用，避免漏推 data-graph */
+    prefetchedGraph?: GraphChatHit,
   ) {
     if (!this.llmTool) return undefined;
     const retrieval = this.retrieval;
     const queryRewrite = this.queryRewrite;
     const search = this.webSearchService;
+    const graphService = this.graph;
     const logger = this.logger;
     const tools: StructuredToolInterface[] = [];
     let retrieveCount = 0;
     let rewriteCount = 0;
     let webSearchCount = 0;
+    let graphFetched = Boolean(prefetchedGraph);
     let lastRetrieve: Awaited<ReturnType<typeof retrieveAndGrade>> | undefined;
 
     if (plan.allowRetrieve) {
@@ -282,11 +288,25 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { query: string }) => {
+            // 意图阶段已预取过则直接复用，避免模型漏调导致前端无图谱卡
+            if (prefetchedGraph && graphFetched) {
+              return {
+                query: prefetchedGraph.query,
+                entities: prefetchedGraph.entities,
+                relations: prefetchedGraph.relations,
+                documents: prefetchedGraph.documents,
+                context: formatGraphContext(prefetchedGraph),
+                insufficient:
+                  !prefetchedGraph.entities.length && !prefetchedGraph.relations.length,
+                cached: true,
+              };
+            }
             const keywords = [
               ...plan.graphQueries,
               ...(input.query.trim() ? [input.query.trim()] : []),
             ];
-            const hit = await this.graph.retrieveForChat(keywords, 8, accessFromUser(user));
+            const hit = await graphService.retrieveForChat(keywords, 8, accessFromUser(user));
+            graphFetched = true;
             writer.write({ type: 'data-graph', data: hit });
             return {
               query: hit.query,
@@ -302,8 +322,7 @@ export class AiStreamService {
             description:
               '检索知识图谱实体与关系（仅当前用户可见文档抽取出的图）。' +
               '入参必须是短实体名，多个用空格或 / 分隔，例如「发票 / 报销」，不要整句。' +
-              '首次检索知识库时必须与 retrieve_knowledge 在同一次并行调用。' +
-              '图谱只说明实体关系，不能当制度原文。',
+              '若本轮已预取图谱可再调以确认；图谱只说明实体关系，不能当制度原文。',
             schema: z.object({
               query: z.string().min(1).describe('短实体名，多个用空格或 / 分隔'),
             }),
@@ -409,7 +428,28 @@ export class AiStreamService {
         });
 
         const memHits = await this.longMemory.search(user.userId, sessionId, question);
-        const agent = this.createTurnAgent(user, topK, persistSources, writer, plan, question);
+
+        // 图谱不依赖模型是否调 retrieve_graph：kb 意图下预取并推 data-graph
+        let prefetchedGraph: GraphChatHit | undefined;
+        const graphKeywords = resolveGraphKeywords(plan, question);
+        if (plan.allowGraph && graphKeywords.length) {
+          prefetchedGraph = await this.graph.retrieveForChat(
+            graphKeywords,
+            8,
+            accessFromUser(user),
+          );
+          writer.write({ type: 'data-graph', data: prefetchedGraph });
+        }
+
+        const agent = this.createTurnAgent(
+          user,
+          topK,
+          persistSources,
+          writer,
+          plan,
+          question,
+          prefetchedGraph,
+        );
 
         if (!agent) {
           writer.write({
@@ -422,8 +462,12 @@ export class AiStreamService {
 
         // ——— 3) 按意图挂工具的 Agent 流 → UI Message 流 ———
         const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+        const graphMsg = prefetchedGraph ? formatGraphSystemText(prefetchedGraph) : '';
         const human = [
           plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
+          plan.allowGraph && graphKeywords.length
+            ? `建议图谱实体名：${graphKeywords.join(' / ')}`
+            : '',
           `用户问题：${question}`,
         ]
           .filter(Boolean)
@@ -433,7 +477,12 @@ export class AiStreamService {
         // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
         const langchainStream = await agent.stream(
           {
-            messages: [...(memoryMsg ? [memoryMsg] : []), ...history, new HumanMessage(human)],
+            messages: [
+              ...(memoryMsg ? [memoryMsg] : []),
+              ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
+              ...history,
+              new HumanMessage(human),
+            ],
           },
           { streamMode: ['messages', 'tools'], recursionLimit: 40 },
         );
@@ -566,6 +615,19 @@ export class AiStreamService {
     }
     return history;
   }
+}
+
+/** 图谱预取关键词：优先路由 graphQueries；为空时从检索词按「的/与/和」拆短名 */
+function resolveGraphKeywords(plan: ChatRoutePlan, question: string): string[] {
+  if (plan.graphQueries.length) return plan.graphQueries;
+  const base = (plan.query || question).replace(/[？?。！!\s]+/g, '').trim();
+  if (!base) return [];
+  const parts = base
+    .split(/的|与|和|及|、/)
+    .map((s) => s.replace(/(是什么|怎么样|如何|怎么规定)$/g, '').trim())
+    .filter((s) => s.length >= 2 && s.length <= 12);
+  if (parts.length) return parts.slice(0, 6);
+  return [base.slice(0, 12)];
 }
 
 /** 命中写入 citations，并推 data-sources；context 给模型，excerpt 给前端。 */
