@@ -29,6 +29,12 @@ import { MailService } from 'src/tools/mail.service';
 import { WebSearchService } from 'src/tools/web-search.service';
 import z from 'zod';
 
+import { accessFromUser } from '../document/document-access';
+import {
+  formatGraphContext,
+  GraphBuildService,
+  type GraphChatHit,
+} from '../graph/graph-build.service';
 import { retrieveAndGrade, RetrieveEval } from './agentic-retrieve';
 import {
   excerptRagContent,
@@ -63,6 +69,7 @@ type KhUIMessage = UIMessage<
       allowWeb: boolean;
     };
     eval: RetrieveEval;
+    graph: GraphChatHit;
   }
 >;
 
@@ -82,8 +89,8 @@ export class AiStreamService {
     private readonly shortMemory: ChatShortMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly longMemory: ChatLongMemoryService,
-
     private readonly webSearchService: WebSearchService,
+    private readonly graph: GraphBuildService,
   ) {}
 
   /**
@@ -263,6 +270,40 @@ export class AiStreamService {
             schema: z.object({
               query: z.string().min(1).describe('搜索关键词'),
               count: z.number().int().min(1).max(10).optional().describe('条数，默认 5'),
+            }),
+          },
+        ),
+      );
+    }
+
+    if (plan.allowGraph) {
+      tools.push(
+        tool(
+          async (input: { query: string }) => {
+            const keywords = [
+              ...plan.graphQueries,
+              ...(input.query.trim() ? [input.query.trim()] : []),
+            ];
+            const hit = await this.graph.retrieveForChat(keywords, 8, accessFromUser(user));
+            writer.write({ type: 'data-graph', data: hit });
+            return {
+              query: hit.query,
+              entities: hit.entities,
+              relations: hit.relations,
+              documents: hit.documents,
+              context: formatGraphContext(hit),
+              insufficient: !hit.entities.length && !hit.relations.length,
+            };
+          },
+          {
+            name: 'retrieve_graph',
+            description:
+              '检索知识图谱实体与关系（仅当前用户可见文档抽取出的图）。' +
+              '入参必须是短实体名，多个用空格或 / 分隔，例如「发票 / 报销」，不要整句。' +
+              '首次检索知识库时必须与 retrieve_knowledge 在同一次并行调用。' +
+              '图谱只说明实体关系，不能当制度原文。',
+            schema: z.object({
+              query: z.string().min(1).describe('短实体名，多个用空格或 / 分隔'),
             }),
           },
         ),

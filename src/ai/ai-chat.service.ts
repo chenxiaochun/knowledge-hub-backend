@@ -6,6 +6,8 @@ import { ChatOpenAI } from '@langchain/openai';
 import { AuthUser } from 'src/auth/auth-user.interface';
 import { WebSearchResult, WebSearchService } from 'src/tools/web-search.service';
 
+import { accessFromUser } from '../document/document-access';
+import { formatGraphSystemText, GraphBuildService } from '../graph/graph-build.service';
 import { ChunkHit } from '../pipeline/types/pipeline.types';
 import { retrieveUntilRelevant } from './agentic-retrieve';
 import { ChatLongMemoryService } from './chat-long-memory.service';
@@ -28,6 +30,7 @@ export class AiChatService {
     config: ConfigService,
     private readonly retrieval: HybridRetrievalService,
     private readonly sessions: ChatSessionService,
+    private readonly graph: GraphBuildService,
     private readonly shortMemory: ChatShortMemoryService,
     private readonly queryRewrite: ChatQueryRewriteService,
     private readonly longMemory: ChatLongMemoryService,
@@ -63,27 +66,38 @@ export class AiChatService {
 
     const history = user ? await this.loadWorkingHistory(user.userId, sessionId) : [];
     const plan = await this.queryRewrite.classify(trimmed, history);
+    const access = user ? accessFromUser(user) : undefined;
+
+    const kbP = plan.allowRetrieve
+      ? retrieveUntilRelevant({
+          question: trimmed,
+          query: plan.query,
+          topK,
+          user,
+          retrieval: this.retrieval,
+          rewrite: this.queryRewrite,
+        })
+      : Promise.resolve(undefined);
+    const graphP =
+      plan.allowGraph && user && access && plan.graphQueries.length
+        ? this.graph.retrieveForChat(plan.graphQueries, 8, access)
+        : Promise.resolve(undefined);
+
+    const [retrieved, graphHit] = await Promise.all([kbP, graphP]);
 
     let hits = [] as ChunkHit[];
     let kbInsufficient = false;
     let searchQuery = plan.query || trimmed;
-
-    if (plan.allowRetrieve) {
-      const retrieved = await retrieveUntilRelevant({
-        question: trimmed,
-        query: plan.query,
-        topK,
-        user,
-        retrieval: this.retrieval,
-        rewrite: this.queryRewrite,
-      });
+    if (retrieved) {
       hits = retrieved.hits;
       kbInsufficient = !retrieved.eval.ok;
       searchQuery = retrieved.usedQuery || searchQuery;
     }
 
-    // 纯知识库意图且两轮仍不足：直接承认没有，不调 LLM、不联网
-    if (plan.intent === 'kb' && kbInsufficient) {
+    const hasGraph = Boolean(graphHit?.entities.length || graphHit?.relations.length);
+
+    // 仅当知识库不足且图谱也空时，才直接返回「没有相关内容」
+    if (plan.intent === 'kb' && kbInsufficient && !hasGraph) {
       const emptyAnswer = '知识库里没有相关内容。';
       return this.persistAndReturn({
         user,
@@ -104,13 +118,20 @@ export class AiChatService {
       ? await this.longMemory.search(user.userId, sessionId, trimmed)
       : { user: [] as string[], session: [] as string[] };
     const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+    const graphMsg = graphHit ? formatGraphSystemText(graphHit) : '';
 
     const userTurn = this.buildUserTurn(trimmed, hits, web);
     const response = await this.llm.invoke([
       new SystemMessage(
-        systemPromptForPlan(plan, Boolean(hits.length), Boolean(web?.items?.length)),
+        systemPromptForPlan(
+          plan,
+          Boolean(hits.length),
+          Boolean(web?.items?.length),
+          hasGraph,
+        ),
       ),
       ...(memoryMsg ? [memoryMsg] : []),
+      ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
       ...history,
       new HumanMessage(userTurn),
     ]);
@@ -225,7 +246,12 @@ export class AiChatService {
 }
 
 /** 非流式按意图拼系统提示（与流式 systemForPlan 语义对齐，但不谈工具名）。 */
-function systemPromptForPlan(plan: ChatRoutePlan, hasKb: boolean, hasWeb: boolean): string {
+function systemPromptForPlan(
+  plan: ChatRoutePlan,
+  hasKb: boolean,
+  hasWeb: boolean,
+  hasGraph: boolean,
+): string {
   let prompt =
     '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' + `本轮意图：${plan.label}。`;
 
@@ -243,16 +269,20 @@ function systemPromptForPlan(plan: ChatRoutePlan, hasKb: boolean, hasWeb: boolea
       '制度/流程/负责人等事实只根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
       '依据某条资料必须在句末标注 [1]、[2]。编号与资料列表一致，不要编造标题或链接。';
   }
+  if (hasGraph) {
+    prompt +=
+      '若有「本轮知识图谱」，只可用来理解实体关系与来源线索，不能当制度原文；制度以知识库检索资料为准。';
+  }
   if (hasWeb) {
     prompt += '联网结果用标题+链接说明，不要编造，不要把网页写成内部制度。';
   }
-  if (plan.intent === 'kb' && !hasKb) {
+  if (plan.intent === 'kb' && !hasKb && !hasGraph) {
     prompt += '知识库没有相关内容时明确说不知道，禁止编造制度。';
   }
   if (plan.intent === 'web' && !hasWeb) {
     prompt += '若没有可用的联网结果，明确说明无法查到，不要编造。';
   }
-  if (plan.intent === 'kb_then_web' && !hasKb && !hasWeb) {
+  if (plan.intent === 'kb_then_web' && !hasKb && !hasWeb && !hasGraph) {
     prompt += '知识库与联网均无可靠资料时，明确说不知道，不要编造。';
   }
   prompt += '资料不够就明确说不知道。';

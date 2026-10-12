@@ -87,6 +87,7 @@ export class UserService {
       avatar: user.avatar,
       roles: this.normalizeRoles(fallbackRoles),
       permissions,
+      teamIds: [],
     };
   }
 

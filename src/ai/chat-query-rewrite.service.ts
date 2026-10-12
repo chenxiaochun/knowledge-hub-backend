@@ -49,8 +49,10 @@ export type ChatRoutePlan = {
   label: string;
   /** 消解指代后的独立短查询，给 RAG / 联网用 */
   query: string;
+  graphQueries: string[];
   /** kb / kb_then_web 才挂 retrieve_knowledge */
   allowRetrieve: boolean;
+  allowGraph: boolean;
   /** web / kb_then_web 才挂 web_search */
   allowWeb: boolean;
 };
@@ -91,6 +93,10 @@ const routeSchema = z.object({
       'chitchat=寒暄闲聊；profile=只改用户自己的名字/偏好；kb=制度流程岗位系统；web=只要公开时效信息；kb_then_web=先查库不够再搜网',
     ),
   standalone_query: z.string().describe('可独立检索的一句中文短查询，消解指代。闲聊/偏好可原样'),
+  graph_queries: z
+    .array(z.string())
+    .optional()
+    .describe('图谱短实体名：2～6 个、每个 2～8 字。闲聊/偏好/纯联网必须空数组'),
 });
 
 /** 检索切题评估的结构化输出 */
@@ -176,7 +182,13 @@ const ROUTE_PROMPT =
   '- 输出不要解释\n' +
   '\n' +
   '请严格以 JSON 对象格式输出，字段：intent（string）、standalone_query（string）。' +
-  '不要 markdown 代码块，不要额外解释。';
+  '不要 markdown 代码块，不要额外解释。' +
+  '## graph_queries\n' +
+  '- 只在 kb / kb_then_web 填写，其他意图必须空数组\n' +
+  '- 每个词 2～4 个字的实体短名（人/岗/制度对象），不要整句、不要问号\n' +
+  '- 必须拆开：发票如何报销 → 发票、报销\n' +
+  '- 可补 1 个同域短名（报销可带差旅）\n' +
+  '- 禁止：流程、要求、办法、如何、怎么、什么、是什么\n';
 
 @Injectable()
 export class ChatQueryRewriteService {
@@ -227,7 +239,7 @@ export class ChatQueryRewriteService {
         ]),
       );
       const query = result.standalone_query.trim() || question;
-      const plan = this.toPlan(result.intent, query);
+      const plan = this.toPlan(result.intent, query, result.graph_queries);
       this.logger.log(`意图：${plan.intent} query=${plan.query.slice(0, 80)}`);
       return plan;
     } catch (error) {
@@ -336,13 +348,15 @@ export class ChatQueryRewriteService {
   }
 
   /** 意图 → 工具开关。识别失败时 classify 会落到 kb，避免内部问题漏检。 */
-  private toPlan(intent: ChatIntent, query: string): ChatRoutePlan {
+  private toPlan(intent: ChatIntent, query: string, graphQueries?: string[]): ChatRoutePlan {
     const kb = intent === 'kb' || intent === 'kb_then_web';
     return {
       intent,
       label: INTENT_LABEL[intent],
       query,
+      graphQueries: kb ? (graphQueries ?? []).map((q) => q.trim()).filter(Boolean) : [],
       allowRetrieve: kb,
+      allowGraph: kb,
       allowWeb: intent === 'web' || intent === 'kb_then_web',
     };
   }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { GraphModule } from 'src/graph/graph.module';
 import { PipelineModule } from 'src/pipeline/pipeline.module';
 import { SpeechModule } from 'src/speech/speech.module';
 import { ToolsModule } from 'src/tools/tools.module';
@@ -20,6 +21,7 @@ import { RerankerService } from './reranker.service';
 @Module({
   imports: [
     PipelineModule,
+    GraphModule,
     TypeOrmModule.forFeature([AiSessionEntity, AiMessageEntity]),
     ToolsModule,
     SpeechModule,
