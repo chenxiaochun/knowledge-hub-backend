@@ -67,6 +67,8 @@ type KhUIMessage = UIMessage<
       query: string;
       allowRetrieve: boolean;
       allowWeb: boolean;
+      allowGraph: boolean;
+      graphQueries: string[];
     };
     eval: RetrieveEval;
     graph: GraphChatHit;
@@ -401,6 +403,8 @@ export class AiStreamService {
             query: plan.query,
             allowRetrieve: plan.allowRetrieve,
             allowWeb: plan.allowWeb,
+            allowGraph: plan.allowGraph,
+            graphQueries: plan.graphQueries,
           },
         });
 
