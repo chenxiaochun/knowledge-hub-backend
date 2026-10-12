@@ -16,6 +16,32 @@ export class ChatImageDto {
   size?: string;
 }
 
+/** 图谱命中实体（避免内联对象类型导致 Swagger 误判循环依赖） */
+export class ChatGraphEntityDto {
+  name!: string;
+  type!: string | null;
+  description!: string | null;
+}
+
+export class ChatGraphRelationDto {
+  source!: string;
+  relation!: string;
+  target!: string;
+}
+
+export class ChatGraphDocumentDto {
+  documentId!: string;
+  title!: string;
+}
+
+/** 助手消息中的本轮图谱命中（GET messages 的 graph，前端可转为 data-graph part） */
+export class ChatGraphDto {
+  query!: string;
+  entities!: ChatGraphEntityDto[];
+  relations!: ChatGraphRelationDto[];
+  documents!: ChatGraphDocumentDto[];
+}
+
 /** POST /ai/chat 响应 */
 export class ChatResponseDto {
   sessionId!: string | null;

@@ -109,6 +109,8 @@ export class AiStreamService {
     question: string,
     /** 意图阶段已预取的图谱；工具再调时复用，避免漏推 data-graph */
     prefetchedGraph?: GraphChatHit,
+    /** 落库用：工具路径若重新查图则更新 */
+    onGraphHit?: (hit: GraphChatHit) => void,
   ) {
     if (!this.llmTool) return undefined;
     const retrieval = this.retrieval;
@@ -307,6 +309,7 @@ export class AiStreamService {
             ];
             const hit = await graphService.retrieveForChat(keywords, 8, accessFromUser(user));
             graphFetched = true;
+            onGraphHit?.(hit);
             writer.write({ type: 'data-graph', data: hit });
             return {
               query: hit.query,
@@ -360,6 +363,7 @@ export class AiStreamService {
 
     let persistSessionId = dto.sessionId;
     let persistSources: ChatSourceDto[] = [];
+    let persistGraph: GraphChatHit | null = null;
     let workingHistory: BaseMessage[] = [];
 
     // TTS 需前端先用同一 sessionId 连 WS；新建会话时提前落库拿到 id
@@ -438,6 +442,7 @@ export class AiStreamService {
             8,
             accessFromUser(user),
           );
+          persistGraph = prefetchedGraph;
           writer.write({ type: 'data-graph', data: prefetchedGraph });
         }
 
@@ -449,6 +454,9 @@ export class AiStreamService {
           plan,
           question,
           prefetchedGraph,
+          (hit) => {
+            persistGraph = hit;
+          },
         );
 
         if (!agent) {
@@ -519,6 +527,7 @@ export class AiStreamService {
             finalAnswer,
             sources,
             images,
+            persistGraph,
           );
           await this.shortMemory.appendTurn(
             user.userId,

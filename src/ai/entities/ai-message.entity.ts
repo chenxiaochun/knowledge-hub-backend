@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
-import type { ChatImageDto, ChatSourceDto } from '../dto/chat-response.dto';
+import type { ChatGraphDto, ChatImageDto, ChatSourceDto } from '../dto/chat-response.dto';
 
 import { bigintTransformer } from '../../common/transformers/bigint.transformer';
 
@@ -29,6 +29,10 @@ export class AiMessageEntity {
   /** 仅 assistant：本轮 generate_image 产出的图片；user 行一般为 null */
   @Column({ type: 'jsonb', nullable: true })
   images?: ChatImageDto[] | null;
+
+  /** 仅 assistant：本轮图谱检索命中；user 行一般为 null */
+  @Column({ type: 'jsonb', nullable: true })
+  graph?: ChatGraphDto | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt!: Date;

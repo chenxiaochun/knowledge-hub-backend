@@ -344,16 +344,17 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * 对话 RAG：按短实体名找可见实体，再查这些实体之间的关系与来源文档。
-   * 只做相等 / 前缀 / 后缀，避免「发票」CONTAINS 命中整篇制度标题。
+   * 匹配：相等 / 前后缀 / 双向包含（仅实体名，不扫文档标题）；关键词会剥「制度」等后缀扩词干。
    */
   async retrieveForChat(
     keyword: string | string[],
     limit = 8,
     scope?: DocumentAccessScope,
   ): Promise<GraphChatHit> {
-    const kws = splitGraphKeywords(keyword);
+    const rawKws = splitGraphKeywords(keyword);
+    const kws = expandGraphKeywords(rawKws);
     const empty: GraphChatHit = {
-      query: kws.join(' / '),
+      query: rawKws.join(' / ') || kws.join(' / '),
       entities: [],
       relations: [],
       documents: [],
@@ -375,10 +376,18 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
         toLower(e.name) = toLower(kw)
         OR toLower(replace(replace(e.name, '《', ''), '》', '')) STARTS WITH toLower(kw)
         OR toLower(e.name) ENDS WITH toLower(kw)
+        OR (size(kw) >= 2 AND (
+          toLower(e.name) CONTAINS toLower(kw)
+          OR (size(e.name) >= 2 AND toLower(kw) CONTAINS toLower(e.name))
+        ))
         OR any(a IN coalesce(e.aliases, []) WHERE
           toLower(toString(a)) = toLower(kw)
           OR toLower(toString(a)) STARTS WITH toLower(kw)
           OR toLower(toString(a)) ENDS WITH toLower(kw)
+          OR (size(kw) >= 2 AND (
+            toLower(toString(a)) CONTAINS toLower(kw)
+            OR toLower(kw) CONTAINS toLower(toString(a))
+          ))
         )
       )
       AND (
@@ -393,7 +402,8 @@ export class GraphBuildService implements OnModuleInit, OnModuleDestroy {
           WHEN any(kw IN $kws WHERE toLower(e.name) = toLower(kw)) THEN 0
           WHEN any(kw IN $kws WHERE toLower(e.name) STARTS WITH toLower(kw)
             OR toLower(e.name) ENDS WITH toLower(kw)) THEN 1
-          ELSE 2
+          WHEN any(kw IN $kws WHERE size(kw) >= 2 AND toLower(e.name) CONTAINS toLower(kw)) THEN 2
+          ELSE 3
         END,
         size(e.name)
       LIMIT $limit
@@ -832,15 +842,12 @@ export function formatGraphSystemText(hit: GraphChatHit): string {
   );
 }
 
-/** 模型常把「发票 报销」写成一项；图匹配要拆成短名
- * 拆成短名：把长词拆成短词，避免模型把「发票 报销」写成一项。
- */
+/** 模型常把「发票 报销」写成一项；图匹配要拆成短名 */
 function splitGraphKeywords(keyword: string | string[]): string[] {
   const seen = new Set<string>();
   const kws: string[] = [];
   const parts = Array.isArray(keyword) ? keyword : [keyword];
   for (const part of parts) {
-    // 拆分词组：把长词拆成短词，避免模型把「发票 报销」写成一项。
     for (const raw of String(part).split(/[\s/]+/)) {
       const kw = raw.trim();
       if (!kw) continue;
@@ -851,4 +858,21 @@ function splitGraphKeywords(keyword: string | string[]): string[] {
     }
   }
   return kws;
+}
+
+/** 「考勤制度」→ 再补「考勤」，对齐库内「考勤管理制度」等命名 */
+function expandGraphKeywords(kws: string[]): string[] {
+  const suffix =
+    /(?:管理制度|管理办法|管理规定|管理要求|休假管理办法|制度|办法|规定|要求|流程|系统)$/;
+  const seen = new Set(kws.map((k) => k.toLowerCase()));
+  const out = [...kws];
+  for (const kw of kws) {
+    const stem = kw.replace(suffix, '').trim();
+    if (stem.length < 2) continue;
+    const key = stem.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(stem);
+  }
+  return out;
 }

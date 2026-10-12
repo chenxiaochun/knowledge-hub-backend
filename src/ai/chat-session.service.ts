@@ -3,7 +3,7 @@ import { InjectEntityManager } from '@nestjs/typeorm';
 
 import { EntityManager } from 'typeorm';
 
-import type { ChatImageDto, ChatSourceDto } from './dto/chat-response.dto';
+import type { ChatGraphDto, ChatImageDto, ChatSourceDto } from './dto/chat-response.dto';
 
 import { nextSnowflakeId } from '../common/snowflake-id';
 import {
@@ -74,6 +74,7 @@ export class ChatSessionService {
     answer: string,
     sources: ChatSourceDto[],
     images: ChatImageDto[] = [],
+    graph: ChatGraphDto | null = null,
   ) {
     const session = sessionId
       ? await this.getOwned(userId, sessionId)
@@ -98,6 +99,7 @@ export class ChatSessionService {
       content: answer,
       sources: sources.length ? sources : null,
       images: images.length ? images : null,
+      graph: graph ?? null,
     });
     await this.em.save([userMsg, assistantMsg]);
     return session;

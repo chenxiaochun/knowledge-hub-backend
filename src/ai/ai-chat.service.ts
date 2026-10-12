@@ -15,7 +15,7 @@ import { dbRowsToMessages } from './chat-memory.util';
 import { ChatQueryRewriteService, ChatRoutePlan } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
-import { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
+import { ChatGraphDto, ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 
 const EXCERPT_LEN = 200;
@@ -106,6 +106,7 @@ export class AiChatService {
         question: trimmed,
         answer: emptyAnswer,
         sources: [],
+        graph: graphHit ?? null,
       });
     }
 
@@ -147,6 +148,7 @@ export class AiChatService {
       question: trimmed,
       answer,
       sources,
+      graph: graphHit ?? null,
     });
   }
 
@@ -157,10 +159,19 @@ export class AiChatService {
     question: string;
     answer: string;
     sources: ChatSourceDto[];
+    graph?: ChatGraphDto | null;
   }): Promise<ChatResponseDto> {
-    const { user, sessionId, history, question, answer, sources } = params;
+    const { user, sessionId, history, question, answer, sources, graph = null } = params;
     const session = user
-      ? await this.sessions.appendTurn(user.userId, sessionId, question, answer, sources)
+      ? await this.sessions.appendTurn(
+          user.userId,
+          sessionId,
+          question,
+          answer,
+          sources,
+          [],
+          graph,
+        )
       : null;
 
     if (user && session) {
