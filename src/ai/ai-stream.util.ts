@@ -55,6 +55,74 @@ export function excerptRagContent(content: string, maxLen = RAG_EXCERPT_LEN): st
   return `${text.slice(0, maxLen)}...`;
 }
 
+/** 客户端断开 HTTP 时 abort；writableFinished 表示服务端已正常写完 */
+export function bindClientAbort(res: {
+  writableFinished?: boolean;
+  on: (event: 'close', listener: () => void) => void;
+  req?: { on?: (event: 'aborted', listener: () => void) => void };
+}): AbortController {
+  const abort = new AbortController();
+  const trip = () => {
+    if (!abort.signal.aborted) abort.abort();
+  };
+  res.on('close', () => {
+    if (!res.writableFinished) trip();
+  });
+  res.req?.on?.('aborted', trip);
+  return abort;
+}
+
+/**
+ * 客户端 abort 时 cancel 上游 ReadableStream，触发 AI SDK onFinish(isCancelled)
+ * 并打断 writeToServerResponse 的读循环。
+ */
+export function bindAbortToReadableStream<T>(
+  stream: ReadableStream<T>,
+  signal: AbortSignal,
+): ReadableStream<T> {
+  const reader = stream.getReader();
+  const onAbort = () => {
+    void reader.cancel(signal.reason);
+  };
+  if (signal.aborted) {
+    void reader.cancel(signal.reason);
+  } else {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          signal.removeEventListener('abort', onAbort);
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        signal.removeEventListener('abort', onAbort);
+        if (signal.aborted) {
+          controller.close();
+          return;
+        }
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      signal.removeEventListener('abort', onAbort);
+      return reader.cancel(reason);
+    },
+  });
+}
+
+export function formatInterruptedAnswer(answer: string, cancelled: boolean): string {
+  const text = answer.trim();
+  if (!text) return cancelled ? '（已中断）' : '未能生成回答。';
+  if (cancelled && !text.includes('（已中断）')) return `${text}\n\n（已中断）`;
+  return text;
+}
+
 /** 从流式结束时的 assistant parts 提取 generate_image 成功结果，供落库 images */
 export function extractGeneratedImagesFromParts(
   parts: UIMessage['parts'] | undefined,

@@ -39,8 +39,11 @@ import {
 } from '../graph/graph-build.service';
 import { retrieveAndGrade, RetrieveEval } from './agentic-retrieve';
 import {
+  bindAbortToReadableStream,
+  bindClientAbort,
   excerptRagContent,
   extractGeneratedImagesFromParts,
+  formatInterruptedAnswer,
   lastUserText,
   mapReasoningStream,
 } from './ai-stream.util';
@@ -111,6 +114,8 @@ export class AiStreamService {
     prefetchedGraph?: GraphChatHit,
     /** 落库用：工具路径若重新查图则更新 */
     onGraphHit?: (hit: GraphChatHit) => void,
+    /** 客户端停止时中止后续工具 */
+    signal?: AbortSignal,
   ) {
     if (!this.llmTool) return undefined;
     const retrieval = this.retrieval;
@@ -118,6 +123,7 @@ export class AiStreamService {
     const search = this.webSearchService;
     const graphService = this.graph;
     const logger = this.logger;
+    const throwIfStopped = () => signal?.throwIfAborted();
     const tools: StructuredToolInterface[] = [];
     let retrieveCount = 0;
     let rewriteCount = 0;
@@ -129,6 +135,7 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { query: string; topK?: number }) => {
+            throwIfStopped();
             if (retrieveCount >= 2) {
               logger.warn(`retrieve_knowledge 已达上限仍被调用：query=${input.query.slice(0, 60)}`);
               return {
@@ -194,6 +201,7 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { focus?: string }) => {
+            throwIfStopped();
             if (!lastRetrieve) {
               return { error: '请先调用 retrieve_knowledge' };
             }
@@ -258,6 +266,7 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { query: string; count?: number }) => {
+            throwIfStopped();
             if (webSearchCount >= 1) {
               logger.warn(`web_search 已达上限仍被调用：query=${input.query.slice(0, 60)}`);
               return {
@@ -290,6 +299,7 @@ export class AiStreamService {
       tools.push(
         tool(
           async (input: { query: string }) => {
+            throwIfStopped();
             // 意图阶段已预取过则直接复用，避免模型漏调导致前端无图谱卡
             if (prefetchedGraph && graphFetched) {
               return {
@@ -360,11 +370,24 @@ export class AiStreamService {
     const question = lastUserText(dto.messages);
     const topK = dto.topK ?? 5;
     const enableTts = dto.enableTts === true;
+    const abort = bindClientAbort(res);
+    const { signal } = abort;
 
     let persistSessionId = dto.sessionId;
     let persistSources: ChatSourceDto[] = [];
     let persistGraph: GraphChatHit | null = null;
     let workingHistory: BaseMessage[] = [];
+
+    signal.addEventListener(
+      'abort',
+      () => {
+        this.logger.log('客户端停止/断流，取消本轮流式对话');
+        if (persistSessionId) {
+          this.ttsPublisher.error(persistSessionId, '客户端取消');
+        }
+      },
+      { once: true },
+    );
 
     // TTS 需前端先用同一 sessionId 连 WS；新建会话时提前落库拿到 id
     if (enableTts && question) {
@@ -393,121 +416,136 @@ export class AiStreamService {
           return;
         }
 
-        // ——— 1) 会话 ———
-        if (!persistSessionId) {
-          const session = dto.sessionId
-            ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
-            : await this.sessions.create(user.userId, {
-                title: titleFromQuestion(question),
-              });
-          persistSessionId = session.id;
-        }
-        writer.write({
-          type: 'data-session',
-          data: { sessionId: persistSessionId },
-        });
+        try {
+          signal.throwIfAborted();
 
-        const sessionId = persistSessionId!;
-
-        // ——— 2) 历史 + 意图路由（检索改由 Agent 工具环调度）———
-        const history = await this.loadWorkingHistory(user.userId, sessionId);
-        workingHistory = history;
-
-        writer.write({
-          type: 'data-status',
-          data: { stage: 'intent', text: '正在识别意图…' },
-        });
-        const plan = await this.queryRewrite.classify(question, history);
-        writer.write({
-          type: 'data-intent',
-          data: {
-            intent: plan.intent,
-            label: plan.label,
-            query: plan.query,
-            allowRetrieve: plan.allowRetrieve,
-            allowWeb: plan.allowWeb,
-            allowGraph: plan.allowGraph,
-            graphQueries: plan.graphQueries,
-          },
-        });
-
-        const memHits = await this.longMemory.search(user.userId, sessionId, question);
-
-        // 图谱不依赖模型是否调 retrieve_graph：kb 意图下预取并推 data-graph
-        let prefetchedGraph: GraphChatHit | undefined;
-        const graphKeywords = resolveGraphKeywords(plan, question);
-        if (plan.allowGraph && graphKeywords.length) {
-          prefetchedGraph = await this.graph.retrieveForChat(
-            graphKeywords,
-            8,
-            accessFromUser(user),
-          );
-          persistGraph = prefetchedGraph;
-          writer.write({ type: 'data-graph', data: prefetchedGraph });
-        }
-
-        const agent = this.createTurnAgent(
-          user,
-          topK,
-          persistSources,
-          writer,
-          plan,
-          question,
-          prefetchedGraph,
-          (hit) => {
-            persistGraph = hit;
-          },
-        );
-
-        if (!agent) {
+          // ——— 1) 会话 ———
+          if (!persistSessionId) {
+            const session = dto.sessionId
+              ? await this.sessions.touchTitle(user.userId, dto.sessionId, question)
+              : await this.sessions.create(user.userId, {
+                  title: titleFromQuestion(question),
+                });
+            persistSessionId = session.id;
+          }
           writer.write({
-            type: 'error',
-            errorText: '未配置 LLM Key，无法生成回答',
+            type: 'data-session',
+            data: { sessionId: persistSessionId },
           });
-          writer.write({ type: 'finish' });
-          return;
-        }
 
-        // ——— 3) 按意图挂工具的 Agent 流 → UI Message 流 ———
-        const memoryMsg = this.longMemory.buildSystemMessage(memHits);
-        const graphMsg = prefetchedGraph ? formatGraphSystemText(prefetchedGraph) : '';
-        const human = [
-          plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
-          plan.allowGraph && graphKeywords.length
-            ? `建议图谱实体名：${graphKeywords.join(' / ')}`
-            : '',
-          `用户问题：${question}`,
-        ]
-          .filter(Boolean)
-          .join('\n\n');
+          const sessionId = persistSessionId!;
+          signal.throwIfAborted();
 
-        // recursionLimit：LangGraph 超步数（默认 25）。beforeModel 摘要会额外占步，
-        // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
-        const langchainStream = await agent.stream(
-          {
-            messages: [
-              ...(memoryMsg ? [memoryMsg] : []),
-              ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
-              ...history,
-              new HumanMessage(human),
-            ],
-          },
-          { streamMode: ['messages', 'tools'], recursionLimit: 40 },
-        );
+          // ——— 2) 历史 + 意图路由（检索改由 Agent 工具环调度）———
+          const history = await this.loadWorkingHistory(user.userId, sessionId);
+          workingHistory = history;
+          signal.throwIfAborted();
 
-        writer.merge(
-          toUIMessageStream(mapReasoningStream(langchainStream) as never, {
-            sendStart: false,
-            sendFinish: false,
-            onError: (error) => {
-              this.logger.warn(`LangChain 流失败：${error.message}`);
+          writer.write({
+            type: 'data-status',
+            data: { stage: 'intent', text: '正在识别意图…' },
+          });
+          const plan = await this.queryRewrite.classify(question, history);
+          signal.throwIfAborted();
+          writer.write({
+            type: 'data-intent',
+            data: {
+              intent: plan.intent,
+              label: plan.label,
+              query: plan.query,
+              allowRetrieve: plan.allowRetrieve,
+              allowWeb: plan.allowWeb,
+              allowGraph: plan.allowGraph,
+              graphQueries: plan.graphQueries,
             },
-          }) as never,
-        );
+          });
+
+          const memHits = await this.longMemory.search(user.userId, sessionId, question);
+          signal.throwIfAborted();
+
+          // 图谱不依赖模型是否调 retrieve_graph：kb 意图下预取并推 data-graph
+          let prefetchedGraph: GraphChatHit | undefined;
+          const graphKeywords = resolveGraphKeywords(plan, question);
+          if (plan.allowGraph && graphKeywords.length) {
+            prefetchedGraph = await this.graph.retrieveForChat(
+              graphKeywords,
+              8,
+              accessFromUser(user),
+            );
+            signal.throwIfAborted();
+            persistGraph = prefetchedGraph;
+            writer.write({ type: 'data-graph', data: prefetchedGraph });
+          }
+
+          const agent = this.createTurnAgent(
+            user,
+            topK,
+            persistSources,
+            writer,
+            plan,
+            question,
+            prefetchedGraph,
+            (hit) => {
+              persistGraph = hit;
+            },
+            signal,
+          );
+
+          if (!agent) {
+            writer.write({
+              type: 'error',
+              errorText: '未配置 LLM Key，无法生成回答',
+            });
+            writer.write({ type: 'finish' });
+            return;
+          }
+
+          // ——— 3) 按意图挂工具的 Agent 流 → UI Message 流 ———
+          const memoryMsg = this.longMemory.buildSystemMessage(memHits);
+          const graphMsg = prefetchedGraph ? formatGraphSystemText(prefetchedGraph) : '';
+          const human = [
+            plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
+            plan.allowGraph && graphKeywords.length
+              ? `建议图谱实体名：${graphKeywords.join(' / ')}`
+              : '',
+            `用户问题：${question}`,
+          ]
+            .filter(Boolean)
+            .join('\n\n');
+
+          // recursionLimit：LangGraph 超步数（默认 25）。beforeModel 摘要会额外占步，
+          // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
+          const langchainStream = await agent.stream(
+            {
+              messages: [
+                ...(memoryMsg ? [memoryMsg] : []),
+                ...(graphMsg ? [new SystemMessage(graphMsg)] : []),
+                ...history,
+                new HumanMessage(human),
+              ],
+            },
+            { streamMode: ['messages', 'tools'], recursionLimit: 40, signal },
+          );
+
+          writer.merge(
+            toUIMessageStream(mapReasoningStream(langchainStream) as never, {
+              sendStart: false,
+              sendFinish: false,
+              onError: (error) => {
+                if (signal.aborted) return;
+                this.logger.warn(`LangChain 流失败：${error.message}`);
+              },
+            }) as never,
+          );
+        } catch (error) {
+          if (signal.aborted) return;
+          throw error;
+        }
       },
 
-      // ——— 4) 流结束后落库（课 16）———
-      onFinish: async ({ responseMessage }) => {
+      // ——— 4) 流结束后落库（含用户停止：保存半截答案，便于「继续」）———
+      onFinish: async ({ responseMessage, isAborted, isCancelled }) => {
+        const cancelled = Boolean(isAborted || isCancelled || signal.aborted);
         const parts = responseMessage?.parts ?? [];
         const answer = parts
           .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -518,7 +556,7 @@ export class AiStreamService {
         const sources = used.size ? persistSources.filter((s) => used.has(s.index)) : [];
         const images = extractGeneratedImagesFromParts(parts);
         if (!question || !persistSessionId) return;
-        const finalAnswer = answer || '未能生成回答。';
+        const finalAnswer = formatInterruptedAnswer(answer, cancelled);
         try {
           await this.sessions.appendTurn(
             user.userId,
@@ -536,7 +574,15 @@ export class AiStreamService {
             question,
             finalAnswer,
           );
-          void this.longMemory.rememberTurn(user.userId, persistSessionId, question, finalAnswer);
+          // 中断轮次不写长记忆，避免半截内容污染 Mem0
+          if (!cancelled) {
+            void this.longMemory.rememberTurn(
+              user.userId,
+              persistSessionId,
+              question,
+              finalAnswer,
+            );
+          }
         } catch (error) {
           this.logger.warn(`流式对话落库失败：${error instanceof Error ? error.message : error}`);
         }
@@ -548,6 +594,7 @@ export class AiStreamService {
       stream = this.ttsPublisher.pipeUiMessageStream(stream, persistSessionId, question);
     }
 
+    stream = bindAbortToReadableStream(stream, signal);
     await pipeUIMessageStreamToResponse({ response: res, stream });
   }
 
