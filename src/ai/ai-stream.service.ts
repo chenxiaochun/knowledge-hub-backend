@@ -52,6 +52,7 @@ import { dbRowsToMessages } from './chat-memory.util';
 import { ChatQueryRewriteService, ChatRoutePlan } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
+import { applyMermaidDiagramPlan, wantsMermaidDiagram } from './diagram-intent';
 import { ChatImageDto, ChatSourceDto } from './dto/chat-response.dto';
 import { ChatStreamDto } from './dto/chat-stream.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
@@ -116,6 +117,8 @@ export class AiStreamService {
     onGraphHit?: (hit: GraphChatHit) => void,
     /** 客户端停止时中止后续工具 */
     signal?: AbortSignal,
+    /** 用户要 mermaid 流程图（非知识图谱） */
+    wantMermaid = false,
   ) {
     if (!this.llmTool) return undefined;
     const retrieval = this.retrieval;
@@ -350,7 +353,7 @@ export class AiStreamService {
     return createAgent({
       model: this.llmTool,
       tools,
-      systemPrompt: systemForPlan(plan),
+      systemPrompt: systemForPlan(plan, wantMermaid),
       middleware: [
         summarizationMiddleware({
           model: this.llmTool,
@@ -445,7 +448,10 @@ export class AiStreamService {
             type: 'data-status',
             data: { stage: 'intent', text: '正在识别意图…' },
           });
-          const plan = await this.queryRewrite.classify(question, history);
+          const rawPlan = await this.queryRewrite.classify(question, history);
+          // 「画 mermaid 流程图」≠ 知识图谱：关掉图谱预取/工具，避免只出图谱卡
+          const plan = applyMermaidDiagramPlan(rawPlan, question);
+          const wantMermaid = wantsMermaidDiagram(question);
           signal.throwIfAborted();
           writer.write({
             type: 'data-intent',
@@ -489,6 +495,7 @@ export class AiStreamService {
               persistGraph = hit;
             },
             signal,
+            wantMermaid,
           );
 
           if (!agent) {
@@ -507,6 +514,9 @@ export class AiStreamService {
             plan.allowRetrieve ? `建议检索词（可按问题改写后再检索）：${plan.query}` : '',
             plan.allowGraph && graphKeywords.length
               ? `建议图谱实体名：${graphKeywords.join(' / ')}`
+              : '',
+            wantMermaid
+              ? '作答要求：必须输出完整 ```mermaid 代码块（flowchart），不要只出知识图谱、不要 generate_image。'
               : '',
             `用户问题：${question}`,
           ]
@@ -738,7 +748,7 @@ function packRetrieveResult(
 }
 
 /** Agent 循环：检索 → 评估 → 不足则改写再检索 → 仍不足才联网 → 作答。 */
-function systemForPlan(plan: ChatRoutePlan) {
+function systemForPlan(plan: ChatRoutePlan, wantMermaid = false) {
   let prompt =
     '你是企业知识库助手，必须按 Agentic RAG 循环作答，不要跳步。' +
     '结合对话历史和记忆里的用户背景，但制度/流程以本轮检索资料为准。' +
@@ -775,8 +785,15 @@ function systemForPlan(plan: ChatRoutePlan) {
   if (!plan.allowWeb) {
     prompt += '不要调用 web_search。';
   }
-  prompt +=
-    '用户明确要求发送邮件时调用邮件工具；明确要求生成配图、海报、示意图时调用 generate_image，并在回复中给出返回的 url。' +
-    '不要主动发邮件或生图。资料不够就明确说不知道。';
+  if (wantMermaid) {
+    prompt +=
+      '用户要求流程图/mermaid：检索后必须在回复中输出完整的 markdown 代码块，语言标记为 mermaid，内容为 flowchart；' +
+      '可附简短文字说明与 [n] 引用；禁止调用 retrieve_graph、generate_image；不要用「知识图谱」卡片代替流程图。';
+  } else {
+    prompt +=
+      '用户明确要求发送邮件时调用邮件工具；明确要求生成配图、海报、位图插画时调用 generate_image，并在回复中给出返回的 url。' +
+      '不要主动发邮件或生图。';
+  }
+  prompt += '资料不够就明确说不知道。';
   return prompt;
 }

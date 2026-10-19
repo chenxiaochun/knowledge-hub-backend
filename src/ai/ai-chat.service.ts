@@ -15,6 +15,7 @@ import { dbRowsToMessages } from './chat-memory.util';
 import { ChatQueryRewriteService, ChatRoutePlan } from './chat-query-rewrite.service';
 import { ChatSessionService } from './chat-session.service';
 import { ChatShortMemoryService } from './chat-short-memory.service';
+import { applyMermaidDiagramPlan, wantsMermaidDiagram } from './diagram-intent';
 import { ChatGraphDto, ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto';
 import { HybridRetrievalService } from './hybrid-retrieval.service';
 
@@ -65,7 +66,11 @@ export class AiChatService {
     }
 
     const history = user ? await this.loadWorkingHistory(user.userId, sessionId) : [];
-    const plan = await this.queryRewrite.classify(trimmed, history);
+    const plan = applyMermaidDiagramPlan(
+      await this.queryRewrite.classify(trimmed, history),
+      trimmed,
+    );
+    const wantMermaid = wantsMermaidDiagram(trimmed);
     const access = user ? accessFromUser(user) : undefined;
 
     const kbP = plan.allowRetrieve
@@ -129,6 +134,7 @@ export class AiChatService {
           Boolean(hits.length),
           Boolean(web?.items?.length),
           hasGraph,
+          wantMermaid,
         ),
       ),
       ...(memoryMsg ? [memoryMsg] : []),
@@ -262,6 +268,7 @@ function systemPromptForPlan(
   hasKb: boolean,
   hasWeb: boolean,
   hasGraph: boolean,
+  wantMermaid = false,
 ): string {
   let prompt =
     '你是企业知识库助手。结合对话历史与长期记忆理解用户意图。' + `本轮意图：${plan.label}。`;
@@ -280,9 +287,13 @@ function systemPromptForPlan(
       '制度/流程/负责人等事实只根据本轮「检索到的资料」回答，不要用记忆替代文档。' +
       '依据某条资料必须在句末标注 [1]、[2]。编号与资料列表一致，不要编造标题或链接。';
   }
-  if (hasGraph) {
+  if (hasGraph && !wantMermaid) {
     prompt +=
       '若有「本轮知识图谱」，只可用来理解实体关系与来源线索，不能当制度原文；制度以知识库检索资料为准。';
+  }
+  if (wantMermaid) {
+    prompt +=
+      '用户要求流程图/mermaid：必须输出完整 ```mermaid 代码块（flowchart），内容依据检索资料；不要用知识图谱代替。';
   }
   if (hasWeb) {
     prompt += '联网结果用标题+链接说明，不要编造，不要把网页写成内部制度。';
