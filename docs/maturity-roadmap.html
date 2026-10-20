@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge Hub · 成熟度改进建议</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.4rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.92rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 260px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav .nav-group {
+      padding: 0.65rem 1.1rem 0.25rem;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+      color: #94a3b8; text-transform: uppercase;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.4rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.86rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 920px; }
+    section { margin-bottom: 2.25rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.28rem; color: #0f172a; }
+    h3 { margin: 0 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    p { margin: 0.5rem 0; }
+    ul { margin: 0.5rem 0; padding-left: 1.35rem; }
+    li { margin: 0.3rem 0; }
+    code {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .item {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 1rem 1.15rem; margin: 1rem 0;
+    }
+    .item h3 { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .badge {
+      display: inline-block; font-size: 0.72rem; padding: 0.12rem 0.45rem;
+      border-radius: 4px; font-weight: 700; letter-spacing: 0.02em;
+    }
+    .badge.p0 { background: #fee2e2; color: #991b1b; }
+    .badge.p1 { background: #ffedd5; color: #9a3412; }
+    .badge.p2 { background: #e0e7ff; color: #3730a3; }
+    .label {
+      display: inline-block; font-size: 0.78rem; font-weight: 700;
+      color: #64748b; margin-top: 0.65rem; margin-bottom: 0.2rem;
+    }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.12rem 0.45rem; border-radius: 4px; font-size: 0.82rem; margin: 0.15rem 0.2rem 0.15rem 0;
+      font-family: "SF Mono", Consolas, monospace;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: relative; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Knowledge Hub · 成熟度改进建议</h1>
+    <p>
+      功能演示 → 可长期运维的企业系统 · 记录日期 2026-10-20 ·
+      <a href="./architecture/knowledge-hub.html">系统架构图</a> ·
+      <a href="./course/index.html">动手课程</a>
+    </p>
+  </header>
+
+  <div class="layout">
+    <nav id="nav">
+      <div class="nav-group">总览</div>
+      <ul>
+        <li><a href="#overview">背景与范围</a></li>
+        <li><a href="#priority">优先级说明</a></li>
+        <li><a href="#first3">建议先做的三条</a></li>
+      </ul>
+      <div class="nav-group">P0 · 上线前</div>
+      <ul>
+        <li><a href="#p0-sync">关 synchronize / migration</a></li>
+        <li><a href="#p0-jwt">JWT 与默认密钥</a></li>
+        <li><a href="#p0-edge">CORS / helmet / 限流</a></li>
+        <li><a href="#p0-logout">Logout 吊销</a></li>
+        <li><a href="#p0-tts">TTS WebSocket 鉴权</a></li>
+        <li><a href="#p0-deliver">交付物与弱口令</a></li>
+        <li><a href="#p0-public">误用 @Public</a></li>
+      </ul>
+      <div class="nav-group">P1 · 质量运维</div>
+      <ul>
+        <li><a href="#p1-test">测试与 CI</a></li>
+        <li><a href="#p1-refresh">前端 refresh 闭环</a></li>
+        <li><a href="#p1-obs">可观测性</a></li>
+        <li><a href="#p1-error">统一错误契约</a></li>
+        <li><a href="#p1-abort">聊天中断边缘</a></li>
+        <li><a href="#p1-rag">RAG 评测集</a></li>
+        <li><a href="#p1-docs">运维文档</a></li>
+      </ul>
+      <div class="nav-group">P2 · 体验加固</div>
+      <ul>
+        <li><a href="#p2-continue">「继续」产品化</a></li>
+        <li><a href="#p2-mermaid">Mermaid vs 图谱</a></li>
+        <li><a href="#p2-ux">ErrorBoundary / 上传 / ES</a></li>
+        <li><a href="#p2-authguard">AuthGuard 过期</a></li>
+        <li><a href="#p2-sse">SSE 长会话过期</a></li>
+      </ul>
+    </nav>
+
+    <main id="main">
+      <section id="overview">
+        <h2>背景与范围</h2>
+        <div class="callout-info">
+          当前系统在<strong>能力面</strong>已经较完整：文档解析与审核流水线、混合检索、Graph RAG、流式 Agent 对话、短/长记忆、ASR/TTS、RBAC 与团队可见性等。
+          本页从「能不能当成熟企业系统长期跑」出发，记录仍需补齐的缺口，并说明<strong>每一条问题的原因</strong>（为何会成为问题、不修会怎样）。
+        </div>
+        <p>范围覆盖后端 <code>knowledge-hub-backend</code> 与配套前端 <code>knowledge-hub-frontend</code>。证据路径以仓库内文件为准；随代码演进可能偏移，以当时实现为准。</p>
+      </section>
+
+      <section id="priority">
+        <h2>优先级说明</h2>
+        <table>
+          <thead>
+            <tr><th>级别</th><th>含义</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge p0">P0</span></td>
+              <td>上生产或对外暴露前必须处理；否则有数据损坏、未授权访问或密钥失控风险。</td>
+            </tr>
+            <tr>
+              <td><span class="badge p1">P1</span></td>
+              <td>质量与运维硬伤；不修则难回归、难排障、用户会话体验脆弱。</td>
+            </tr>
+            <tr>
+              <td><span class="badge p2">P2</span></td>
+              <td>体验与加固；不阻塞上线，但影响「成熟产品」观感与长期可维护性。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="first3">
+        <h2>建议先做的三条</h2>
+        <div class="callout-tip">
+          若只开一轮迭代，优先：
+          <ol>
+            <li>正式 migration + 生产关闭 <code>synchronize</code></li>
+            <li>鉴权 / 限流 / TTS WS 鉴权</li>
+            <li>CI + 最薄 e2e（登录 → 提问 → 停止）</li>
+          </ol>
+          这三块不做，RAG/图谱再强也仍偏「演示系统」。
+        </div>
+      </section>
+
+      <!-- ========== P0 ========== -->
+      <section id="p0">
+        <h2>P0 · 上生产前必须处理</h2>
+
+        <article class="item" id="p0-sync">
+          <h3><span class="badge p0">P0</span> TypeORM 常开 synchronize，缺少 migration</h3>
+          <div class="label">现象</div>
+          <p>应用启动时 TypeORM <code>synchronize: true</code>，会按实体自动改库表；仓库内未见正式 migration 流程。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>课练/本地开发为省事常用 synchronize，实体加字段即可「自动有列」。</li>
+            <li>生产若仍开启：并发启动、字段改名/删列可能导致<strong>静默改表甚至丢数据</strong>；多环境 schema 不可审计、不可回滚。</li>
+            <li>README 虽写「开发环境同步」，代码若未按 <code>NODE_ENV</code> 分支关闭，部署时极易带着 true 上线。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/app.module.ts</span>
+            <span class="file-path">src/database/data-source.ts</span>
+            <span class="file-path">src/database/migrations/</span>
+            <span class="file-path">README.md</span>
+          </p>
+          <div class="label">进展</div>
+          <p>
+            已搭 CLI DataSource、共用实体列表、baseline migration；运行时默认
+            <code>synchronize: false</code>（仅当 <code>TYPEORM_SYNCHRONIZE=true</code> 时开启）。
+            已有库勿盲目 <code>migration:run</code> baseline，见 README。
+          </p>
+        </article>
+
+        <article class="item" id="p0-jwt">
+          <h3><span class="badge p0">P0</span> JWT 可能回落到开发默认密钥</h3>
+          <div class="label">现象</div>
+          <p>未正确配置环境变量时，JWT 签名可能使用类似 <code>dev-secret-change-me</code> 的默认值。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>本地一键跑通需要「没配也能启动」的兜底。</li>
+            <li>生产若漏配 <code>JWT_SECRET</code>，攻击者可用公开默认密钥伪造任意用户 token，等于鉴权失效。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/auth/auth.module.ts</span>
+            <span class="file-path">src/auth/jwt.strategy.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p0-edge">
+          <h3><span class="badge p0">P0</span> 缺少 CORS / helmet / 全局限流</h3>
+          <div class="label">现象</div>
+          <p><code>main.ts</code> 主要挂了 ValidationPipe 与非生产 Swagger；未见 helmet、显式 CORS 策略、接口级 throttling（登录爆破、AI 刷接口）。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>前后端同机代理开发时，CORS/安全头感知弱。</li>
+            <li>LLM/检索调用成本高，无限流时易被刷爆账单或拖垮 ES/LLM。</li>
+            <li>缺少安全响应头会放大 XSS、点击劫持等浏览器侧风险面。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/main.ts</span>
+            <span class="file-path">package.json</span>（未见 throttler/helmet 依赖）
+          </p>
+        </article>
+
+        <article class="item" id="p0-logout">
+          <h3><span class="badge p0">P0</span> Logout 不真正吊销 token</h3>
+          <div class="label">现象</div>
+          <p>登出接口存在，但 refresh token 无黑名单/轮换失效机制时，已泄露的 refresh 仍可换新 access。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>JWT 本身无状态：服务端「忘记」客户端删本地 token ≠ 服务端作废。</li>
+            <li>成熟系统要求：登出、改密、风控封禁后，旧 refresh 立即失效。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/auth/auth.controller.ts</span>
+            <span class="file-path">src/auth/auth.service.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p0-tts">
+          <h3><span class="badge p0">P0</span> TTS WebSocket 缺少鉴权</h3>
+          <div class="label">现象</div>
+          <p>TTS 中继 WebSocket 若仅依赖 <code>sessionId</code> 查询参数，知道或猜到会话 id 即可连上听/抢流。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>课练阶段优先打通「问答文本 → 腾讯云 TTS」链路，鉴权后置。</li>
+            <li>sessionId 常出现在 URL/日志/前端状态中，熵不足时等同半公开信道。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/speech/tts-websocket.service.ts</span>
+            <span class="file-path">src/speech/tts-relay.service.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p0-deliver">
+          <h3><span class="badge p0">P0</span> 生产交付物缺失；compose 弱口令</h3>
+          <div class="label">现象</div>
+          <p>缺少面向部署的 Dockerfile / <code>.env.example</code>；本地 <code>docker-compose.yml</code> 使用弱口令且多中间件端口直接映射。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>本地开发追求「clone 即起」：固定账号密码写死在 compose 很常见。</li>
+            <li>若把同一套口令或端口暴露策略带进生产/公网预览，数据库与消息队列会被扫库。</li>
+            <li>无 <code>.env.example</code> 时，新成员与部署清单只能翻代码猜键名，易漏配关键密钥。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">docker-compose.yml</span>
+            <span class="file-path">README.md</span>
+            （根目录缺 Dockerfile / <code>.env.example</code>）
+          </p>
+        </article>
+
+        <article class="item" id="p0-public">
+          <h3><span class="badge p0">P0</span> 敏感接口误标 @Public（如团队树）</h3>
+          <div class="label">现象</div>
+          <p>部分接口使用 <code>@Public()</code>，未登录即可访问（例如团队树）。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>前端联调或演示时临时放开，事后未收回。</li>
+            <li>组织架构属于企业内部信息，公开枚举会泄露编制与汇报关系，也会给后续横向越权提供线索。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p><span class="file-path">src/team/team.controller.ts</span></p>
+        </article>
+      </section>
+
+      <!-- ========== P1 ========== -->
+      <section id="p1">
+        <h2>P1 · 质量与运维</h2>
+
+        <article class="item" id="p1-test">
+          <h3><span class="badge p1">P1</span> 测试与 CI 几乎空白</h3>
+          <div class="label">现象</div>
+          <p>后端残留脚手架级单测/e2e；前端缺少系统测试脚本；两端未见 GitHub Actions 等工作流。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>功能迭代快，课练仓库以「能跑通」为目标，回归靠人工点。</li>
+            <li>没有 CI 时，权限、abort 落库、检索可见性等改动极易静默回退。</li>
+            <li>现有 e2e 若仍期望 <code>Hello World!</code> 且未对齐全局前缀 <code>/api</code>，说明测试已与产品脱节。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/app.controller.spec.ts</span>
+            <span class="file-path">test/app.e2e-spec.ts</span>
+            <span class="file-path">package.json</span>
+            （缺 <code>.github/workflows/</code>）
+          </p>
+        </article>
+
+        <article class="item" id="p1-refresh">
+          <h3><span class="badge p1">P1</span> 前端 refresh token 存了却未形成闭环</h3>
+          <div class="label">现象</div>
+          <p>本地存了 refresh token，但 401 时直接清登录踢回登录页，未调用 refresh 接口续期。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>后端已实现 refresh，前端拦截器未接上，属于「半做完的鉴权方案」。</li>
+            <li>用户长时停留在聊天页时 access 过期会突然掉线，体感像系统不稳定。</li>
+            <li>token 放 <code>localStorage</code> 本身也放大 XSS 影响面（成熟方案常配合更严 CSP / httpOnly 策略评估）。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">frontend/src/utils/auth.ts</span>
+            <span class="file-path">frontend/src/utils/request.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p1-obs">
+          <h3><span class="badge p1">P1</span> 可观测性不足</h3>
+          <div class="label">现象</div>
+          <p>以 Nest <code>Logger</code> 为主；健康检查多为进程级 <code>{ ok, ts }</code>，不探测 Postgres / ES / Neo4j / Redis / MQ。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>本地排障靠终端日志够用；生产需要结构化日志、关联 requestId、依赖存活探针与告警。</li>
+            <li>对话一轮跨意图、检索、图谱、LLM、TTS，没有 trace 时「慢」和「失败」难以定位到哪一段。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p><span class="file-path">src/app.controller.ts</span>（<code>/health</code>）</p>
+        </article>
+
+        <article class="item" id="p1-error">
+          <h3><span class="badge p1">P1</span> 前后端错误契约不统一</h3>
+          <div class="label">现象</div>
+          <p>前端请求层假定业务错误形如 <code>code/message</code>；后端大量走 Nest 默认异常 JSON，字段与语义不一致。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>缺少全局 ExceptionFilter / 统一响应包装。</li>
+            <li>前端只能「猜」错误结构，导致 toast 文案空、或把校验详情吞掉，运维与客服难复述问题。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">frontend/src/utils/request.ts</span>
+            （后端缺统一 filter 模块）
+          </p>
+        </article>
+
+        <article class="item" id="p1-abort">
+          <h3><span class="badge p1">P1</span> 聊天停止 / 落库边缘行为</h3>
+          <div class="label">现象</div>
+          <p>停止生成会 abort 并落库半截（含「（已中断）」）；TTS 可能提前建会话；落库失败仅 warn；前端有本地中断标记但产品「继续」未闭环。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>为支持「继续」选择了取消也落库，但空中断、重复落库、仅 TTS 建空会话等边界未产品化定义。</li>
+            <li>流式管道跨 SDK / Agent / HTTP close，时序竞争下若缺少幂等与明确状态机，会出现「UI 有半截、库里没有」或相反。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/ai/ai-stream.service.ts</span>
+            <span class="file-path">frontend/src/pages/Chat/hooks/useChatPage.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p1-rag">
+          <h3><span class="badge p1">P1</span> RAG 仅有在线「切题」评估，无离线评测集</h3>
+          <div class="label">现象</div>
+          <p>Agent 环内用 LLM 对检索结果做切题判断（<code>data-eval</code>），但没有黄金问答集、引用正确率、图谱误召回等回归流水线。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>在线 grader 解决的是「这一轮要不要再检索」，不是「系统整体是否变差」。</li>
+            <li>改写意图提示、混合检索参数、图谱 CONTAINS 策略后，没有基准就无法知道是进步还是过召回。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p><span class="file-path">src/ai/agentic-retrieve.ts</span>（缺 golden / benchmark 目录或脚本）</p>
+        </article>
+
+        <article class="item" id="p1-docs">
+          <h3><span class="badge p1">P1</span> 运维与生产清单不足</h3>
+          <div class="label">现象</div>
+          <p>文档偏课程讲义与架构图；缺少备份、重建索引、重跑图谱、密钥轮换、容量规划等 runbook；环境变量「以代码为准」且无示例文件。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>仓库出身是动手课 + 功能演进，文档优先服务「怎么实现」而非「怎么值守」。</li>
+            <li>成熟系统需要事故时可执行的步骤，否则知识沉淀在个人脑子里。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">README.md</span>
+            <span class="file-path">docs/course/</span>
+            <span class="file-path">docs/architecture/</span>
+          </p>
+        </article>
+      </section>
+
+      <!-- ========== P2 ========== -->
+      <section id="p2">
+        <h2>P2 · 体验与加固</h2>
+
+        <article class="item" id="p2-continue">
+          <h3><span class="badge p2">P2</span> 「继续」产品化不足</h3>
+          <div class="label">现象</div>
+          <p>中断已落库，用户可手打「继续」；缺少一键续写、中断态展示规范、与半截答案的合并策略。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>后端已按「取消也落库」落地，前端只做了停止 + 本地标「已中断」，产品链路未走完。</li>
+            <li>成熟聊天产品通常有明确的 Stop / Regenerate / Continue，避免用户猜提示词。</li>
+          </ul>
+        </article>
+
+        <article class="item" id="p2-mermaid">
+          <h3><span class="badge p2">P2</span> Mermaid 流程图 vs 知识图谱意图易混</h3>
+          <div class="label">现象</div>
+          <p>用户要「画流程图」时曾被 kb + 图谱预取抢走注意力，只看到图谱卡；现已加启发式关闭图谱并要求输出 mermaid，但仍可能有边界漏网。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>产品里同时存在「Neo4j 知识图谱卡」与「Markdown mermaid 流程图」，用户口语都叫「图画出来」。</li>
+            <li>kb 意图默认 <code>allowGraph</code> 预取，与「画 mermaid」目标冲突；需持续收紧意图与 UI 层级（图谱是过程线索，mermaid 是交付物）。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/ai/diagram-intent.ts</span>
+            <span class="file-path">frontend/src/components/MermaidBlock/</span>
+          </p>
+        </article>
+
+        <article class="item" id="p2-ux">
+          <h3><span class="badge p2">P2</span> ErrorBoundary、上传校验、ES refresh 等课练残留</h3>
+          <div class="label">现象</div>
+          <p>前端缺全局 ErrorBoundary；上传限制偏简单（如体积）未必有严格 MIME 白名单；索引写入使用 <code>refresh: true</code> 等利于课练、不利吞吐的策略。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>演示与正确性优先时，会打开 ES refresh、放宽上传校验。</li>
+            <li>生产需要失败隔离（单组件崩不白屏）、上传防马甲文件、索引异步 refresh 换吞吐。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p>
+            <span class="file-path">src/document/document.controller.ts</span>
+            <span class="file-path">src/pipeline/vector-index.service.ts</span>
+          </p>
+        </article>
+
+        <article class="item" id="p2-authguard">
+          <h3><span class="badge p2">P2</span> 前端 AuthGuard 只看「有没有 token」</h3>
+          <div class="label">现象</div>
+          <p>路由守卫用「localStorage 是否有 access token」判断已登录，不解析过期时间。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>实现简单，依赖请求 401 再踢出。</li>
+            <li>过期 token 仍会被当成已登录进入页面，造成闪屏、空数据或一串失败请求。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p><span class="file-path">frontend/src/components/AuthGuard.tsx</span></p>
+        </article>
+
+        <article class="item" id="p2-sse">
+          <h3><span class="badge p2">P2</span> 聊天 SSE 请求头里的 Authorization 易过期</h3>
+          <div class="label">现象</div>
+          <p>流式聊天 transport 在发起时带上 Bearer；长会话中 access 过期不会像 Axios 拦截器那样自动 refresh 后续 chunk。</p>
+          <div class="label">原因</div>
+          <ul>
+            <li>SSE/fetch 流与普通 JSON 请求生命周期不同，续期策略要单独设计（开流前确保新 token、或短 access + 心跳）。</li>
+            <li>与 P1「refresh 闭环」叠加：没有统一续期，长回答中途失败会被误判为模型/网络问题。</li>
+          </ul>
+          <div class="label">证据 / 落点</div>
+          <p><span class="file-path">frontend/src/pages/Chat/hooks/useChatPage.ts</span></p>
+        </article>
+      </section>
+
+      <section id="closing">
+        <h2>如何使用本文档</h2>
+        <div class="callout-warning">
+          本文是<strong>改进台账</strong>，不是指责清单。课练期的选择（synchronize、弱口令 compose、图谱默认预取等）在当时是合理权衡；
+          要升级为成熟系统时，需要把这些权衡显式关掉或换成生产策略。
+        </div>
+        <p>建议：从 P0 开 issue / 迭代卡，每修完一条在本文对应条目下标注状态（或迁到项目管理工具并回链本页）。</p>
+        <p class="muted" style="color:#64748b;font-size:0.9rem;">
+          生成说明：基于 2026-10-20 代码审阅与成熟度讨论整理；路径随重构可能变化。
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <button id="back-to-top" type="button" aria-label="回到顶部">↑</button>
+  <script>
+    (function () {
+      const navLinks = Array.from(document.querySelectorAll('#nav a'));
+      const sections = navLinks
+        .map((a) => document.querySelector(a.getAttribute('href')))
+        .filter(Boolean);
+      const topBtn = document.getElementById('back-to-top');
+
+      function setActive() {
+        let current = sections[0];
+        for (const sec of sections) {
+          if (sec.getBoundingClientRect().top <= 96) current = sec;
+        }
+        navLinks.forEach((a) => {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + current.id);
+        });
+        if (topBtn) {
+          const show = window.scrollY > 400;
+          topBtn.classList.toggle('is-visible', show);
+        }
+      }
+      window.addEventListener('scroll', setActive, { passive: true });
+      setActive();
+      if (topBtn) topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    })();
+  </script>
+</body>
+</html>

@@ -83,7 +83,20 @@ pnpm install
 pnpm run start:dev
 ```
 
-开发环境 TypeORM `synchronize: true`，表结构会自动同步（含消息表 `graph` 等 jsonb 字段）。
+### 数据库 Migration（PostgreSQL / TypeORM）
+
+默认 **关闭** `synchronize`（`TYPEORM_SYNCHRONIZE` 未设或非 `true`）。表结构走 migration：
+
+| 命令 | 说明 |
+|------|------|
+| `pnpm migration:generate` | 按实体与当前库差异生成 migration |
+| `pnpm migration:run` | 执行待执行 migration |
+| `pnpm migration:revert` | 回滚最近一次 |
+| `pnpm migration:show` | 查看执行状态 |
+
+- **空库**：`pnpm migration:run` 即可（含 baseline：`src/database/migrations/*-BaselineSchema.ts`）。
+- **已有库（此前靠 synchronize）**：勿直接对生产库跑 baseline（会 `CREATE TABLE` 冲突）。本地可暂时 `TYPEORM_SYNCHRONIZE=true`；或对齐 schema 后，把 baseline 记为已执行再只跑后续增量。
+- 生产务必 `TYPEORM_SYNCHRONIZE=false`（或不设），只用 `migration:run`。
 
 ### 4. 访问
 
@@ -118,6 +131,7 @@ src/
 ├── auth/          # JWT、RBAC、邮箱激活与密码重置
 ├── user/          # 用户与权限
 ├── document/      # 上传、解析、审核发布、可见性
+├── database/      # TypeORM DataSource、entities、migrations
 ├── search/        # 全文 / 语义检索入口
 ├── graph/         # 图谱构建、对话检索、全景图
 ├── ai/            # 意图路由、混合检索、流式 Agent、会话与记忆
@@ -136,13 +150,15 @@ src/
 ## 常用命令
 
 ```bash
-pnpm run build          # 编译
-pnpm run start:dev      # 开发热重载
-pnpm run start:prod     # 生产运行（需先 build）
-pnpm run lint           # oxlint
-pnpm run format         # oxfmt
-pnpm run test           # 单元测试
-pnpm run test:e2e       # E2E
+pnpm run build            # 编译
+pnpm run start:dev        # 开发热重载
+pnpm run start:prod       # 生产运行（需先 build）
+pnpm run lint             # oxlint
+pnpm run format           # oxfmt
+pnpm run test             # 单元测试
+pnpm run test:e2e         # E2E
+pnpm migration:show       # 查看 migration 状态
+pnpm migration:run        # 执行待执行 migration（空库）
 ```
 
 ## License

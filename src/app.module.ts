@@ -6,15 +6,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { MailerModule } from '@nestjs-modules/mailer';
 
+import { AiCanvasModule } from './ai-canvas/ai-canvas.module';
 import { AiModule } from './ai/ai.module';
-import { AiMessageEntity } from './ai/entities/ai-message.entity';
-import { AiSessionEntity } from './ai/entities/ai-session.entity';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { typeormEntities } from './database/typeorm.entities';
 import { DocumentModule } from './document/document.module';
-import { DocumentReviewEntity } from './document/entities/document-review.entity';
-import { DocumentEntity } from './document/entities/document.entity';
 import { GraphModule } from './graph/graph.module';
 import { RedisModule } from './redis/redis.module';
 import { SearchModule } from './search/search.module';
@@ -22,13 +20,7 @@ import { SpeechModule } from './speech/speech.module';
 import { StorageModule } from './storage/storage.module';
 import { TeamModule } from './team/team.module';
 import { ToolsModule } from './tools/tools.module';
-import { PermissionEntity } from './user/entities/permission.entity';
-import { RolePermissionEntity } from './user/entities/role-permission.entity';
-import { RoleEntity } from './user/entities/role.entity';
-import { UserRoleEntity } from './user/entities/user-role.entity';
-import { UserEntity } from './user/entities/user.entity';
 import { UserModule } from './user/user.module';
-import { AiCanvasModule } from './ai-canvas/ai-canvas.module';
 
 @Module({
   imports: [
@@ -42,18 +34,10 @@ import { AiCanvasModule } from './ai-canvas/ai-canvas.module';
         username: config.get('POSTGRES_USER'),
         password: config.get('POSTGRES_PASSWORD'),
         database: config.get('POSTGRES_DB'),
-        entities: [
-          UserEntity,
-          RoleEntity,
-          PermissionEntity,
-          UserRoleEntity,
-          RolePermissionEntity,
-          DocumentEntity,
-          DocumentReviewEntity,
-          AiSessionEntity,
-          AiMessageEntity,
-        ],
-        synchronize: true,
+        entities: typeormEntities,
+        migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+        // 默认关闭；本地可设 TYPEORM_SYNCHRONIZE=true，生产务必 false + migration
+        synchronize: config.get<string>('TYPEORM_SYNCHRONIZE', 'false') === 'true',
       }),
     }),
     UserModule,
