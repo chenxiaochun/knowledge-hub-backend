@@ -1,0 +1,15 @@
+{"id":"chitchat-001","question":"你好","expect":{"intent":"chitchat","allowGraph":false,"allowWeb":false},"notes":"明显寒暄；规则短路"}
+{"id":"chitchat-002","question":"谢谢","expect":{"intent":"chitchat","allowGraph":false,"allowWeb":false},"notes":"致谢"}
+{"id":"chitchat-003","question":"在吗","expect":{"intent":"chitchat","allowGraph":false,"allowWeb":false},"notes":"短句闲聊"}
+{"id":"profile-001","question":"我是哪个部门的？","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"问本人部门"}
+{"id":"profile-002","question":"以后回答短一点","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"改回答偏好"}
+{"id":"kb-001","question":"差旅报销需要谁审批？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"内部制度"}
+{"id":"kb-002","question":"预算审核员属于哪个部门？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"岗位归属，勿判 profile"}
+{"id":"kb-003","question":"入职第一周要办哪些手续？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"内部流程"}
+{"id":"kb-004","question":"公司年假怎么申请？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"人事制度"}
+{"id":"kb-005","question":"知识库文档上传失败怎么排查？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"内部系统问题"}
+{"id":"web-001","question":"今天上海天气怎么样？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"公开时效"}
+{"id":"web-002","question":"美元兑人民币现在汇率多少？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"公开实时行情"}
+{"id":"kb_then_web-001","question":"公司出差补贴标准和最新民航燃油附加费分别是多少？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"内部标准+外部时效"}
+{"id":"kb_then_web-002","question":"我们报销里境外住宿上限怎么定的，对照现在汇率大概多少人民币？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"制度+汇率"}
+{"id":"kb_then_web-003","question":"内部差旅政策允许坐高铁一等座吗，以及今天上海到北京高铁票大概多少钱？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"制度+公开票价"}

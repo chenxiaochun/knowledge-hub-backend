@@ -25,7 +25,8 @@
     "migration:create": "pnpm typeorm migration:create src/database/migrations/Migration",
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
-    "migration:show": "pnpm typeorm migration:show"
+    "migration:show": "pnpm typeorm migration:show",
+    "eval:intent": "TS_NODE_PROJECT=tsconfig.json node -r ts-node/register -r tsconfig-paths/register eval/runners/run-intent.ts"
   },
   "dependencies": {
     "@ai-sdk/langchain": "^3.0.113",

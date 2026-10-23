@@ -1,0 +1,165 @@
+{
+  "generatedAt": "2026-10-23T01:33:42.159Z",
+  "mode": "standalone",
+  "summary": {
+    "total": 15,
+    "intentAccuracy": 1,
+    "allowGraphAccuracy": 1,
+    "allowWebAccuracy": 1,
+    "confusion": {
+      "chitchat": {
+        "chitchat": 3
+      },
+      "profile": {
+        "profile": 2
+      },
+      "kb": {
+        "kb": 5
+      },
+      "web": {
+        "web": 2
+      },
+      "kb_then_web": {
+        "kb_then_web": 3
+      }
+    },
+    "failures": []
+  },
+  "rows": [
+    {
+      "id": "chitchat-001",
+      "expectIntent": "chitchat",
+      "predIntent": "chitchat",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "chitchat-002",
+      "expectIntent": "chitchat",
+      "predIntent": "chitchat",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "chitchat-003",
+      "expectIntent": "chitchat",
+      "predIntent": "chitchat",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "profile-001",
+      "expectIntent": "profile",
+      "predIntent": "profile",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "profile-002",
+      "expectIntent": "profile",
+      "predIntent": "profile",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "kb-001",
+      "expectIntent": "kb",
+      "predIntent": "kb",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "kb-002",
+      "expectIntent": "kb",
+      "predIntent": "kb",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "kb-003",
+      "expectIntent": "kb",
+      "predIntent": "kb",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "kb-004",
+      "expectIntent": "kb",
+      "predIntent": "kb",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "kb-005",
+      "expectIntent": "kb",
+      "predIntent": "kb",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": false,
+      "predAllowWeb": false
+    },
+    {
+      "id": "web-001",
+      "expectIntent": "web",
+      "predIntent": "web",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": true,
+      "predAllowWeb": true
+    },
+    {
+      "id": "web-002",
+      "expectIntent": "web",
+      "predIntent": "web",
+      "expectAllowGraph": false,
+      "predAllowGraph": false,
+      "expectAllowWeb": true,
+      "predAllowWeb": true
+    },
+    {
+      "id": "kb_then_web-001",
+      "expectIntent": "kb_then_web",
+      "predIntent": "kb_then_web",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": true,
+      "predAllowWeb": true
+    },
+    {
+      "id": "kb_then_web-002",
+      "expectIntent": "kb_then_web",
+      "predIntent": "kb_then_web",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": true,
+      "predAllowWeb": true
+    },
+    {
+      "id": "kb_then_web-003",
+      "expectIntent": "kb_then_web",
+      "predIntent": "kb_then_web",
+      "expectAllowGraph": true,
+      "predAllowGraph": true,
+      "expectAllowWeb": true,
+      "predAllowWeb": true
+    }
+  ]
+}
