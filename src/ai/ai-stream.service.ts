@@ -37,6 +37,7 @@ import {
   GraphBuildService,
   type GraphChatHit,
 } from '../graph/graph-build.service';
+import { createLangfuseHandler } from '../observability/langfuse-handler';
 import { retrieveAndGrade, RetrieveEval } from './agentic-retrieve';
 import {
   bindAbortToReadableStream,
@@ -440,6 +441,7 @@ export class AiStreamService {
           signal.throwIfAborted();
 
           // ——— 2) 历史 + 意图路由（检索改由 Agent 工具环调度）———
+          // classify 仍走 invokeIsolated（空 callbacks），避免 route JSON 泄漏进 SSE
           const history = await this.loadWorkingHistory(user.userId, sessionId);
           workingHistory = history;
           signal.throwIfAborted();
@@ -463,6 +465,19 @@ export class AiStreamService {
               allowWeb: plan.allowWeb,
               allowGraph: plan.allowGraph,
               graphQueries: plan.graphQueries,
+            },
+          });
+
+          // sessionId + intent 就绪后再挂 Langfuse（未启用时返回 undefined）
+          const langfuseHandler = createLangfuseHandler({
+            userId: String(user.userId),
+            sessionId: String(sessionId),
+            tags: ['stream', 'ai-chat', `intent:${plan.intent}`],
+            traceMetadata: {
+              intent: plan.intent,
+              allowGraph: plan.allowGraph,
+              allowWeb: plan.allowWeb,
+              query: plan.query.slice(0, 200),
             },
           });
 
@@ -525,6 +540,9 @@ export class AiStreamService {
 
           // recursionLimit：LangGraph 超步数（默认 25）。beforeModel 摘要会额外占步，
           // 须明显高于 model/tool 业务上限，避免空转时先抛 GRAPH_RECURSION_LIMIT。
+          // Langfuse：仅挂在 agent.stream；classify/grade 的 invokeIsolated 不继承此 callbacks。
+          // createAgent StreamConfiguration 未声明 tags/metadata，运行时 Pregel 仍接受；
+          // intent 等已写入 CallbackHandler.traceMetadata / tags，避免只靠 stream 配置。
           const langchainStream = await agent.stream(
             {
               messages: [
@@ -534,7 +552,23 @@ export class AiStreamService {
                 new HumanMessage(human),
               ],
             },
-            { streamMode: ['messages', 'tools'], recursionLimit: 40, signal },
+            {
+              streamMode: ['messages', 'tools'],
+              recursionLimit: 40,
+              signal,
+              callbacks: langfuseHandler ? [langfuseHandler] : undefined,
+              ...(langfuseHandler
+                ? {
+                    metadata: {
+                      intent: plan.intent,
+                      allowGraph: plan.allowGraph,
+                      allowWeb: plan.allowWeb,
+                      query: plan.query.slice(0, 200),
+                    },
+                    tags: [`intent:${plan.intent}`],
+                  }
+                : {}),
+            } as Parameters<typeof agent.stream>[1],
           );
 
           writer.merge(
