@@ -3,10 +3,17 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
+import {
+  registerLangfuse,
+  shutdownLangfuse,
+} from './observability/langfuse';
 
 async function bootstrap() {
+  await registerLangfuse();
+
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
+  app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,5 +36,12 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
+
+  const shutdown = async () => {
+    await app.close();
+    await shutdownLangfuse();
+  };
+  process.once('SIGINT', () => void shutdown());
+  process.once('SIGTERM', () => void shutdown());
 }
 bootstrap();

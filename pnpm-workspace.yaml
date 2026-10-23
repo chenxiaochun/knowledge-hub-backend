@@ -2,7 +2,8 @@ allowBuilds:
   '@parcel/watcher': false
   '@scarf/scarf': false
   bcrypt: false
-  better-sqlite3: set this to true or false
+  better-sqlite3: false
   core-js: false
+  protobufjs: false
   tesseract.js: false
   unrs-resolver: true
