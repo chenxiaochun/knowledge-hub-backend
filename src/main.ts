@@ -13,7 +13,6 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
-  app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -37,7 +36,11 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
 
+  // Single shutdown path: no enableShutdownHooks() (avoids double app.close).
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     await app.close();
     await shutdownLangfuse();
   };

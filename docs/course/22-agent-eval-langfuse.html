@@ -205,6 +205,11 @@
           <code>createLangfuseHandler</code>，挂到 Agent <code>stream</code> 的 callbacks；
           未启用时返回 <code>undefined</code>，行为与现网一致。
         </p>
+        <div class="callout-warning">
+          <strong>P0 观测范围：仅流式路径。</strong>
+          Langfuse 只挂在 <code>ai-stream</code> / UI Message 流式对话上；
+          同步 <code>POST /ai/chat</code> <strong>尚未</strong>埋点，开了开关也不会在 Cloud 里看到同步请求的 trace。
+        </div>
       </section>
 
       <section id="langfuse">
@@ -231,7 +236,8 @@ LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx
             </div>
           </li>
           <li>
-            <strong>重启后端</strong>，用前端或 API 打一轮<strong>流式</strong>对话，记下返回的 <code>sessionId</code>
+            <strong>重启后端</strong>，用前端或 API 打一轮<strong>流式</strong>对话（<code>POST /ai/chat/stream</code> /
+            UI Message stream；同步 <code>POST /ai/chat</code> 当前不会出 trace），记下返回的 <code>sessionId</code>
             （会话 id；Langfuse 里用同一字段关联）。
           </li>
           <li>
