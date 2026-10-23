@@ -15,6 +15,7 @@
 | 会话记忆 | Redis 短记忆 + Mem0 长记忆 |
 | 语音 | 腾讯云 ASR；TTS WebSocket 流式播放（可按会话打断） |
 | 鉴权 | JWT + RBAC、邮箱激活与密码重置 |
+| Agent 评测 / 观测 | 离线金标 `pnpm eval:intent`；可选 Langfuse Cloud 看流式 trace（见下） |
 
 ## 系统架构
 
@@ -75,6 +76,7 @@ docker compose up -d
 | `ELASTICSEARCH_*` / `RABBITMQ_*` / `REDIS_*` / `NEO4J_*` / `RUSTFS_*` | 检索、消息、缓存、图谱、对象存储 |
 | `OPENAI_*` / `DASHSCOPE_*` / `MODEL_NAME` / `EMBEDDING_*` | LLM、嵌入、图谱抽取 |
 | `MEM0_*` / `BOCHA_*` / `TENCENT_CLOUD_*` / `MAIL_*` / `RAG_*` | 长记忆、联网、语音、邮件、检索调参（可选） |
+| `LANGFUSE_ENABLED` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | 可选观测；默认关闭。`BASE_URL` 不设则为 `https://cloud.langfuse.com`（**勿提交真实 key**） |
 
 ### 3. 安装并启动
 
@@ -146,6 +148,16 @@ src/
 
 - [系统架构图](docs/architecture/knowledge-hub.html)
 - [动手课程索引](docs/course/index.html) — 从脚手架到 RAG、图谱、流式 UI、TTS、Graph RAG 等分步讲义
+- [课 22 · Agent 分层评测与 Langfuse](docs/course/22-agent-eval-langfuse.html) — 金标造题、`pnpm eval:intent`、Cloud trace
+
+### Agent 评测与 Langfuse（速查）
+
+| 项 | 说明 |
+|----|------|
+| 金标数据 | `eval/datasets/golden-v1.jsonl` |
+| 跑分 | `pnpm eval:intent` → 终端摘要 + `eval/reports/<ISO-time>.json` |
+| 开关 | `LANGFUSE_ENABLED=true` 且配置 Public/Secret Key 后，流式对话会挂 `createLangfuseHandler` |
+| 教程 | [docs/course/22-agent-eval-langfuse.html](docs/course/22-agent-eval-langfuse.html) |
 
 ## 常用命令
 
@@ -157,6 +169,7 @@ pnpm run lint             # oxlint
 pnpm run format           # oxfmt
 pnpm run test             # 单元测试
 pnpm run test:e2e         # E2E
+pnpm eval:intent          # L1 意图 / 工具开关金标评测
 pnpm migration:show       # 查看 migration 状态
 pnpm migration:run        # 执行待执行 migration（空库）
 ```

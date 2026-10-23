@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 22 · Agent 分层评测与 Langfuse 观测入门</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.5rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 22 · Agent 分层评测与 Langfuse 观测入门 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      上接 <a href="./21-graph-rag-v18.html">课 21</a>（建议已过
+      <a href="./20-agentic-rag-v17.html">课 20</a>）·
+      规格 <code>docs/superpowers/specs/2026-10-23-agent-eval-langfuse-design.md</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#why">为什么要测</a></li>
+        <li><a href="#metrics">准确率与金标</a></li>
+        <li><a href="#split">评测 vs Langfuse</a></li>
+        <li><a href="#langfuse">配 Cloud 与找 trace</a></li>
+        <li><a href="#label">标 10 题练习</a></li>
+        <li><a href="#run">跑 pnpm eval:intent</a></li>
+        <li><a href="#regress">故意改坏再跑</a></li>
+        <li><a href="#extend">加题与 P1/P2</a></li>
+        <li><a href="#appendix">附录 · 自托管</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="why">
+        <h2>1. 为什么要测 Agent？</h2>
+        <p>
+          课 20/21 的对话链路是：
+          <strong>意图路由</strong> → 可选图谱预取 / RAG / 联网 → Agent 流式作答。
+          改一句 prompt、换一个模型，肉眼看几条对话很难判断「整体有没有回退」。
+        </p>
+        <p>本课把能力拆成两层（别混成一件事）：</p>
+        <table>
+          <thead>
+            <tr><th>能力</th><th>回答的问题</th><th>你怎么用</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>分层金标评测</strong></td>
+              <td>这类题对了百分之几？改 prompt 后有没有掉点？</td>
+              <td>本地 <code>pnpm eval:intent</code> + JSONL 金标</td>
+            </tr>
+            <tr>
+              <td><strong>Langfuse 观测</strong></td>
+              <td>这一轮调了哪些模型/工具、耗时、失败卡在哪？</td>
+              <td>Cloud UI 里按 session 看 trace</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout-warning">
+          <strong>接了 Langfuse ≠ 有了准确率。</strong>
+          Langfuse 告诉你「发生了什么」；金标评测告诉你「对不对、退没退」。
+          第一期（P0）准确率只盯 <strong>L1：意图 + allowGraph / allowWeb</strong>。
+        </div>
+        <div class="flow">离线回归          eval/datasets/*.jsonl
+                   →  eval/runners/run-intent.ts  →  reports/*.json
+
+在线对话           ai-stream + createLangfuseHandler
+                   →  Langfuse Cloud（看链路）</div>
+      </section>
+
+      <section id="metrics">
+        <h2>2. 准确率、混淆矩阵、金标（白话）</h2>
+        <h3>金标是什么？</h3>
+        <p>
+          金标 = 你事先写好的「标准答案小表」。每行一道题：问句 + 期望意图 + 期望工具开关。
+          跑分脚本用<strong>同一套线上路由逻辑</strong>预测，再和期望比对。
+        </p>
+        <h3>准确率</h3>
+        <ul>
+          <li><strong>Intent Accuracy</strong>：预测意图 === 期望意图 的比例</li>
+          <li><strong>allowGraph / allowWeb Accuracy</strong>：两个开关各自与期望一致的比例</li>
+        </ul>
+        <h3>混淆矩阵</h3>
+        <p>
+          一张「真实 intent × 预测 intent」的计数表。
+          对角线是答对；非对角线是「把 kb 判成 web」这类易混错误——比一个总百分比更有用。
+        </p>
+        <div class="callout-tip">
+          仓库已有样例集 <span class="file-path">eval/datasets/golden-v1.jsonl</span>
+         （约 15 题，五类 intent 都有）。报告样例见
+          <span class="file-path">eval/reports/sample-report.json</span>。
+        </div>
+      </section>
+
+      <section id="split">
+        <h2>3. Langfuse 是什么；和金标差在哪</h2>
+        <table>
+          <thead><tr><th></th><th>金标评测</th><th>Langfuse</th></tr></thead>
+          <tbody>
+            <tr><td>何时跑</td><td>离线批量（改 prompt 后回归）</td><td>线上每轮对话（可开关）</td></tr>
+            <tr><td>输出</td><td>准确率、混淆矩阵、失败列表</td><td>trace / span / token / 耗时</td></tr>
+            <tr><td>依赖</td><td>金标文件 + LLM 密钥</td><td>Cloud 项目 + API key</td></tr>
+            <tr><td>默认</td><td>手动执行脚本</td><td><code>LANGFUSE_ENABLED!=true</code> 时完全不发</td></tr>
+          </tbody>
+        </table>
+        <p>
+          流式主路径在意图识别完成后调用
+          <code>createLangfuseHandler</code>，挂到 Agent <code>stream</code> 的 callbacks；
+          未启用时返回 <code>undefined</code>，行为与现网一致。
+        </p>
+      </section>
+
+      <section id="langfuse">
+        <h2>4. 注册 Cloud → 配 env → 找 trace</h2>
+        <ol class="step-list">
+          <li>
+            <strong>注册 Langfuse Cloud</strong><br>
+            打开 <a href="https://cloud.langfuse.com" target="_blank" rel="noopener">cloud.langfuse.com</a>
+            （按账号区域也可能是欧盟等站点），新建项目，复制 <strong>Public Key</strong> 与 <strong>Secret Key</strong>。
+          </li>
+          <li>
+            <strong>写入本地 <code>.env</code></strong>（勿提交仓库、勿把真实 key 贴进文档）：
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code>LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx
+# 可选；不设则默认 https://cloud.langfuse.com
+# LANGFUSE_BASE_URL=https://cloud.langfuse.com</code></pre>
+            </div>
+            <div class="callout-info">
+              启动日志会提示是否启用及 <code>baseURL</code>（不打印 secret）。
+              缺 key 或未设 <code>true</code> 时应用与现网一致。
+            </div>
+          </li>
+          <li>
+            <strong>重启后端</strong>，用前端或 API 打一轮<strong>流式</strong>对话，记下返回的 <code>sessionId</code>
+            （会话 id；Langfuse 里用同一字段关联）。
+          </li>
+          <li>
+            <strong>在 UI 里找 trace</strong>
+            <ul>
+              <li>打开 Langfuse → Traces（或 Sessions）</li>
+              <li>用 <code>sessionId</code> 过滤，或按时间找最近一条</li>
+              <li>应能看到 tags 类似 <code>stream</code>、<code>ai-chat</code>、<code>intent:kb</code>，以及脱敏后的 intent / 开关元数据</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="callout-warning">
+          内部意图改写仍用空 LangChain callbacks，避免 structured JSON 漏进 SSE。
+          观测靠外层 handler + OTel；若开了 Langfuse，请确认流式响应里<strong>没有</strong>改写用的原始 JSON。
+        </div>
+      </section>
+
+      <section id="label">
+        <h2>5. 按五类 intent 标 10～15 题</h2>
+        <p>意图枚举与代码一致：</p>
+        <table>
+          <thead><tr><th>intent</th><th>直觉</th><th>常见开关</th></tr></thead>
+          <tbody>
+            <tr><td><code>chitchat</code></td><td>寒暄、致谢</td><td>图关、网关</td></tr>
+            <tr><td><code>profile</code></td><td>问本人信息 / 改回答偏好</td><td>图关、网关</td></tr>
+            <tr><td><code>kb</code></td><td>内部制度、流程、文档</td><td>常开图、关网</td></tr>
+            <tr><td><code>web</code></td><td>公开时效（天气、汇率）</td><td>关图、开网</td></tr>
+            <tr><td><code>kb_then_web</code></td><td>内部标准 + 外部时效</td><td>图网都可开</td></tr>
+          </tbody>
+        </table>
+        <p>一行一条 JSON，追加到 <span class="file-path">eval/datasets/golden-v1.jsonl</span>：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code>{
+  "id": "kb-practice-001",
+  "question": "差旅报销需要谁审批？",
+  "expect": {
+    "intent": "kb",
+    "allowGraph": true,
+    "allowWeb": false
+  },
+  "notes": "制度类；图谱可选开启"
+}</code></pre>
+        </div>
+        <h3>造题原则</h3>
+        <ul>
+          <li>五类尽量均衡；故意加易混题（闲聊 vs 制度、要不要联网）。</li>
+          <li>只标有把握的；不确定可设 <code>"skip": true</code> 或写在 <code>notes</code>。</li>
+          <li>仓库已有约 15 题样例；练习时再扩 10 题即可，目标可到 30～50。</li>
+        </ul>
+        <div class="callout-tip">
+          <strong>练习任务</strong>：打开现有 jsonl，对照格式自己加 ≥10 行（或改 notes 复盘易混点），
+          再跑下一节的 <code>pnpm eval:intent</code>。
+        </div>
+      </section>
+
+      <section id="run">
+        <h2>6. 跑 <code>pnpm eval:intent</code>，读报告</h2>
+        <p>在仓库根目录（需已配置 LLM 相关 env，与线上一致即可）：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code>pnpm eval:intent</code></pre>
+        </div>
+        <p>终端会打印每题 <code>expect</code> / <code>pred</code> / OK|FAIL，以及汇总：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code>[eval:intent] mode=standalone
+chitchat-001	expect=chitchat	pred=chitchat	OK
+...
+intentAccuracy=100.0% allowGraph=100.0% allowWeb=100.0%
+report: eval/reports/2026-10-23T....json</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>字段</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>mode</code></td><td><code>nest</code>：成功拉起 Nest ApplicationContext；若因 TTS 等中间件失败，会降级 <code>standalone</code>（直接 <code>ChatOpenAI</code> + <code>ChatQueryRewriteService</code>），结果仍可用</td></tr>
+            <tr><td><code>summary.intentAccuracy</code></td><td>意图准确率（0～1）</td></tr>
+            <tr><td><code>summary.confusion</code></td><td>混淆矩阵</td></tr>
+            <tr><td><code>summary.failures</code></td><td>答错题列表（id + expect/pred）</td></tr>
+            <tr><td><code>rows</code></td><td>逐题明细</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          <code>eval/reports/</code> 默认 gitignore；可参考已提交的
+          <code>sample-report.json</code> 了解结构。每次跑分会新写一份带时间戳的 JSON。
+        </div>
+      </section>
+
+      <section id="regress">
+        <h2>7. 故意改坏再跑（建立回归直觉）</h2>
+        <p>目的不是破坏生产，而是亲手感受「准确率会掉」：</p>
+        <ol class="step-list">
+          <li>先跑一遍 <code>pnpm eval:intent</code>，记下 <code>intentAccuracy</code>（基线）。</li>
+          <li>
+            在本地副本里<strong>临时</strong>改乱路由提示（例如
+            <code>ChatQueryRewriteService</code> 里的 ROUTE_PROMPT：把「制度类」写成「一律走 web」），
+            <strong>不要提交、不要推生产</strong>。
+          </li>
+          <li>再跑 <code>pnpm eval:intent</code>，对比准确率与 <code>failures</code> / 混淆矩阵。</li>
+          <li>用 <code>git checkout --</code>（或 IDE 还原）恢复文件，再跑第三遍确认回到基线。</li>
+        </ol>
+        <div class="callout-warning">
+          只描述练习步骤；真实改 prompt 前请有金标基线。本课不要求你真的改坏生产配置。
+        </div>
+      </section>
+
+      <section id="extend">
+        <h2>8. 如何加题；P1 / P2 预告</h2>
+        <h3>加题</h3>
+        <ul>
+          <li>继续往 <code>golden-v1.jsonl</code> 追加行，或新建 <code>golden-v2.jsonl</code>（需改 runner 读路径）。</li>
+          <li>保持类别均衡；每加一批就跑分，避免「只测自己拿手的题」。</li>
+        </ul>
+        <h3>后续阶段（本课只预告）</h3>
+        <table>
+          <thead><tr><th>阶段</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td><strong>P0（已交付）</strong></td><td>Langfuse 开关 + 金标样例 + <code>eval:intent</code> + 本教程</td></tr>
+            <tr><td><strong>P1</strong></td><td>金标扩到 ~50；混淆矩阵更易读；Langfuse tags/metadata 补全</td></tr>
+            <tr><td><strong>P2</strong></td><td>检索 Hit@k；答案要点覆盖；可选 Langfuse Dataset 与离线分同步</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          设计全文：<code>docs/superpowers/specs/2026-10-23-agent-eval-langfuse-design.md</code>。
+        </div>
+      </section>
+
+      <section id="appendix">
+        <h2>附录 · 自托管 BASE_URL</h2>
+        <p>
+          默认走 Cloud：<code>https://cloud.langfuse.com</code>。
+          若团队自建 Langfuse，只需改环境变量（仍不要把真实 key 写进仓库）：
+        </p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code>LANGFUSE_ENABLED=true
+LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx
+LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx
+LANGFUSE_BASE_URL=https://langfuse.example.com</code></pre>
+        </div>
+        <p>P0 <strong>不强制</strong>自托管；配错区域 / BASE_URL 时 Cloud 里会看不到数据，先核对启动日志里的 baseURL。</p>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
