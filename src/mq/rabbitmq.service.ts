@@ -42,6 +42,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     if (!this.isEnabled) {
       this.logger.log('RabbitMQ 已禁用');
+      return;
     }
 
     const url = this.configService.get('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672');
