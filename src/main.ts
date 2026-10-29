@@ -1,12 +1,18 @@
+import { resolve } from 'node:path';
+
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { config as loadEnv } from 'dotenv';
 
 import { AppModule } from './app.module';
 import {
   registerLangfuse,
   shutdownLangfuse,
 } from './observability/langfuse';
+
+// registerLangfuse 早于 ConfigModule，须先注入 .env
+loadEnv({ path: resolve(process.cwd(), '.env') });
 
 async function bootstrap() {
   await registerLangfuse();
