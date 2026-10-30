@@ -16,7 +16,12 @@ export class TtsWebSocketService implements OnApplicationBootstrap, OnModuleDest
   ) {}
 
   onApplicationBootstrap(): void {
-    const httpServer = this.httpAdapterHost.httpAdapter.getHttpServer();
+    const httpServer = this.httpAdapterHost.httpAdapter?.getHttpServer?.();
+    // ApplicationContext（如 eval 脚本）无 HTTP server，跳过挂载
+    if (!httpServer) {
+      this.logger.warn('无 HTTP server，跳过 TTS WebSocket 挂载');
+      return;
+    }
     this.wss = new WebSocketServer({
       server: httpServer,
       path: '/api/speech/tts/ws',

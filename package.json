@@ -26,7 +26,8 @@
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
     "migration:show": "pnpm typeorm migration:show",
-    "eval:intent": "TS_NODE_PROJECT=tsconfig.json node -r ts-node/register -r tsconfig-paths/register eval/runners/run-intent.ts"
+    "eval:intent": "TS_NODE_PROJECT=tsconfig.json node -r ts-node/register -r tsconfig-paths/register eval/runners/run-intent.ts",
+    "eval:retrieval": "TS_NODE_PROJECT=tsconfig.json node -r ts-node/register -r tsconfig-paths/register eval/runners/run-retrieval.ts"
   },
   "dependencies": {
     "@ai-sdk/langchain": "^3.0.113",

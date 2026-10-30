@@ -44,3 +44,29 @@ export function summarizeIntentResults(rows: IntentCaseResult[]) {
     failures,
   };
 }
+
+/** 命中文本（标题+正文拼接）是否覆盖全部期望关键词 */
+export function hitAtK(blob: string, keywords: string[]): boolean {
+  if (!keywords.length) return true;
+  const text = blob.toLowerCase();
+  return keywords.every((kw) => text.includes(kw.trim().toLowerCase()));
+}
+
+export type RetrievalCaseResult = {
+  id: string;
+  hit: boolean;
+  keywords: string[];
+  missing: string[];
+  hitCount: number;
+  topK: number;
+};
+
+export function summarizeRetrievalResults(rows: RetrievalCaseResult[]) {
+  const hits = rows.filter((r) => r.hit).length;
+  const total = rows.length || 1;
+  return {
+    total: rows.length,
+    hitAtK: hits / total,
+    failures: rows.filter((r) => !r.hit),
+  };
+}

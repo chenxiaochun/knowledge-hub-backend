@@ -15,7 +15,7 @@
 | 会话记忆 | Redis 短记忆 + Mem0 长记忆 |
 | 语音 | 腾讯云 ASR；TTS WebSocket 流式播放（可按会话打断） |
 | 鉴权 | JWT + RBAC、邮箱激活与密码重置 |
-| Agent 评测 / 观测 | 离线金标 `pnpm eval:intent`；可选 Langfuse Cloud 看流式 trace（见下） |
+| Agent 评测 / 观测 | L1 `pnpm eval:intent`；L2 检索 `pnpm eval:retrieval`；可选 Langfuse Cloud 看流式 trace（见下） |
 
 ## 系统架构
 
@@ -155,7 +155,7 @@ src/
 | 项 | 说明 |
 |----|------|
 | 金标数据 | `eval/datasets/golden-v1.jsonl` |
-| 跑分 | `pnpm eval:intent` → 终端摘要 + `eval/reports/<ISO-time>.json` |
+| 跑分 | `pnpm eval:intent`（意图）；`pnpm eval:retrieval`（Hit@k，需 ES 有索引）→ `eval/reports/` |
 | 开关 | `LANGFUSE_ENABLED=true` 且配置 Public/Secret Key 后，仅流式（`ai-stream` / UI Message）挂 `createLangfuseHandler`；同步 `POST /ai/chat` 尚未埋点 |
 | 教程 | [docs/course/22-agent-eval-langfuse.html](docs/course/22-agent-eval-langfuse.html) |
 
@@ -170,6 +170,7 @@ pnpm run format           # oxfmt
 pnpm run test             # 单元测试
 pnpm run test:e2e         # E2E
 pnpm eval:intent          # L1 意图 / 工具开关金标评测
+pnpm eval:retrieval       # L2 检索 Hit@k（需 Elasticsearch）
 pnpm migration:show       # 查看 migration 状态
 pnpm migration:run        # 执行待执行 migration（空库）
 ```

@@ -1,5 +1,25 @@
 // eval/lib/metrics.spec.ts
-import { summarizeIntentResults } from './metrics';
+import { hitAtK, summarizeIntentResults, summarizeRetrievalResults } from './metrics';
+
+describe('hitAtK', () => {
+  it('requires all keywords to appear (case-insensitive)', () => {
+    expect(hitAtK('差旅报销需要审批', ['差旅', '审批'])).toBe(true);
+    expect(hitAtK('差旅报销需要审批', ['差旅', '年假'])).toBe(false);
+    expect(hitAtK('CAS Ticket 说明', ['cas', 'ticket'])).toBe(true);
+  });
+});
+
+describe('summarizeRetrievalResults', () => {
+  it('computes hitAtK rate', () => {
+    const summary = summarizeRetrievalResults([
+      { id: '1', hit: true, keywords: ['a'], missing: [], hitCount: 3, topK: 5 },
+      { id: '2', hit: false, keywords: ['b'], missing: ['b'], hitCount: 0, topK: 5 },
+    ]);
+    expect(summary.total).toBe(2);
+    expect(summary.hitAtK).toBe(0.5);
+    expect(summary.failures).toHaveLength(1);
+  });
+});
 
 describe('summarizeIntentResults', () => {
   it('computes accuracies and confusion', () => {
