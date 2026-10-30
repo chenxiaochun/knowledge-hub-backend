@@ -13,3 +13,21 @@
 {"id":"kb_then_web-001","question":"公司出差补贴标准和最新民航燃油附加费分别是多少？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"内部标准+外部时效"}
 {"id":"kb_then_web-002","question":"我们报销里境外住宿上限怎么定的，对照现在汇率大概多少人民币？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"制度+汇率"}
 {"id":"kb_then_web-003","question":"内部差旅政策允许坐高铁一等座吗，以及今天上海到北京高铁票大概多少钱？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"制度+公开票价"}
+{"id":"mix-001","question":"我叫什么名字？","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"易混：问本人信息，勿判 kb"}
+{"id":"mix-002","question":"请叫我小陈，回答尽量口语化","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"易混：偏好设置，勿判 chitchat"}
+{"id":"mix-003","question":"财务部有谁负责差旅审核？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"易混：组织岗位，勿判 profile"}
+{"id":"mix-004","question":"今天辛苦了，另外年假余额在哪查？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"易混：寒暄+制度，主诉求是 kb"}
+{"id":"mix-005","question":"最新版劳动法年假规定是什么？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"易混：公开法规非公司制度，勿判 kb"}
+{"id":"mix-006","question":"我们公司年假和法定年假怎么衔接？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"易混：公司制度优先，勿判纯 web"}
+{"id":"mix-007","question":"公司规定的差旅酒店上限，对比携程今晚上海均价大概差多少？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"易混：内部上限+外部均价"}
+{"id":"mix-008","question":"早上好","expect":{"intent":"chitchat","allowGraph":false,"allowWeb":false},"notes":"易混短问候，规则应短路"}
+{"id":"hard-001","question":"OK 谢谢，报销单模板在系统哪个菜单？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：致谢夹带内部系统问题"}
+{"id":"hard-002","question":"帮我画一个差旅报销审批的 mermaid 流程图","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：流程图仍属内部流程；图谱由 diagram 规则关掉"}
+{"id":"hard-003","question":"加班费公司怎么算，外面行业一般给多少？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"压测：内部算法+外部行情"}
+{"id":"hard-004","question":"OpenAI 最新发布了什么模型？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"压测：纯公开科技新闻"}
+{"id":"hard-005","question":"我想把档案部门改到财务部要走什么流程？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：本人相关但主语是公司流程，勿判 profile"}
+{"id":"hard-006","question":"公司 VPN 连不上，公网运营商有没有故障公告？","expect":{"intent":"kb_then_web","allowGraph":true,"allowWeb":true},"notes":"压测：内网问题+外部公告"}
+{"id":"hard-007","question":"嗯嗯好的","expect":{"intent":"chitchat","allowGraph":false,"allowWeb":false},"notes":"压测：无信息附和"}
+{"id":"hard-008","question":"国家法定节假日加班工资倍率是多少？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"压测：国家法规非本公司制度"}
+{"id":"hard-009","question":"我们公司法定节假日加班工资怎么算？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：公司落实口径，勿判纯 web"}
+{"id":"hard-010","question":"把我的回答偏好改成只给结论不要展开","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"压测：明确改偏好"}
