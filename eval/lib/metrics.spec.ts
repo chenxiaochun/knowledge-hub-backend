@@ -1,5 +1,10 @@
-// eval/lib/metrics.spec.ts
-import { hitAtK, summarizeIntentResults, summarizeRetrievalResults } from './metrics';
+import {
+  docHitAtK,
+  hitAtK,
+  summarizeIntentResults,
+  summarizeRetrievalResults,
+  titleHitAtK,
+} from './metrics';
 
 describe('hitAtK', () => {
   it('requires all keywords to appear (case-insensitive)', () => {
@@ -9,14 +14,52 @@ describe('hitAtK', () => {
   });
 });
 
+describe('docHitAtK / titleHitAtK', () => {
+  it('matches any expected doc id or title fragment', () => {
+    expect(docHitAtK(['111', '222'], ['222'])).toBe(true);
+    expect(docHitAtK(['111'], ['999'])).toBe(false);
+    expect(titleHitAtK(['绩效管理制度（V2.0）'], ['绩效管理'])).toBe(true);
+    expect(titleHitAtK(['员工手册'], ['统一认证'])).toBe(false);
+  });
+});
+
 describe('summarizeRetrievalResults', () => {
-  it('computes hitAtK rate', () => {
+  it('aggregates keyword/doc/grade rates', () => {
     const summary = summarizeRetrievalResults([
-      { id: '1', hit: true, keywords: ['a'], missing: [], hitCount: 3, topK: 5 },
-      { id: '2', hit: false, keywords: ['b'], missing: ['b'], hitCount: 0, topK: 5 },
+      {
+        id: '1',
+        ok: true,
+        keywordOk: true,
+        docOk: true,
+        titleOk: null,
+        gradeOk: true,
+        keywords: ['a'],
+        missingKeywords: [],
+        mustDocIds: ['1'],
+        hitDocIds: ['1'],
+        hitCount: 3,
+        topK: 5,
+      },
+      {
+        id: '2',
+        ok: false,
+        keywordOk: false,
+        docOk: false,
+        titleOk: null,
+        gradeOk: false,
+        keywords: ['b'],
+        missingKeywords: ['b'],
+        mustDocIds: ['9'],
+        hitDocIds: [],
+        hitCount: 0,
+        topK: 5,
+      },
     ]);
     expect(summary.total).toBe(2);
-    expect(summary.hitAtK).toBe(0.5);
+    expect(summary.overallAccuracy).toBe(0.5);
+    expect(summary.keywordHitAtK).toBe(0.5);
+    expect(summary.docHitAtK).toBe(0.5);
+    expect(summary.gradeAccuracy).toBe(0.5);
     expect(summary.failures).toHaveLength(1);
   });
 });

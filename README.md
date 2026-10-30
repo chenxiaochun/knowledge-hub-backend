@@ -155,7 +155,7 @@ src/
 | 项 | 说明 |
 |----|------|
 | 金标数据 | `eval/datasets/golden-v1.jsonl` |
-| 跑分 | `pnpm eval:intent`（意图）；`pnpm eval:retrieval`（Hit@k，需 ES 有索引）→ `eval/reports/` |
+| 跑分 | `pnpm eval:intent`（意图）；`pnpm eval:retrieval`（关键词/文档 Hit@k + gradeHits 切题率，需 ES）→ `eval/reports/` |
 | 开关 | `LANGFUSE_ENABLED=true` 且配置 Public/Secret Key 后，仅流式（`ai-stream` / UI Message）挂 `createLangfuseHandler`；同步 `POST /ai/chat` 尚未埋点 |
 | 教程 | [docs/course/22-agent-eval-langfuse.html](docs/course/22-agent-eval-langfuse.html) |
 

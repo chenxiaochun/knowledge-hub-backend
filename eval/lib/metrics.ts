@@ -52,21 +52,61 @@ export function hitAtK(blob: string, keywords: string[]): boolean {
   return keywords.every((kw) => text.includes(kw.trim().toLowerCase()));
 }
 
+/** top-k 命中里是否包含任一期望 documentId */
+export function docHitAtK(docIds: string[], mustDocIds: string[]): boolean {
+  if (!mustDocIds.length) return true;
+  const set = new Set(docIds.map(String));
+  return mustDocIds.some((id) => set.has(String(id)));
+}
+
+/** top-k 标题是否包含任一期望子串 */
+export function titleHitAtK(titles: string[], mustTitleContains: string[]): boolean {
+  if (!mustTitleContains.length) return true;
+  const lower = titles.map((t) => t.toLowerCase());
+  return mustTitleContains.some((frag) =>
+    lower.some((t) => t.includes(frag.trim().toLowerCase())),
+  );
+}
+
 export type RetrievalCaseResult = {
   id: string;
-  hit: boolean;
+  /** 本条所有启用检查是否通过 */
+  ok: boolean;
+  keywordOk: boolean | null;
+  docOk: boolean | null;
+  titleOk: boolean | null;
+  gradeOk: boolean | null;
+  gradeReason?: string;
   keywords: string[];
-  missing: string[];
+  missingKeywords: string[];
+  mustDocIds: string[];
+  hitDocIds: string[];
   hitCount: number;
   topK: number;
 };
 
+function rate(okCount: number, n: number): number | null {
+  if (n === 0) return null;
+  return okCount / n;
+}
+
 export function summarizeRetrievalResults(rows: RetrievalCaseResult[]) {
-  const hits = rows.filter((r) => r.hit).length;
-  const total = rows.length || 1;
+  const scored = {
+    keyword: rows.filter((r) => r.keywordOk !== null),
+    doc: rows.filter((r) => r.docOk !== null),
+    title: rows.filter((r) => r.titleOk !== null),
+    grade: rows.filter((r) => r.gradeOk !== null),
+  };
   return {
     total: rows.length,
-    hitAtK: hits / total,
-    failures: rows.filter((r) => !r.hit),
+    overallAccuracy: rows.length ? rows.filter((r) => r.ok).length / rows.length : 0,
+    keywordHitAtK: rate(
+      scored.keyword.filter((r) => r.keywordOk).length,
+      scored.keyword.length,
+    ),
+    docHitAtK: rate(scored.doc.filter((r) => r.docOk).length, scored.doc.length),
+    titleHitAtK: rate(scored.title.filter((r) => r.titleOk).length, scored.title.length),
+    gradeAccuracy: rate(scored.grade.filter((r) => r.gradeOk).length, scored.grade.length),
+    failures: rows.filter((r) => !r.ok),
   };
 }

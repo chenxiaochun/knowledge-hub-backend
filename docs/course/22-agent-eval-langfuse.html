@@ -356,7 +356,7 @@ report: eval/reports/2026-10-23T....json</code></pre>
           <thead><tr><th>阶段</th><th>内容</th></tr></thead>
           <tbody>
             <tr><td><strong>P0（已交付）</strong></td><td>Langfuse 开关 + 金标样例 + <code>eval:intent</code> + 本教程</td></tr>
-            <tr><td><strong>P1（部分）</strong></td><td>意图金标扩题；检索 Hit@k：<code>pnpm eval:retrieval</code> + <code>eval/datasets/retrieval-v1.jsonl</code>（需 ES）</td></tr>
+            <tr><td><strong>P1（部分）</strong></td><td>意图扩题；检索：关键词/文档 Hit@k + <code>gradeHits</code> 切题率（<code>pnpm eval:retrieval</code>）</td></tr>
             <tr><td><strong>P2</strong></td><td>答案要点覆盖；可选 Langfuse Dataset 与离线分同步</td></tr>
           </tbody>
         </table>

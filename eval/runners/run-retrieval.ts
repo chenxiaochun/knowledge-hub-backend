@@ -1,7 +1,9 @@
 /**
- * L2 检索 Hit@k：调用 HybridRetrievalService.retrieve，
- * 检查 top-k 拼接文本是否覆盖 must_retrieve_keywords。
- * 需要 Elasticsearch + 已索引语料；依赖 Nest ApplicationContext。
+ * L2 检索评测：
+ * - 关键词 Hit@k
+ * - 文档级 Hit@k（must_doc_ids / must_title_contains）
+ * - gradeHits 切题率（与线上一致）
+ * 需要 Elasticsearch + 已索引语料；Nest ApplicationContext。
  */
 import 'reflect-metadata';
 import { config } from 'dotenv';
@@ -12,10 +14,13 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 
 import { AppModule } from '../../src/app.module';
+import { ChatQueryRewriteService } from '../../src/ai/chat-query-rewrite.service';
 import { HybridRetrievalService } from '../../src/ai/hybrid-retrieval.service';
 import {
+  docHitAtK,
   hitAtK,
   summarizeRetrievalResults,
+  titleHitAtK,
   type RetrievalCaseResult,
 } from '../lib/metrics';
 
@@ -25,11 +30,19 @@ type RetrievalLine = {
   id: string;
   question: string;
   query?: string;
-  must_retrieve_keywords: string[];
+  must_retrieve_keywords?: string[];
+  must_doc_ids?: string[];
+  must_title_contains?: string[];
   topK?: number;
   skip?: boolean;
-  /** 默认 true；负例可标 false，期望检索不命中这些词 */
+  /** @deprecated 使用 expectKeywordHit */
   expectHit?: boolean;
+  expectKeywordHit?: boolean;
+  expectDocHit?: boolean;
+  expectTitleHit?: boolean;
+  expectGradeOk?: boolean;
+  /** 默认 true；负例可关 */
+  runGrade?: boolean;
 };
 
 async function main() {
@@ -53,6 +66,7 @@ async function main() {
   }
 
   const retrieval = app.get(HybridRetrievalService);
+  const rewrite = app.get(ChatQueryRewriteService);
   const rows: RetrievalCaseResult[] = [];
 
   try {
@@ -61,7 +75,13 @@ async function main() {
       const topK = item.topK ?? 5;
       const q = (item.query ?? item.question).trim();
       const keywords = item.must_retrieve_keywords ?? [];
-      const expectHit = item.expectHit !== false;
+      const mustDocIds = item.must_doc_ids ?? [];
+      const mustTitles = item.must_title_contains ?? [];
+      const expectKeywordHit = item.expectKeywordHit ?? item.expectHit ?? true;
+      const expectDocHit = item.expectDocHit ?? true;
+      const expectTitleHit = item.expectTitleHit ?? true;
+      const expectGradeOk = item.expectGradeOk ?? true;
+      const runGrade = item.runGrade !== false;
 
       let hits;
       try {
@@ -71,37 +91,86 @@ async function main() {
         console.log(`${item.id}\tERROR\t${msg}`);
         rows.push({
           id: item.id,
-          hit: false,
+          ok: false,
+          keywordOk: keywords.length ? false : null,
+          docOk: mustDocIds.length ? false : null,
+          titleOk: mustTitles.length ? false : null,
+          gradeOk: runGrade ? false : null,
           keywords,
-          missing: keywords,
+          missingKeywords: keywords,
+          mustDocIds,
+          hitDocIds: [],
           hitCount: 0,
           topK,
         });
         continue;
       }
 
-      const blob = hits
-        .map((h) => `${h.documentTitle}\n${h.content}`)
-        .join('\n');
-      const covered = hitAtK(blob, keywords);
-      const missing = keywords.filter(
-        (kw) => !blob.toLowerCase().includes(kw.trim().toLowerCase()),
-      );
-      // expectHit=true → 需要 covered；expectHit=false → 需要 !covered（负例）
-      const ok = expectHit ? covered : !covered;
+      const blob = hits.map((h) => `${h.documentTitle}\n${h.content}`).join('\n');
+      const hitDocIds = hits.map((h) => String(h.documentId));
+      const titles = hits.map((h) => h.documentTitle ?? '');
+
+      let keywordOk: boolean | null = null;
+      let missingKeywords: string[] = [];
+      if (keywords.length) {
+        const covered = hitAtK(blob, keywords);
+        missingKeywords = keywords.filter(
+          (kw) => !blob.toLowerCase().includes(kw.trim().toLowerCase()),
+        );
+        keywordOk = expectKeywordHit ? covered : !covered;
+      }
+
+      let docOk: boolean | null = null;
+      if (mustDocIds.length) {
+        const covered = docHitAtK(hitDocIds, mustDocIds);
+        docOk = expectDocHit ? covered : !covered;
+      }
+
+      let titleOk: boolean | null = null;
+      if (mustTitles.length) {
+        const covered = titleHitAtK(titles, mustTitles);
+        titleOk = expectTitleHit ? covered : !covered;
+      }
+
+      let gradeOk: boolean | null = null;
+      let gradeReason: string | undefined;
+      if (runGrade) {
+        const grade = await rewrite.gradeHits(item.question, hits);
+        gradeOk = grade.ok === expectGradeOk;
+        gradeReason = `${grade.reason}:${grade.text}`;
+      }
+
+      const checks = [keywordOk, docOk, titleOk, gradeOk].filter((v) => v !== null);
+      const ok = checks.length === 0 ? true : checks.every(Boolean);
 
       rows.push({
         id: item.id,
-        hit: ok,
+        ok,
+        keywordOk,
+        docOk,
+        titleOk,
+        gradeOk,
+        gradeReason,
         keywords,
-        missing: expectHit ? missing : covered ? keywords : [],
+        missingKeywords: expectKeywordHit ? missingKeywords : [],
+        mustDocIds,
+        hitDocIds,
         hitCount: hits.length,
         topK,
       });
+
+      const flags = [
+        keywordOk === null ? null : `kw=${keywordOk}`,
+        docOk === null ? null : `doc=${docOk}`,
+        titleOk === null ? null : `title=${titleOk}`,
+        gradeOk === null ? null : `grade=${gradeOk}`,
+      ]
+        .filter(Boolean)
+        .join(' ');
       console.log(
-        `${item.id}\texpectHit=${expectHit}\tcovered=${covered}\thits=${hits.length}\t${
-          ok ? 'OK' : 'FAIL'
-        }${missing.length && expectHit ? `\tmissing=${missing.join(',')}` : ''}`,
+        `${item.id}\thits=${hits.length}\t${flags}\t${ok ? 'OK' : 'FAIL'}${
+          gradeReason ? `\t${gradeReason}` : ''
+        }`,
       );
     }
   } finally {
@@ -115,7 +184,15 @@ async function main() {
     out,
     JSON.stringify({ generatedAt: new Date().toISOString(), summary, rows }, null, 2),
   );
-  console.log(`\nhitAtK=${(summary.hitAtK * 100).toFixed(1)}% (${summary.total} cases)`);
+  const pct = (n: number | null) => (n === null ? 'n/a' : `${(n * 100).toFixed(1)}%`);
+  console.log(
+    `\noverall=${pct(summary.overallAccuracy)} ` +
+      `keywordHit@k=${pct(summary.keywordHitAtK)} ` +
+      `docHit@k=${pct(summary.docHitAtK)} ` +
+      `titleHit@k=${pct(summary.titleHitAtK)} ` +
+      `gradeAccuracy=${pct(summary.gradeAccuracy)} ` +
+      `(${summary.total} cases)`,
+  );
   console.log(`report: ${out}`);
   process.exit(0);
 }
