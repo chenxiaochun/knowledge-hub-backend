@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 23 · MinerU 精准解析（对照 origin v20）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.75rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 23 · MinerU 精准解析 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      前置 <a href="./12-multi-format-parsers.html">课 12</a> ·
+      对照 origin 分支 <code>v20</code>
+      （<code>knowledge-hub-backend</code>）·
+      API 预习：<code>ai-agent-course-code/mineru-test</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#repos">对照仓库说明</a></li>
+        <li><a href="#warmup">预习 mineru-test</a></li>
+        <li><a href="#concept">概念与数据流</a></li>
+        <li><a href="#env">环境与依赖</a></li>
+        <li><a href="#compose">docker-compose？</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">与课 12 / 差异</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          把课 12 的「本地多库解析」换成
+          <strong>MinerU 云端精准解析</strong>：
+          PDF / 图片 / Office → 官方 API 出 zip → 读 <code>full.md</code>，
+          把 <code>images/</code> 上传 RustFS 并改写 Markdown。
+          <code>txt</code>/<code>md</code> 仍本地直读。
+          上传接口<strong>等解析完成后才返回</strong>（与 origin <code>v20</code> 一致）。
+        </p>
+        <div class="callout-tip">
+          <strong>自测通过</strong>：
+          ① 配置 <code>MINERU_API_TOKEN</code> + <code>docker compose up -d rustfs</code>；
+          ② 上传 <code>test-files/scanned-1page.pdf</code>（或 origin 同名样例）得到 Draft，正文可读；
+          ③ 扫描件明显好于课 12 的 <code>pdf-parse</code>；
+          ④ 正文里的图是 RustFS URL（<code>document-images/</code>），不是相对路径 <code>images/...</code>；
+          ⑤ 未配 Token → 明确 400；不支持扩展名 → 400。
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 12 的上传双写 + RustFS 已通。
+          本课<strong>不改</strong>审核 / MQ / RAG；只换解析层。
+          Token 在
+          <a href="https://mineru.net/apiManage/token" target="_blank" rel="noopener">mineru.net/apiManage/token</a>
+          创建，<strong>勿提交</strong>进仓库。
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 登录拿 TOKEN 后：
+# 扫描件 PDF（耗时可几十秒～数分钟，别设太短的 curl 超时）
+curl -s --max-time 600 -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'file=@./test-files/scanned-1page.pdf' \
+  -F 'tags=mineru,扫描' | jq '{documentId, title, fileUrl, fileExtension, contentLength, status}'
+
+DOC_ID=... # 上一步
+curl -s "http://localhost:3000/documents/${DOC_ID}" \
+  -H "Authorization: Bearer $TOKEN" | jq '{id, status, content: (.content[:500])}'</code></pre>
+        </div>
+      </section>
+
+      <section id="repos">
+        <h2>对照仓库说明</h2>
+        <table>
+          <thead><tr><th>仓库</th><th>你怎么用</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>
+                <a href="https://gitcode.com/guang-agent/knowledge-hub-backend" target="_blank" rel="noopener">knowledge-hub-backend</a>
+                分支 <code>v20</code>
+              </td>
+              <td>
+                <strong>本课主对照</strong>。看
+                <code>src/document/parser/mineru.parser.ts</code>、
+                <code>file-parser.service.ts</code>、
+                <code>document.module.ts</code>、<code>.env.example</code>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <a href="https://gitcode.com/guang-agent/ai-agent-course-code" target="_blank" rel="noopener">ai-agent-course-code</a>
+                （当前只有 <code>main</code>，没有 v20 分支）
+              </td>
+              <td>
+                目录 <code>mineru-test/</code>：官方 API 的最小脚本（精准 / Agent）。
+                先跑通再写 Nest，少踩「上传别带 Content-Type」这类坑
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          课程 README 写的「按 v1、v2… 切换分支」指的是
+          <strong>knowledge-hub-backend</strong>，不是 <code>ai-agent-course-code</code>。
+          本课对齐后端 <code>v20</code>；脚本预习对齐 <code>mineru-test</code>。
+        </div>
+      </section>
+
+      <section id="warmup">
+        <h2>预习 · 先跑 mineru-test</h2>
+        <p>克隆课程主代码库后进入 <code>mineru-test</code>（与 origin <code>v20</code> 同一套云 API）：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">cd mineru-test
+pnpm i   # 或 npm i
+# 编辑 src/precise-parse-file.mjs：换成你自己的 token，不要用仓库里示例密钥
+node src/precise-parse-file.mjs</code></pre>
+        </div>
+        <p>脚本核心四步（Nest 里同款）：</p>
+        <ol>
+          <li><code>POST /api/v4/file-urls/batch</code> → 拿 <code>batch_id</code> + <code>file_urls[0]</code></li>
+          <li><code>PUT</code> 原文件到签名 URL（<strong>不要</strong>设 <code>Content-Type</code>）</li>
+          <li>轮询 <code>GET /api/v4/extract-results/batch/{batch_id}</code> 直到 <code>done</code> / <code>failed</code></li>
+          <li>用返回的 <code>full_zip_url</code> 下载结果（Nest 再解出 <code>full.md</code>）</li>
+        </ol>
+        <div class="callout-warning">
+          同目录还有 <code>agent-parse-*.mjs</code>（<code>/api/v1/agent/...</code>）。
+          origin <code>v20</code> 用的是<strong>精准解析</strong> batch 接口，不是 Agent 接口。预习以
+          <code>precise-parse-file.mjs</code> 为准。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与数据流</h2>
+        <div class="flow">multipart file.buffer
+  → FileParserService.parse
+       ├─ txt / md     → parsePlainText（本地）
+       └─ pdf/图/Office → MineruParser.parse
+              ├─ POST /api/v4/file-urls/batch（Bearer token）
+              ├─ PUT 上传（无 Content-Type）
+              ├─ 轮询 extract-results → full_zip_url
+              ├─ 下载 zip → 读 full.md
+              └─ images/* → RustFS(prefix=document-images) → 改写 Markdown
+  →（DocumentService）原件再上传 RustFS(prefix=documents)
+  → Postgres 元数据 + Mongo 正文
+  → 响应 Draft（请求全程阻塞到解析结束）</div>
+
+        <h3>前端类比</h3>
+        <table>
+          <thead><tr><th>后端</th><th>前端感觉</th></tr></thead>
+          <tbody>
+            <tr><td>课 12 本地 parser</td><td>各格式自己写「转换器」</td></tr>
+            <tr><td>MinerU 云 API</td><td>把文件丢给第三方 OCR/版面服务，轮询任务</td></tr>
+            <tr><td>zip 里的 <code>images/</code> → RustFS</td><td>打包资源解压后 CDN 化，正文改成绝对 URL</td></tr>
+            <tr><td>同步等解析完</td><td>上传按钮长时间 loading（本课不做 MQ 异步）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="env">
+        <h2>环境与依赖</h2>
+        <h3>.env 增量（对照 origin <code>.env.example</code>）</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># MinerU 精准解析（PDF / 图片 / Office → Markdown zip）
+# Token 在 https://mineru.net/apiManage/token 创建
+MINERU_API_TOKEN=sk-你的token
+MINERU_API_BASE=https://mineru.net
+MINERU_MODEL_VERSION=vlm
+MINERU_LANGUAGE=ch
+MINERU_ENABLE_FORMULA=true
+MINERU_ENABLE_TABLE=true
+MINERU_POLL_INTERVAL_MS=3000
+MINERU_POLL_TIMEOUT_MS=600000
+
+# 结果图要进 RustFS——保持课 12 已配好的 RUSTFS_*，且 RUSTFS_ENABLED=true</code></pre>
+        </div>
+        <h3>依赖</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 课 12 若已装 jszip 可跳过
+pnpm add jszip</code></pre>
+        </div>
+        <p>Docker 只需已有依赖（尤其 RustFS）。<strong>不需要</strong>起 MinerU 容器——解析在 mineru.net。</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash">docker compose up -d rustfs
+# 以及你平时的 postgres / mongodb 等</code></pre>
+        </div>
+      </section>
+
+      <section id="compose">
+        <h2>要改 docker-compose.yml 吗？</h2>
+        <div class="callout-tip">
+          <strong>origin <code>v20</code>：不用改。</strong>
+          解析走公网 API；compose 里继续用现有 <code>rustfs</code> 存原件和解析出的图即可。
+        </div>
+        <table>
+          <thead><tr><th>方案</th><th>本课（对齐 v20）</th><th>自建 MinerU（课外）</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>改练习仓 compose</td>
+              <td>否</td>
+              <td>才需要加 <code>mineru-api</code> 服务</td>
+            </tr>
+            <tr>
+              <td><code>MINERU_API_BASE</code></td>
+              <td><code>https://mineru.net</code></td>
+              <td>自建地址，如 <code>http://127.0.0.1:8000</code>（协议也不同，不能直接复用本课客户端）</td>
+            </tr>
+            <tr>
+              <td>费用 / 机器</td>
+              <td>按平台额度；个人练习省事</td>
+              <td>GPU/CPU + 运维</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          若以后要自建，官方 Tasks API（自托管）与 mineru.net 的
+          <code>/api/v4/file-urls/batch</code> <strong>不是同一套</strong>，
+          需另写客户端——本课不展开。
+        </p>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th><th>职责</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>.env</code> / <code>.env.example</code></td>
+              <td>核对改</td>
+              <td>增加 <code>MINERU_*</code></td>
+            </tr>
+            <tr>
+              <td><code>src/document/parser/mineru.parser.ts</code></td>
+              <td>新建</td>
+              <td>云 API + zip → md + 图片上 RustFS</td>
+            </tr>
+            <tr>
+              <td><code>src/document/parser/file-parser.service.ts</code></td>
+              <td>核对改</td>
+              <td>只保留路由：MinerU vs 本地 txt/md</td>
+            </tr>
+            <tr>
+              <td><code>src/document/document.module.ts</code></td>
+              <td>核对改</td>
+              <td>注册 <code>MineruParser</code></td>
+            </tr>
+            <tr>
+              <td><code>src/document/document.controller.ts</code></td>
+              <td>核对改</td>
+              <td>上传上限 50MB → 200MB（对齐官方单文件上限）</td>
+            </tr>
+            <tr>
+              <td><code>src/document/parser/parsers/*</code></td>
+              <td>可保留不删</td>
+              <td>v20 主路径已不调用；留下方便对比课 12</td>
+            </tr>
+            <tr>
+              <td><code>test-files/scanned-1page.pdf</code> 等</td>
+              <td>可选复制</td>
+              <td>从 origin <code>v20</code> 的 <code>test-files/</code> 拷</td>
+            </tr>
+            <tr>
+              <td><code>docker-compose.yml</code></td>
+              <td>不改</td>
+              <td>见上一节</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <p>下列代码与 origin <code>v20</code> 对齐；练习仓若方法名略有不同（如仍有 <code>getExtension</code>），保留兼容即可。</p>
+        <ol class="step-list">
+
+          <li>
+            <h3>新建 MineruParser</h3>
+            <span class="file-path">src/document/parser/mineru.parser.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import JSZip from 'jszip';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import { RustfsService } from '../../storage/rustfs.service';
+import { cleanMarkdown, getExtension } from './utils/markdown.util';
+
+export interface MineruParseInput {
+  originalname: string;
+  buffer: Buffer;
+}
+
+/** MinerU 精准解析单文件上限（文档：200MB） */
+const MAX_FILE_BYTES = 200 * 1024 * 1024;
+
+const IMAGE_CONTENT_TYPES: Record&lt;string, string&gt; = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  jp2: 'image/jp2',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+};
+
+interface MineruEnvelope&lt;T&gt; {
+  code?: number;
+  msg?: string;
+  data?: T;
+}
+
+interface BatchCreated {
+  batch_id?: string;
+  file_urls?: string[];
+}
+
+interface ExtractItem {
+  file_name?: string;
+  state?: string;
+  full_zip_url?: string;
+  err_msg?: string;
+  extract_progress?: {
+    extracted_pages?: number;
+    total_pages?: number;
+  };
+}
+
+interface BatchResult {
+  extract_result?: ExtractItem[];
+}
+
+/**
+ * MinerU 精准解析（本地文件上传）。
+ *
+ * 流程对齐官方 `/api/v4/file-urls/batch`：
+ * 1. 申请上传链接；
+ * 2. PUT 文件（不设置 Content-Type），服务端自动开始解析；
+ * 3. 轮询 batch 结果，拿到 `full_zip_url`；
+ * 4. 下载 zip，读 `full.md`，把 `images/` 上传到 RustFS 并替换 Markdown 中的相对路径。
+ */
+@Injectable()
+export class MineruParser {
+  private readonly logger = new Logger(MineruParser.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly rustfs: RustfsService,
+  ) {}
+
+  async parse(file: MineruParseInput): Promise&lt;string&gt; {
+    if (file.buffer.length &gt; MAX_FILE_BYTES) {
+      throw new BadRequestException('文件超过 MinerU 限制（200MB）');
+    }
+
+    const zipUrl = await this.submitAndWait(file);
+    const zipBytes = await this.downloadZip(zipUrl);
+    return this.markdownFromZip(zipBytes);
+  }
+
+  private async submitAndWait(file: MineruParseInput): Promise&lt;string&gt; {
+    const token = this.token();
+    const base = this.baseUrl();
+    const fileName =
+      path.posix.basename(file.originalname) ||
+      `file.${getExtension(file.originalname)}`;
+    const extension = getExtension(fileName);
+    const dataId = randomUUID();
+
+    const created = await this.requestJson&lt;BatchCreated&gt;(
+      `${base}/api/v4/file-urls/batch`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: [
+            {
+              name: fileName,
+              data_id: dataId,
+              is_ocr: isImageExtension(extension),
+            },
+          ],
+          model_version: this.config.get&lt;string&gt;('MINERU_MODEL_VERSION', 'vlm'),
+          enable_formula: this.boolConfig('MINERU_ENABLE_FORMULA', true),
+          enable_table: this.boolConfig('MINERU_ENABLE_TABLE', true),
+          language: this.config.get&lt;string&gt;('MINERU_LANGUAGE', 'ch'),
+        }),
+      },
+    );
+
+    const batchId = created.batch_id;
+    const uploadUrl = created.file_urls?.[0];
+    if (!batchId || !uploadUrl) {
+      throw new BadRequestException('MinerU 未返回上传链接');
+    }
+
+    this.logger.log(`MinerU 已申请上传: batch=${batchId}, name=${fileName}`);
+    await this.uploadFile(uploadUrl, file.buffer);
+
+    const interval = this.numberConfig('MINERU_POLL_INTERVAL_MS', 3000);
+    const timeout = this.numberConfig('MINERU_POLL_TIMEOUT_MS', 600_000);
+    const deadline = Date.now() + timeout;
+    let lastState = '';
+
+    while (Date.now() &lt; deadline) {
+      let items: ExtractItem[] = [];
+      try {
+        const result = await this.requestJson&lt;BatchResult&gt;(
+          `${base}/api/v4/extract-results/batch/${batchId}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        items = result.extract_result ?? [];
+      } catch (err) {
+        if (err instanceof BadRequestException) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`MinerU 轮询失败，稍后重试: ${message}`);
+      }
+
+      const item = items[0];
+      const state = item?.state ?? 'waiting';
+      if (state !== lastState) {
+        const progress = item?.extract_progress;
+        const pages =
+          progress?.total_pages != null
+            ? ` ${progress.extracted_pages ?? 0}/${progress.total_pages}`
+            : '';
+        this.logger.log(`MinerU 解析状态: batch=${batchId}, state=${state}${pages}`);
+        lastState = state;
+      }
+
+      if (item?.state === 'done') {
+        if (!item.full_zip_url) {
+          throw new BadRequestException('MinerU 解析完成但未返回结果压缩包');
+        }
+        return item.full_zip_url;
+      }
+      if (item?.state === 'failed') {
+        throw new BadRequestException(
+          `MinerU 解析失败: ${item.err_msg || '未知错误'}`,
+        );
+      }
+
+      await sleep(interval);
+    }
+
+    throw new BadRequestException(
+      `MinerU 解析超时（${Math.round(timeout / 1000)}s），请稍后重试`,
+    );
+  }
+
+  /** 官方要求上传时不要带 Content-Type，否则签名链接可能拒绝 */
+  private async uploadFile(uploadUrl: string, bytes: Buffer): Promise&lt;void&gt; {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: new Uint8Array(bytes),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() =&gt; '');
+      throw new BadRequestException(
+        `MinerU 文件上传失败（${response.status}）${detail.slice(0, 180)}`,
+      );
+    }
+  }
+
+  private async downloadZip(zipUrl: string): Promise&lt;Buffer&gt; {
+    const response = await fetch(zipUrl, {
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) {
+      throw new BadRequestException(
+        `下载 MinerU 解析结果失败（${response.status}）`,
+      );
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length) {
+      throw new BadRequestException('MinerU 解析结果压缩包为空');
+    }
+    this.logger.log(`MinerU 结果已下载: bytes=${bytes.length}`);
+    return bytes;
+  }
+
+  private async markdownFromZip(zipBytes: Buffer): Promise&lt;string&gt; {
+    const zip = await JSZip.loadAsync(zipBytes);
+    const mdEntry = Object.values(zip.files).find(
+      (entry) =&gt; !entry.dir &amp;&amp; /(^|\/)full\.md$/i.test(entry.name),
+    );
+    if (!mdEntry) {
+      throw new BadRequestException('MinerU 结果中没有 full.md');
+    }
+
+    const markdown = await mdEntry.async('string');
+    const imageEntries = Object.values(zip.files).filter((entry) =&gt; {
+      if (!isZipImage(entry.name, entry.dir)) return false;
+      const rel = relativeImagePath(mdEntry.name, entry.name);
+      return markdown.includes(rel) || markdown.includes(`./${rel}`);
+    });
+
+    if (!imageEntries.length) {
+      return cleanMarkdown(markdown);
+    }
+
+    if (!this.rustfs.isEnabled()) {
+      throw new BadRequestException(
+        '解析结果包含图片，但 RustFS 未启用，无法替换图片地址',
+      );
+    }
+
+    const urlByPath = new Map&lt;string, string&gt;();
+    for (const entry of imageEntries) {
+      const rel = relativeImagePath(mdEntry.name, entry.name);
+      const bytes = await entry.async('nodebuffer');
+      const ext = getExtension(entry.name);
+      const url = await this.rustfs.uploadBytes(bytes, {
+        fileName: path.posix.basename(entry.name),
+        contentType: IMAGE_CONTENT_TYPES[ext] ?? 'application/octet-stream',
+        prefix: 'document-images',
+      });
+      urlByPath.set(rel, url);
+    }
+
+    this.logger.log(`MinerU 图片已上传 RustFS: count=${urlByPath.size}`);
+    return cleanMarkdown(rewriteImageUrls(markdown, urlByPath));
+  }
+
+  private async requestJson&lt;T&gt;(url: string, init: RequestInit): Promise&lt;T&gt; {
+    const response = await fetch(url, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(30_000),
+    });
+    const text = await response.text();
+    let body: MineruEnvelope&lt;T&gt; | null = null;
+    try {
+      body = text ? (JSON.parse(text) as MineruEnvelope&lt;T&gt;) : null;
+    } catch {
+      body = null;
+    }
+
+    if (!response.ok || !body || body.code !== 0 || body.data == null) {
+      const reason = body?.msg || text.slice(0, 180) || response.statusText;
+      throw new BadRequestException(
+        `MinerU 接口失败（${response.status}）: ${reason}`,
+      );
+    }
+    return body.data;
+  }
+
+  private token(): string {
+    const token = this.config.get&lt;string&gt;('MINERU_API_TOKEN')?.trim();
+    if (!token) {
+      throw new BadRequestException('未配置 MINERU_API_TOKEN，无法解析文件');
+    }
+    return token;
+  }
+
+  private baseUrl(): string {
+    return (
+      this.config.get&lt;string&gt;('MINERU_API_BASE') || 'https://mineru.net'
+    ).replace(/\/$/, '');
+  }
+
+  private numberConfig(key: string, fallback: number): number {
+    const raw = this.config.get&lt;string | number&gt;(key);
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(value) &amp;&amp; value &gt; 0 ? value : fallback;
+  }
+
+  private boolConfig(key: string, fallback: boolean): boolean {
+    const raw = this.config.get&lt;string | boolean&gt;(key);
+    if (raw == null || raw === '') return fallback;
+    if (typeof raw === 'boolean') return raw;
+    return raw.toLowerCase() !== 'false';
+  }
+}
+
+function isImageExtension(extension: string): boolean {
+  return Object.prototype.hasOwnProperty.call(IMAGE_CONTENT_TYPES, extension);
+}
+
+function isZipImage(name: string, dir: boolean): boolean {
+  if (dir) return false;
+  const normalized = name.replace(/\\/g, '/');
+  if (normalized.includes('__MACOSX/') || normalized.endsWith('.DS_Store')) {
+    return false;
+  }
+  if (!/(^|\/)images\/[^/]+$/i.test(normalized)) return false;
+  return isImageExtension(getExtension(normalized));
+}
+
+/** 相对 full.md 所在目录的路径，与 Markdown 里的 `images/...` 对齐 */
+function relativeImagePath(mdEntryName: string, imageEntryName: string): string {
+  const mdPath = mdEntryName.replace(/\\/g, '/');
+  const imagePath = imageEntryName.replace(/\\/g, '/');
+  const mdDir = path.posix.dirname(mdPath);
+  const rel = path.posix.relative(mdDir === '.' ? '' : mdDir, imagePath);
+  if (rel &amp;&amp; !rel.startsWith('..')) return rel;
+  const idx = imagePath.toLowerCase().lastIndexOf('images/');
+  return idx &gt;= 0 ? imagePath.slice(idx) : path.posix.basename(imagePath);
+}
+
+/** 把 Markdown / HTML 中的 `images/xxx` 换成 RustFS 地址 */
+export function rewriteImageUrls(
+  markdown: string,
+  urlByPath: Map&lt;string, string&gt;,
+): string {
+  const replacements: Array&lt;[string, string]&gt; = [];
+  for (const [rel, url] of urlByPath) {
+    const normalized = rel.replace(/\\/g, '/').replace(/^\.\//, '');
+    replacements.push([`./${normalized}`, url], [normalized, url]);
+  }
+  replacements.sort((a, b) =&gt; b[0].length - a[0].length);
+
+  let result = markdown;
+  for (const [from, url] of replacements) {
+    if (result.includes(from)) {
+      result = result.split(from).join(url);
+    }
+  }
+  return result;
+}
+
+function sleep(ms: number): Promise&lt;void&gt; {
+  return new Promise((resolve) =&gt; setTimeout(resolve, ms));
+}</code></pre>
+            </div>
+            <div class="callout-warning">
+              确认 <code>RustfsService</code> 有 <code>isEnabled()</code>。
+              若练习仓没有，对照课 12 / origin 补上，或临时改成读
+              <code>RUSTFS_ENABLED !== 'false'</code>。
+            </div>
+          </li>
+
+          <li>
+            <h3>改写 FileParserService（薄路由）</h3>
+            <span class="file-path">src/document/parser/file-parser.service.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { MineruParser } from './mineru.parser';
+import { parsePlainText } from './parsers/plain-text.parser';
+import { getExtension } from './utils/markdown.util';
+
+/**
+ * MinerU 精准解析支持的扩展名。
+ * 见 https://mineru.net/apiManage/docs
+ */
+const MINERU_EXTENSIONS = new Set([
+  'pdf',
+  'png', 'jpg', 'jpeg', 'jp2', 'webp', 'gif', 'bmp',
+  'doc', 'docx',
+  'ppt', 'pptx',
+  'xls', 'xlsx',
+]);
+
+/** txt / md 本地直读，不走 MinerU */
+const LOCAL_TEXT_EXTENSIONS = new Set(['txt', 'md']);
+
+const SUPPORTED_EXTENSIONS = new Set([
+  ...MINERU_EXTENSIONS,
+  ...LOCAL_TEXT_EXTENSIONS,
+]);
+
+export interface ParseInput {
+  originalname: string;
+  buffer: Buffer;
+  size?: number;
+  mimetype?: string;
+}
+
+@Injectable()
+export class FileParserService {
+  private readonly logger = new Logger(FileParserService.name);
+
+  constructor(private readonly mineru: MineruParser) {}
+
+  /** 练习仓 DocumentService 若仍调用此方法，保留 */
+  getExtension(filename: string): string {
+    return getExtension(filename).replace(/^\./, '').toLowerCase();
+  }
+
+  isSupported(extension: string): boolean {
+    return SUPPORTED_EXTENSIONS.has(extension?.toLowerCase());
+  }
+
+  supportedList(): string {
+    return [...SUPPORTED_EXTENSIONS].join(', ');
+  }
+
+  async parse(file: ParseInput): Promise&lt;string&gt; {
+    const extension = getExtension(file.originalname);
+
+    if (!this.isSupported(extension)) {
+      throw new BadRequestException(
+        `不支持的文件格式: ${extension || '(无扩展名)'}，支持的格式: ${this.supportedList()}`,
+      );
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException('文件内容为空，无法解析');
+    }
+
+    const start = Date.now();
+    const result = MINERU_EXTENSIONS.has(extension)
+      ? await this.mineru.parse(file)
+      : parsePlainText(file.buffer);
+
+    this.logger.log(
+      `文件解析完成: name=${file.originalname}, format=${extension}, chars=${result.length}, elapsed=${Date.now() - start}ms`,
+    );
+
+    if (!result?.trim()) {
+      throw new BadRequestException(
+        '文件解析结果为空，请确认文件包含可提取的文本内容',
+      );
+    }
+    return result;
+  }
+}</code></pre>
+            </div>
+            <p>
+              可删掉对 <code>parsePdf</code> / <code>parseDocx</code> / LLM 图片解析等注入；
+              构造函数不再需要 <code>MULTI_LLM_TOOL</code>（若 Module 因此报错，同步去掉相关 provider 注入）。
+            </p>
+          </li>
+
+          <li>
+            <h3>注册 Module + 放大上传限制</h3>
+            <span class="file-path">src/document/document.module.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { MineruParser } from './parser/mineru.parser';
+// ...
+providers: [
+  DocumentService,
+  // DocumentReviewService 若有则保留
+  FileParserService,
+  MineruParser,
+],</code></pre>
+            </div>
+            <span class="file-path">src/document/document.controller.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">FileInterceptor('file', {
+  limits: { fileSize: 200 * 1024 * 1024 }, // 对齐 MinerU 单文件上限
+})</code></pre>
+            </div>
+            <p>
+              <code>DocumentService.uploadAndCreateDocument</code> 仍调用
+              <code>fileParser.parse</code> 即可；origin 仅加了注释
+              「请求在解析完成前不返回」和日志位置微调。
+              注意：HTTP 可能长达数分钟，前端 / 网关超时要放开。
+            </p>
+          </li>
+
+          <li>
+            <h3>样例文件与自测</h3>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-bash"># 从 origin v20 拷贝（路径按你本地 origin 仓调整）
+cp ../knowledge-hub-backend-origin/test-files/scanned-1page.pdf ./test-files/
+cp ../knowledge-hub-backend-origin/test-files/example.pdf ./test-files/
+
+# 重启 Nest 使 .env 生效后跑验收 curl（见文首）</code></pre>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design">
+        <h2>设计决策</h2>
+        <table>
+          <thead><tr><th>决策</th><th>v20 选择</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>云 API vs 自建</td>
+              <td>mineru.net</td>
+              <td>课程环境免 GPU；与 <code>mineru-test</code> 脚本一致</td>
+            </tr>
+            <tr>
+              <td>同步 vs MQ 异步</td>
+              <td>请求内轮询</td>
+              <td>改动面小：只换 parser；异步要加状态机（本课不做）</td>
+            </tr>
+            <tr>
+              <td>txt/md</td>
+              <td>本地</td>
+              <td>无版面问题，省额度、更快</td>
+            </tr>
+            <tr>
+              <td>结果图</td>
+              <td>强制进 RustFS</td>
+              <td>知识库正文要可长期访问的绝对 URL</td>
+            </tr>
+            <tr>
+              <td>旧 parsers</td>
+              <td>可不删</td>
+              <td>对照课 12；主路径已不引用</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>建议阅读顺序</h3>
+        <ol>
+          <li><code>ai-agent-course-code/mineru-test/src/precise-parse-file.mjs</code></li>
+          <li>origin <code>v20</code> · <code>mineru.parser.ts</code></li>
+          <li>origin <code>v20</code> · <code>file-parser.service.ts</code></li>
+          <li>官方文档：<a href="https://mineru.net/apiManage/docs" target="_blank" rel="noopener">apiManage/docs</a></li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>与课 12 / 练习版差异</h2>
+        <table>
+          <thead><tr><th>课 12</th><th>本课（v20）</th></tr></thead>
+          <tbody>
+            <tr><td>pdf-parse / mammoth / exceljs / …</td><td>统一 MinerU（txt/md 除外）</td></tr>
+            <tr><td>PDF 抽图 prefix=<code>pdf-images</code></td><td>结果 zip 图 prefix=<code>document-images</code></td></tr>
+            <tr><td>50MB 上限（课 12 讲义）</td><td>200MB</td></tr>
+            <tr><td>纯本地、无 Token</td><td>要 <code>MINERU_API_TOKEN</code>，耗云端额度</td></tr>
+            <tr><td>秒级返回</td><td>可能分钟级；curl 加 <code>--max-time 600</code></td></tr>
+          </tbody>
+        </table>
+        <div class="callout-info">
+          本课<strong>故意不做</strong>：解析中状态、RabbitMQ 异步、自建 MinerU Docker。
+          若你要异步壳，属于 v20 之上的扩展，别和本课验收混在一起。
+        </div>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          卡住时切 origin：<code>git checkout v20</code>。
+        </div>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>未配置 MINERU_API_TOKEN</code></td>
+              <td>写进 <code>.env</code> 并重启 Nest；确认没提交到 git</td>
+            </tr>
+            <tr>
+              <td>PUT 上传 403 / 签名错误</td>
+              <td>PUT 时不要带 <code>Content-Type</code>（fetch 默认即可；axios 要用 <code>Content-Type: false</code>）</td>
+            </tr>
+            <tr>
+              <td><code>RustFS 未启用，无法替换图片地址</code></td>
+              <td><code>RUSTFS_ENABLED=true</code> 且 <code>docker compose up -d rustfs</code></td>
+            </tr>
+            <tr>
+              <td>结果中没有 <code>full.md</code></td>
+              <td>解压 zip 看实际结构；确认走的是精准解析而非 Agent 接口</td>
+            </tr>
+            <tr>
+              <td>HTTP 客户端先超时</td>
+              <td>拉长 curl/前端/反向代理超时；看 Nest 日志里的 <code>MinerU 解析状态</code></td>
+            </tr>
+            <tr>
+              <td>额度 / 鉴权失败</td>
+              <td>浏览器打开 apiManage 看 Token 与套餐；换新 Token</td>
+            </tr>
+            <tr>
+              <td>注入 <code>MULTI_LLM_TOOL</code> 失败</td>
+              <td>课 12 图片 LLM 路径已移除，清掉 FileParserService 对 multiLlm 的依赖</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
