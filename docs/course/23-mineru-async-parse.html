@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进阶课 23 · MinerU 异步解析（旁路服务 + 本地降级）</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #f8f9fa;
+    }
+    .header {
+      background: #1e293b;
+      color: #f1f5f9;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid #3b82f6;
+    }
+    .header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
+    .header p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    .header a { color: #93c5fd; }
+    .layout { display: flex; min-height: calc(100vh - 5rem); }
+    #nav {
+      width: 240px; flex-shrink: 0; background: #fff;
+      border-right: 1px solid #e2e8f0; padding: 1rem 0;
+      position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto;
+    }
+    #nav ul { list-style: none; margin: 0; padding: 0; }
+    #nav a {
+      display: block; padding: 0.45rem 1.1rem; color: #334155;
+      text-decoration: none; font-size: 0.88rem; border-left: 3px solid transparent;
+    }
+    #nav a:hover { background: #f1f5f9; color: #1d4ed8; }
+    #nav a.active { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; font-weight: 600; }
+    #main { flex: 1; padding: 2rem 2.25rem; max-width: 900px; }
+    section { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid #e2e8f0; }
+    section:last-child { border-bottom: none; }
+    h2 { margin: 0 0 0.75rem; font-size: 1.3rem; color: #0f172a; }
+    h3 { margin: 1.4rem 0 0.5rem; font-size: 1.05rem; color: #1e293b; }
+    h4 { margin: 1rem 0 0.4rem; font-size: 0.98rem; color: #334155; }
+    .code-block { position: relative; margin: 1rem 0; }
+    pre {
+      background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; padding-top: 2.25rem;
+      border-radius: 6px; overflow-x: auto; font-size: 0.84rem; line-height: 1.5; margin: 0;
+    }
+    code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+    p code, li code, td code {
+      background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.88em;
+    }
+    pre code { background: none; padding: 0; color: inherit; }
+    .copy-btn {
+      position: absolute; top: 0.5rem; right: 0.5rem; padding: 0.25rem 0.6rem;
+      font-size: 0.75rem; background: #334155; color: #e2e8f0; border: 1px solid #475569;
+      border-radius: 4px; cursor: pointer; z-index: 1;
+    }
+    .copy-btn:hover { background: #475569; }
+    .copy-btn.copied { background: #166534; border-color: #22c55e; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.93rem; background: #fff; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    .callout-info, .callout-warning, .callout-tip {
+      padding: 0.85rem 1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.95rem;
+    }
+    .callout-info { background: #eff6ff; border: 1px solid #93c5fd; border-left: 4px solid #3b82f6; }
+    .callout-warning { background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; }
+    .callout-tip { background: #f0fdf4; border: 1px solid #86efac; border-left: 4px solid #22c55e; }
+    .file-path {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; margin: 0.4rem 0;
+    }
+    .step-list { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+    .step-list > li { position: relative; padding-left: 2.5rem; margin-bottom: 1.75rem; }
+    .step-list > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 0; top: 0.1rem; width: 1.75rem; height: 1.75rem;
+      background: #3b82f6; color: #fff; border-radius: 50%; font-size: 0.85rem; font-weight: 700;
+      text-align: center; line-height: 1.75rem;
+    }
+    .flow {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem;
+      margin: 1rem 0; font-family: "SF Mono", Consolas, monospace; font-size: 0.84rem;
+      line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    .badge-adv {
+      display: inline-block; font-size: 0.75rem; padding: 0.1rem 0.45rem;
+      border-radius: 4px; background: #fef3c7; color: #92400e; margin-left: 0.35rem;
+    }
+    #back-to-top {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; width: 2.5rem; height: 2.5rem;
+      border: none; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 1.1rem;
+      cursor: pointer; opacity: 0; visibility: hidden; transition: opacity 0.2s; z-index: 100;
+    }
+    #back-to-top.is-visible { opacity: 1; visibility: visible; }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      #nav { width: 100%; position: static; max-height: none; border-right: none; border-bottom: 1px solid #e2e8f0; }
+      #main { padding: 1.25rem 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>进阶课 23 · MinerU 异步解析 <span class="badge-adv">进阶</span></h1>
+    <p>
+      <a href="./index.html">← 课程目录</a> ·
+      前置 <a href="./12-multi-format-parsers.html">课 12</a>（本地多格式）+
+      <a href="./04-review-mq.html">课 4</a>（RabbitMQ）·
+      个人练习向 · <strong>本讲义不替你改</strong> <code>src/</code>
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <ul>
+        <li><a href="#goal">目标与验收</a></li>
+        <li><a href="#why">为什么要换</a></li>
+        <li><a href="#concept">概念与数据流</a></li>
+        <li><a href="#deploy">起 MinerU</a></li>
+        <li><a href="#compose">改 docker-compose</a></li>
+        <li><a href="#files">文件清单</a></li>
+        <li><a href="#steps">逐步实现</a></li>
+        <li><a href="#design">设计决策</a></li>
+        <li><a href="#diff">练习版简化</a></li>
+        <li><a href="#errors">常见报错</a></li>
+      </ul>
+    </nav>
+    <main id="main">
+
+      <section id="goal">
+        <h2>一句话目标</h2>
+        <p>
+          在课 12「同步本地解析 → Markdown」已通的前提下，把
+          <strong>复杂 PDF / 多格式统一解析</strong> 旁路到
+          <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener">MinerU</a>：
+          上传立刻返回，RabbitMQ 后台调 MinerU Tasks API，写回 Mongo；
+          MinerU 挂掉时 <strong>降级回本地 parser</strong>。
+        </p>
+        <div class="callout-tip">
+          <strong>自测通过</strong>：
+          ① <code>DOCUMENT_PARSE_BACKEND=mineru</code> 时，上传 PDF 立即返回
+          <code>status=Parsing</code>，几秒～几分钟后变 <code>Draft</code> 且正文可读；
+          ② 关掉 MinerU 且 <code>PARSE_FALLBACK_LOCAL=true</code> 时仍能出草稿；
+          ③ <code>DOCUMENT_PARSE_BACKEND=local</code> 行为与课 12 一致（同步）；
+          ④ txt/md 可配置为始终本地秒解析（不必过 MinerU）。
+        </div>
+        <div class="callout-warning">
+          <strong>前置</strong>：课 12 的 <code>FileParserService</code> + RustFS 可用；课 4 的 RabbitMQ 可收发。
+          本课<strong>不删</strong>本地 parser，只加旁路与异步外壳。
+          官方 Docker 主推 Linux + NVIDIA；macOS 个人练习见「起 MinerU」一节。
+        </div>
+        <h3>验收 curl</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 1) 异步上传（立刻返回 Parsing）
+curl -s -X POST http://localhost:3000/documents/upload/parse \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'file=@./test-files/sample.pdf' | jq '{documentId, status, contentLength, parseBackend}'
+
+DOC_ID=... # 上一步
+
+# 2) 轮询直到 Draft / ParseFailed
+watch -n 2 "curl -s http://localhost:3000/documents/${DOC_ID} \
+  -H \"Authorization: Bearer \$TOKEN\" | jq '{id, status, contentLength, content: (.content[:200])}'"
+
+# 3) 强制本地（对照课 12）
+# DOCUMENT_PARSE_BACKEND=local 重启后再传一份</code></pre>
+        </div>
+      </section>
+
+      <section id="why">
+        <h2>为什么要换 / 为什么不全砍本地</h2>
+        <table>
+          <thead><tr><th>痛点</th><th>课 12 本地链</th><th>MinerU</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>扫描件 / 复杂排版 PDF</td>
+              <td><code>pdf-parse</code> 偏文本层，版面弱</td>
+              <td>版面分析 + OCR + 公式/表更强</td>
+            </tr>
+            <tr>
+              <td>多格式统一</td>
+              <td>每格式一套库（mammoth / exceljs / …）</td>
+              <td>PDF / Office / 图可走同一服务</td>
+            </tr>
+            <tr>
+              <td>耗时</td>
+              <td>毫秒～秒，适合同步 HTTP</td>
+              <td>秒～分钟，必须异步</td>
+            </tr>
+            <tr>
+              <td>运维</td>
+              <td>纯 Node 依赖</td>
+              <td>要起 Python/模型服务（吃 CPU/GPU）</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          个人练习推荐方案：
+          <strong>MinerU 旁路 + 策略开关 + 本地降级</strong>，
+          不要一上来删掉课 12 的 parser——方便对比质量、也方便 MinerU 没起来时继续写别的课。
+        </p>
+        <div class="callout-info">
+          <strong>费用</strong>：自建软件本身免费（Apache 2.0 + 补充条款；个人练习远低于商业许可门槛）。
+          真实成本是机器、磁盘模型、电费/云账单。云 API 才按次收费——本课不走云。
+        </div>
+      </section>
+
+      <section id="concept">
+        <h2>概念与数据流</h2>
+        <div class="flow">客户端 POST /documents/upload/parse
+  │
+  ├─ ① 原件 → RustFS（prefix=documents）→ fileUrl
+  ├─ ② Postgres：建文档 status=Parsing（或 Draft 若走 local 同步）
+  ├─ ③ Mongo：先写占位 content=""（或「解析中…」）
+  └─ ④ 投递 RabbitMQ：document.parse.queue
+           │
+           ▼
+     DocumentParseConsumer
+           │
+           ├─ backend=mineru → MinerUClient.parse(buffer)
+           │     POST /v1/tasks → PUT 上传字节 → 轮询 GET /v1/tasks/{id}
+           │     → 下载 result_url（ZIP）→ 抽出 *.md
+           ├─ 失败且允许降级 → FileParserService.parse（课 12）
+           └─ 写回 Mongo content + status=Draft（失败 → ParseFailed）</div>
+
+        <h3>前端类比</h3>
+        <table>
+          <thead><tr><th>后端</th><th>前端感觉</th></tr></thead>
+          <tbody>
+            <tr><td>同步 <code>FileParserService.parse</code></td><td>点上传转圈到出结果（课 12）</td></tr>
+            <tr><td>异步 + MQ + Parsing 状态</td><td>先出「处理中」卡片，再轮询/WS 刷新正文</td></tr>
+            <tr><td><code>DOCUMENT_PARSE_BACKEND</code></td><td>功能开关 / 灰度：local | mineru | auto</td></tr>
+            <tr><td>MinerU HTTP 服务</td><td>独立微服务；Nest 只当客户端</td></tr>
+          </tbody>
+        </table>
+
+        <h3>状态怎么加</h3>
+        <p>
+          现有 <code>DocumentStatus</code>：Draft / Published / Archived / PendingReview。
+          本课加两个：
+        </p>
+        <table>
+          <thead><tr><th>值</th><th>含义</th><th>可否编辑正文</th><th>可否提交审核</th></tr></thead>
+          <tbody>
+            <tr><td><code>Parsing = 4</code></td><td>后台解析中</td><td>否</td><td>否</td></tr>
+            <tr><td><code>ParseFailed = 5</code></td><td>解析失败（可重试）</td><td>否（或仅允许重试）</td><td>否</td></tr>
+            <tr><td><code>Draft = 0</code></td><td>解析成功可编辑</td><td>是</td><td>是</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          也可用独立字段 <code>parseStatus</code>，不动业务状态机。练习版用扩展枚举更少文件改动；
+          若你后面要「解析中也能改标题」，再拆字段不迟。
+        </div>
+      </section>
+
+      <section id="deploy">
+        <h2>起 MinerU（个人练习）</h2>
+        <p>目标：本机有一个 HTTP 入口，健康检查 <code>GET /v1/health</code> 返回 200。Nest 用 <code>MINERU_BASE_URL</code> 指向它。</p>
+
+        <h3>路径 A · Linux / 有 NVIDIA：官方 Docker API</h3>
+        <p>按官方文档构建 <code>mineru:4</code> 后：</p>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 在 MinerU 仓库根目录
+docker compose -f docker/compose.yaml --profile api up -d
+
+# 健康检查
+curl -s http://127.0.0.1:8000/v1/health | jq .</code></pre>
+        </div>
+        <p>协议以官方为准：MinerU <strong>4.1+</strong> 主路径是异步 Tasks API（<code>POST /v1/tasks</code>），不是旧的 <code>/v1/parse</code>。</p>
+
+        <h3>路径 B · macOS（推荐练习）</h3>
+        <div class="callout-warning">
+          官方 Docker 部署<strong>不适合</strong> macOS 做 GPU 加速；个人练习更稳的是
+          <code>pip/uv</code> 装 <code>mineru</code>，用 <strong>pipeline</strong> 后端（可 CPU），再起 api-server。
+        </div>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 示例（版本以官方 README 为准，安装后看 --help）
+uv pip install -U "mineru[all]"
+
+# 起 API（命令名随版本可能是 mineru-kit api-server）
+mineru-kit api-server --host 0.0.0.0 --port 8000
+
+curl -s http://127.0.0.1:8000/v1/health</code></pre>
+        </div>
+        <p>
+          第一次会下模型，磁盘与内存要留足。CPU 跑复杂 PDF 会慢——正好用来验证「异步 + 轮询」设计。
+        </p>
+
+        <h3>练习仓 .env 增量</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 解析后端：local | mineru | auto
+# auto = 优先 mineru，失败且 PARSE_FALLBACK_LOCAL=true 时降级
+DOCUMENT_PARSE_BACKEND=auto
+PARSE_FALLBACK_LOCAL=true
+# txt/md 始终本地（秒回）
+PARSE_LOCAL_EXTS=txt,md
+
+MINERU_BASE_URL=http://127.0.0.1:8000
+MINERU_POLL_INTERVAL_MS=2000
+MINERU_POLL_TIMEOUT_MS=600000
+# 若本地 API 开了 key 再填；默认空
+MINERU_API_KEY=</code></pre>
+        </div>
+      </section>
+
+      <section id="compose">
+        <h2>改练习仓 docker-compose.yml</h2>
+        <p>
+          课 12 起的依赖（Postgres / Mongo / RabbitMQ / RustFS…）已经在仓库根目录
+          <code>docker-compose.yml</code> 里。本课把 <strong>MinerU API</strong> 也挂进去，
+          用 <code>profiles: [mineru]</code>，默认 <code>docker compose up</code>
+          <strong>不会</strong>拉起它（避免没 GPU / Mac 同学一上来就被拖垮）。
+        </p>
+
+        <div class="callout-warning">
+          <strong>先有镜像再写服务</strong>：官方 compose 用的是本地构建的
+          <code>mineru:4</code>（不是随便一个 Docker Hub 名就能跑）。
+          请先在 <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener">MinerU 仓库</a>
+          按文档 <code>docker build -t mineru:4 ...</code>，确认
+          <code>docker images | grep mineru</code> 有该标签，再改练习仓 compose。
+          macOS 若构建/运行不顺，优先用上一节「路径 B」本机 pip，不必强行 compose。
+        </div>
+
+        <h3>1. 在文件末尾追加服务（redisinsight 后面）</h3>
+        <span class="file-path">docker-compose.yml</span>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-yaml">  # MinerU 文档解析 API（进阶课 23，可选）
+  # 文档：https://opendatalab.github.io/MinerU/quick_start/docker_deployment/
+  # 启动：docker compose --profile mineru up -d mineru-api
+  # 健康：curl -s http://127.0.0.1:8000/v1/health
+  mineru-api:
+    image: mineru:4
+    container_name: knowledge_hub_mineru_api
+    profiles: ['mineru']
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    environment:
+      MINERU_MODEL_SOURCE: local
+    # 与官方 api profile 对齐；命令名随镜像版本可能调整，以容器内 --help 为准
+    entrypoint: ['mineru-kit']
+    command:
+      - api-server
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8000'
+    volumes:
+      # 模型缓存持久化，避免每次重建都重新下权重
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mineru:/root/.cache
+    shm_size: '8gb'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://127.0.0.1:8000/v1/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    # —— 有 NVIDIA GPU 的 Linux 再打开下面这段；Mac / 无 GPU 请删掉或整段注释 ——
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           device_ids: ['0']
+    #           capabilities: [gpu]</code></pre>
+        </div>
+
+        <h3>2. 启动与验证</h3>
+        <div class="code-block">
+          <button type="button" class="copy-btn">复制</button>
+          <pre><code class="lang-bash"># 只起 MinerU（其它服务按你平时习惯 up）
+docker compose --profile mineru up -d mineru-api
+
+# 看日志（首次拉模型会很慢）
+docker compose --profile mineru logs -f mineru-api
+
+# 健康检查
+curl -s http://127.0.0.1:8000/v1/health | jq .
+
+# Nest 仍在宿主机跑时，.env 保持：
+# MINERU_BASE_URL=http://127.0.0.1:8000
+
+# 不用时关掉，省内存
+docker compose --profile mineru stop mineru-api</code></pre>
+        </div>
+
+        <h3>3. 和「官方独立 compose」怎么选</h3>
+        <table>
+          <thead><tr><th>做法</th><th>适合</th><th>注意</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>练习仓 <code>docker-compose.yml</code> + <code>profile mineru</code></td>
+              <td>想一个 compose 管齐依赖、和课 12 同一套习惯</td>
+              <td>必须先本地 <code>docker build</code> 出 <code>mineru:4</code>；镜像体积大</td>
+            </tr>
+            <tr>
+              <td>MinerU 仓库自己的 <code>docker/compose.yaml --profile api</code></td>
+              <td>想跟官方文档逐步对齐、少改练习仓</td>
+              <td>两套 compose 并存；端口仍是 8000，Nest 只认 URL</td>
+            </tr>
+            <tr>
+              <td>本机 <code>mineru-kit api-server</code>（路径 B）</td>
+              <td>macOS / 无 NVIDIA 的个人练习</td>
+              <td><strong>不必</strong>改练习仓 compose；.env 指 <code>127.0.0.1:8000</code> 即可</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout-tip">
+          Nest <strong>没有</strong>放进本仓 compose 时，不要写
+          <code>MINERU_BASE_URL=http://mineru-api:8000</code>（那是容器网络内的服务名）。
+          宿主机进程请用 <code>http://127.0.0.1:8000</code>。
+          若以后把 API 也容器化，再改成服务名，并让它们加入同一 network。
+        </div>
+
+        <div class="callout-info">
+          <strong>个人练习建议</strong>：Mac 先走路径 B 跑通课；
+          有 Linux GPU 再把上面服务粘进 compose 并打开 <code>deploy.resources</code>。
+          讲义里的 YAML 是「怎么改文件」的模板，不是保证你当前环境一次成功的镜像配方——
+          <code>entrypoint</code> / 环境变量以官方当前 Dockerfile 为准，有出入就对照改。
+        </div>
+      </section>
+
+      <section id="files">
+        <h2>本课文件清单</h2>
+        <table>
+          <thead><tr><th>路径</th><th>动作</th><th>职责</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>docker-compose.yml</code></td>
+              <td>核对改</td>
+              <td>追加可选 <code>mineru-api</code>（<code>profiles: [mineru]</code>）；见上节</td>
+            </tr>
+            <tr>
+              <td><code>src/document/document-status.ts</code></td>
+              <td>核对改</td>
+              <td>加 Parsing / ParseFailed；收紧 canEdit / canSubmit</td>
+            </tr>
+            <tr>
+              <td><code>src/document/parser/mineru.client.ts</code></td>
+              <td>新建</td>
+              <td>Tasks API：建任务 → 上传 → 轮询 → 解 ZIP 取 md</td>
+            </tr>
+            <tr>
+              <td><code>src/document/parser/file-parser.service.ts</code></td>
+              <td>核对改</td>
+              <td>保留课 12；供降级与 local 模式调用</td>
+            </tr>
+            <tr>
+              <td><code>src/document/document-parse.service.ts</code></td>
+              <td>新建</td>
+              <td>选 backend、调 MinerU/本地、写 Mongo、改状态</td>
+            </tr>
+            <tr>
+              <td><code>src/mq/mq.constant.ts</code></td>
+              <td>核对改</td>
+              <td>增加 parse exchange / queue / rk</td>
+            </tr>
+            <tr>
+              <td><code>src/mq/messages/pipeline.messages.ts</code></td>
+              <td>核对改</td>
+              <td>加 <code>DocumentParseMessage</code></td>
+            </tr>
+            <tr>
+              <td><code>src/mq/rabbitmq.service.ts</code></td>
+              <td>核对改</td>
+              <td>assert 新 exchange/queue/bind</td>
+            </tr>
+            <tr>
+              <td><code>src/mq/document-parse.publisher.ts</code></td>
+              <td>新建</td>
+              <td>投递解析任务</td>
+            </tr>
+            <tr>
+              <td><code>src/mq/document-parse.consumer.ts</code></td>
+              <td>新建</td>
+              <td>消费 → DocumentParseService.run</td>
+            </tr>
+            <tr>
+              <td><code>src/document/document.service.ts</code></td>
+              <td>核对改</td>
+              <td>上传：先存原件+占位，再决定同步/异步</td>
+            </tr>
+            <tr>
+              <td><code>src/document/document.module.ts</code> / <code>mq.module.ts</code></td>
+              <td>核对改</td>
+              <td>注册新 Provider</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps">
+        <h2>逐步实现</h2>
+        <ol class="step-list">
+
+          <li>
+            <h3>扩展文档状态</h3>
+            <span class="file-path">src/document/document-status.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">/** 与 kh_document.status 一致；本课扩展 Parsing / ParseFailed */
+export enum DocumentStatus {
+  Draft = 0,
+  Published = 1,
+  Archived = 2,
+  PendingReview = 3,
+  Parsing = 4,
+  ParseFailed = 5,
+}
+
+export const DOCUMENT_STATUS_LABEL: Record&lt;DocumentStatus, string&gt; = {
+  [DocumentStatus.Draft]: '草稿',
+  [DocumentStatus.Published]: '已发布',
+  [DocumentStatus.Archived]: '已归档',
+  [DocumentStatus.PendingReview]: '待审核',
+  [DocumentStatus.Parsing]: '解析中',
+  [DocumentStatus.ParseFailed]: '解析失败',
+};
+
+export function canSubmitReview(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Draft || status === DocumentStatus.Published;
+}
+
+export function canArchive(status: DocumentStatus): boolean {
+  return status === DocumentStatus.Published;
+}
+
+/** 解析中 / 失败 / 待审核：禁止改正文 */
+export function canEditContent(status: DocumentStatus): boolean {
+  return (
+    status === DocumentStatus.Draft ||
+    status === DocumentStatus.Published ||
+    status === DocumentStatus.Archived
+  );
+}</code></pre>
+            </div>
+          </li>
+
+          <li>
+            <h3>MQ 常量与消息体</h3>
+            <span class="file-path">src/mq/mq.constant.ts</span>（追加）
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export const DOCUMENT_PARSE_EXCHANGE = 'document.parse.exchange';
+export const DOCUMENT_PARSE_QUEUE = 'kh.document.parse.queue';
+export const DOCUMENT_PARSE_RK = 'document.parse.run';</code></pre>
+            </div>
+            <span class="file-path">src/mq/messages/pipeline.messages.ts</span>（追加）
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">export interface DocumentParseMessage {
+  taskId: string;
+  type: 'PARSE';
+  documentId: string;
+  /** 原件在 RustFS 的 URL，或本机临时路径策略二选一；练习版用 fileUrl + 再下载 */
+  fileUrl: string;
+  fileName: string;
+  mimetype?: string;
+}</code></pre>
+            </div>
+            <p>
+              在 <code>RabbitMQService</code> 的 <code>setup</code> 里对以上 exchange/queue 做
+              <code>assertExchange</code> / <code>assertQueue</code> / <code>bindQueue</code>
+              （照抄现有 Search 三件套写法即可）。
+            </p>
+          </li>
+
+          <li>
+            <h3>MinerU 客户端（Tasks API 精简版）</h3>
+            <span class="file-path">src/document/parser/mineru.client.ts</span>
+            <div class="callout-info">
+              下列实现按 MinerU <strong>4.1 Tasks API</strong> 思路编写：建任务 → PUT 字节 → 轮询 →
+              下载 <code>result_url</code>。字段名以你本机 <code>/openapi.json</code> 为准，有出入就改映射，不要死磕粘贴。
+            </div>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import JSZip from 'jszip';
+
+export interface MineruParseInput {
+  fileName: string;
+  buffer: Buffer;
+}
+
+@Injectable()
+export class MineruClient {
+  private readonly logger = new Logger(MineruClient.name);
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
+  private readonly pollIntervalMs: number;
+  private readonly pollTimeoutMs: number;
+
+  constructor(private readonly config: ConfigService) {
+    this.baseUrl = this.config.get('MINERU_BASE_URL', 'http://127.0.0.1:8000').replace(/\/$/, '');
+    this.apiKey = this.config.get('MINERU_API_KEY', '') ?? '';
+    this.pollIntervalMs = Number(this.config.get('MINERU_POLL_INTERVAL_MS', 2000));
+    this.pollTimeoutMs = Number(this.config.get('MINERU_POLL_TIMEOUT_MS', 600000));
+  }
+
+  async health(): Promise&lt;boolean&gt; {
+    try {
+      const res = await fetch(`${this.baseUrl}/v1/health`);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 返回 Markdown 正文 */
+  async parseToMarkdown(input: MineruParseInput): Promise&lt;string&gt; {
+    const headers = this.authHeaders({ 'Content-Type': 'application/json' });
+
+    const createRes = await fetch(`${this.baseUrl}/v1/tasks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        files: [
+          {
+            file_name: input.fileName,
+            bytes: input.buffer.byteLength,
+          },
+        ],
+        output_formats: ['default'],
+      }),
+    });
+    if (!createRes.ok) {
+      throw new Error(`MinerU 建任务失败: ${createRes.status} ${await createRes.text()}`);
+    }
+    const created = (await createRes.json()) as {
+      task_id: string;
+      files: Array&lt;{
+        file_id: string;
+        status: string;
+        upload?: { url: string; headers?: Record&lt;string, string&gt; };
+      }&gt;;
+    };
+
+    const file = created.files?.[0];
+    if (!file) throw new Error('MinerU 建任务未返回 files[0]');
+
+    if (file.upload?.url) {
+      const putHeaders = { ...(file.upload.headers ?? {}) };
+      const putRes = await fetch(file.upload.url, {
+        method: 'PUT',
+        headers: putHeaders,
+        body: new Uint8Array(input.buffer),
+      });
+      if (!putRes.ok) {
+        throw new Error(`MinerU 上传失败: ${putRes.status} ${await putRes.text()}`);
+      }
+    }
+
+    const detail = await this.pollUntilDone(created.task_id);
+    const done = detail.files?.[0];
+    if (!done || done.status !== 'completed' || !done.result_url) {
+      throw new Error(`MinerU 未完成: status=${done?.status ?? 'unknown'}`);
+    }
+
+    const zipBuf = Buffer.from(await (await fetch(done.result_url)).arrayBuffer());
+    return this.extractMarkdownFromZip(zipBuf);
+  }
+
+  private authHeaders(extra: Record&lt;string, string&gt; = {}): Record&lt;string, string&gt; {
+    const h = { ...extra };
+    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
+    return h;
+  }
+
+  private async pollUntilDone(taskId: string) {
+    const started = Date.now();
+    while (Date.now() - started &lt; this.pollTimeoutMs) {
+      const res = await fetch(`${this.baseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, {
+        headers: this.authHeaders(),
+      });
+      if (!res.ok) throw new Error(`MinerU 查询失败: ${res.status}`);
+      const detail = (await res.json()) as {
+        files: Array&lt;{ status: string; result_url?: string; error?: { message?: string } }&gt;;
+      };
+      const f = detail.files?.[0];
+      if (f?.status === 'completed') return detail;
+      if (f?.status === 'failed') {
+        throw new Error(`MinerU 解析失败: ${f.error?.message ?? 'unknown'}`);
+      }
+      await new Promise((r) =&gt; setTimeout(r, this.pollIntervalMs));
+    }
+    throw new Error(`MinerU 轮询超时 (${this.pollTimeoutMs}ms)`);
+  }
+
+  private async extractMarkdownFromZip(zipBuf: Buffer): Promise&lt;string&gt; {
+    const zip = await JSZip.loadAsync(zipBuf);
+    const mdName = Object.keys(zip.files).find((n) =&gt; n.toLowerCase().endsWith('.md'));
+    if (!mdName) throw new Error('MinerU 结果 ZIP 中未找到 .md');
+    const text = await zip.files[mdName].async('string');
+    if (!text.trim()) throw new Error('MinerU Markdown 为空');
+    this.logger.log(`MinerU 解析完成: md=${mdName}, chars=${text.length}`);
+    return text;
+  }
+}</code></pre>
+            </div>
+            <p>若依赖没有 <code>jszip</code>：<code>pnpm add jszip</code>（课 12 若已装可跳过）。</p>
+          </li>
+
+          <li>
+            <h3>解析编排服务</h3>
+            <span class="file-path">src/document/document-parse.service.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Model } from 'mongoose';
+import { Repository } from 'typeorm';
+
+import { RustfsService } from '../storage/rustfs.service';
+import { DocumentStatus } from './document-status';
+import { DocumentEntity } from './entities/document.entity';
+import { FileParserService } from './parser/file-parser.service';
+import { MineruClient } from './parser/mineru.client';
+import { DocumentContent, DocumentContentDocument } from './schemas/document-content.schema';
+
+@Injectable()
+export class DocumentParseService {
+  private readonly logger = new Logger(DocumentParseService.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly mineru: MineruClient,
+    private readonly localParser: FileParserService,
+    private readonly storage: RustfsService,
+    @InjectRepository(DocumentEntity) private readonly docRepo: Repository&lt;DocumentEntity&gt;,
+    @InjectModel(DocumentContent.name)
+    private readonly contentModel: Model&lt;DocumentContentDocument&gt;,
+  ) {}
+
+  /** Consumer 入口：按策略解析并落库 */
+  async runJob(input: {
+    documentId: string;
+    fileUrl: string;
+    fileName: string;
+    mimetype?: string;
+  }): Promise&lt;void&gt; {
+    const doc = await this.docRepo.findOne({ where: { id: input.documentId, deleted: false } });
+    if (!doc) {
+      this.logger.warn(`文档不存在，跳过: ${input.documentId}`);
+      return;
+    }
+
+    const buffer = await this.downloadOriginal(input.fileUrl);
+    const ext = this.localParser.getExtension(input.fileName);
+    let markdown = '';
+    let used: 'mineru' | 'local' = 'local';
+
+    try {
+      const preferMineru = await this.shouldUseMineru(ext);
+      if (preferMineru) {
+        try {
+          markdown = await this.mineru.parseToMarkdown({ fileName: input.fileName, buffer });
+          used = 'mineru';
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`MinerU 失败: ${msg}`);
+          if (!this.fallbackLocalEnabled()) throw err;
+          markdown = await this.localParser.parse({
+            originalname: input.fileName,
+            buffer,
+            size: buffer.length,
+            mimetype: input.mimetype,
+          });
+          used = 'local';
+        }
+      } else {
+        markdown = await this.localParser.parse({
+          originalname: input.fileName,
+          buffer,
+          size: buffer.length,
+          mimetype: input.mimetype,
+        });
+      }
+
+      await this.contentModel.updateOne(
+        { documentId: input.documentId, deleted: false },
+        {
+          $set: {
+            content: markdown,
+            contentLength: markdown.length,
+            contentSummary: markdown.slice(0, 200),
+          },
+        },
+      );
+      doc.status = DocumentStatus.Draft;
+      doc.wordCount = markdown.length;
+      await this.docRepo.save(doc);
+      this.logger.log(`解析成功 documentId=${input.documentId} via=${used} chars=${markdown.length}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`解析失败 documentId=${input.documentId}: ${msg}`);
+      doc.status = DocumentStatus.ParseFailed;
+      await this.docRepo.save(doc);
+      await this.contentModel.updateOne(
+        { documentId: input.documentId, deleted: false },
+        { $set: { content: `解析失败：${msg}`, contentSummary: '解析失败', contentLength: 0 } },
+      );
+    }
+  }
+
+  private fallbackLocalEnabled(): boolean {
+    return this.config.get('PARSE_FALLBACK_LOCAL', 'true') !== 'false';
+  }
+
+  private async shouldUseMineru(ext: string): Promise&lt;boolean&gt; {
+    const localExts = (this.config.get('PARSE_LOCAL_EXTS', 'txt,md') || '')
+      .split(',')
+      .map((s) =&gt; s.trim().toLowerCase())
+      .filter(Boolean);
+    if (localExts.includes(ext)) return false;
+
+    const backend = (this.config.get('DOCUMENT_PARSE_BACKEND', 'auto') || 'auto').toLowerCase();
+    if (backend === 'local') return false;
+    if (backend === 'mineru') return true;
+    // auto
+    return this.mineru.health();
+  }
+
+  /** 练习版：若 RustfsService 已有 getObject/download，优先用；否则用 fileUrl HTTP GET */
+  private async downloadOriginal(fileUrl: string): Promise&lt;Buffer&gt; {
+    if (typeof (this.storage as any).downloadBytes === 'function') {
+      return (this.storage as any).downloadBytes(fileUrl);
+    }
+    const res = await fetch(fileUrl);
+    if (!res.ok) throw new Error(`下载原件失败: ${res.status} ${fileUrl}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+}</code></pre>
+            </div>
+            <div class="callout-warning">
+              若 RustFS 桶是私有读，<code>fetch(fileUrl)</code> 会 403——请在
+              <code>RustfsService</code> 补 <code>downloadBytes</code>（GetObject），
+              或在消息里带临时本地路径（练习可先把上传文件另存 <code>/tmp</code>）。
+            </div>
+          </li>
+
+          <li>
+            <h3>Publisher / Consumer</h3>
+            <span class="file-path">src/mq/document-parse.publisher.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { DOCUMENT_PARSE_EXCHANGE, DOCUMENT_PARSE_RK } from './mq.constant';
+import { DocumentParseMessage } from './messages/pipeline.messages';
+import { RabbitMQService } from './rabbitmq.service';
+
+@Injectable()
+export class DocumentParsePublisher {
+  private readonly logger = new Logger(DocumentParsePublisher.name);
+  constructor(private readonly rabbit: RabbitMQService) {}
+
+  async enqueue(input: {
+    documentId: string;
+    fileUrl: string;
+    fileName: string;
+    mimetype?: string;
+  }) {
+    const message: DocumentParseMessage = {
+      taskId: randomUUID(),
+      type: 'PARSE',
+      ...input,
+    };
+    const ok = await this.rabbit.publish(DOCUMENT_PARSE_EXCHANGE, DOCUMENT_PARSE_RK, message);
+    this.logger.log(
+      `解析任务${ok ? '已投递' : '投递失败'}：documentId=${input.documentId}, taskId=${message.taskId}`,
+    );
+    return message.taskId;
+  }
+}</code></pre>
+            </div>
+            <span class="file-path">src/mq/document-parse.consumer.ts</span>
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">import { Injectable, Logger } from '@nestjs/common';
+import { ConsumeMessage } from 'amqplib';
+import { DocumentParseService } from '../document/document-parse.service';
+import { DOCUMENT_PARSE_QUEUE } from './mq.constant';
+import { DocumentParseMessage } from './messages/pipeline.messages';
+import { RabbitMQService } from './rabbitmq.service';
+
+@Injectable()
+export class DocumentParseConsumer {
+  private readonly logger = new Logger(DocumentParseConsumer.name);
+
+  constructor(
+    private readonly rabbit: RabbitMQService,
+    private readonly parseService: DocumentParseService,
+  ) {
+    this.rabbit.registerHandler(DOCUMENT_PARSE_QUEUE, (msg) =&gt; this.handle(msg));
+  }
+
+  private async handle(msg: ConsumeMessage) {
+    const body = JSON.parse(msg.content.toString('utf8')) as DocumentParseMessage;
+    this.logger.log(`[Parse] taskId=${body.taskId}, documentId=${body.documentId}`);
+    await this.parseService.runJob(body);
+  }
+}</code></pre>
+            </div>
+            <p>在 <code>MqModule</code> 的 <code>providers</code> / <code>exports</code> 里注册 Publisher；Consumer 放进 providers（与 <code>DocumentPipelineConsumer</code> 同级）。注意 <code>DocumentParseService</code> 依赖 Document 模块实体——可用 <code>forwardRef</code> 或把 ParseService 放在 DocumentModule 并 export，Consumer 注入它。</p>
+          </li>
+
+          <li>
+            <h3>改上传入口：先落库再异步</h3>
+            <span class="file-path">src/document/document.service.ts</span> ·
+            <code>uploadAndCreateDocument</code> 核心逻辑改成：
+            <div class="code-block">
+              <button type="button" class="copy-btn">复制</button>
+              <pre><code class="lang-ts">// 伪代码：保留你现有的 filename 解码 / snowflake / contentId 创建
+
+const originalFileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+const ext = this.fileParser.getExtension(originalFileName);
+
+// 1) 先上传原件（解析前必须有可下载地址）
+const fileUrl = await this.storage.uploadBytes(file.buffer, {
+  fileName: originalFileName,
+  contentType: file.mimetype || 'application/octet-stream',
+  prefix: 'documents',
+});
+
+const backend = (process.env.DOCUMENT_PARSE_BACKEND || 'auto').toLowerCase();
+const localExts = (process.env.PARSE_LOCAL_EXTS || 'txt,md')
+  .split(',')
+  .map((s) =&gt; s.trim().toLowerCase());
+const forceSyncLocal = backend === 'local' || localExts.includes(ext);
+
+if (forceSyncLocal) {
+  // —— 课 12 同步路径 ——
+  const fileContent = await this.fileParser.parse({ ... });
+  // create Mongo + Postgres status=Draft，return 同课 12
+} else {
+  // —— 本课异步路径 ——
+  await this.contentModel.create({
+    _id: contentId,
+    documentId,
+    content: '解析中…',
+    contentLength: 0,
+    contentSummary: '解析中…',
+    deleted: false,
+  });
+  const entity = this.docRepo.create({
+    id: documentId,
+    title: ...,
+    contentId: String(contentId),
+    authorId: actor.userId,
+    fileUrl,
+    fileExt: ext,
+    status: DocumentStatus.Parsing,
+    wordCount: 0,
+    tags: meta.tags ?? null,
+    deleted: false,
+  });
+  await this.docRepo.save(entity);
+
+  await this.parsePublisher.enqueue({
+    documentId,
+    fileUrl,
+    fileName: originalFileName,
+    mimetype: file.mimetype,
+  });
+
+  return {
+    documentId,
+    title: entity.title,
+    fileUrl,
+    fileSize: file.size,
+    fileExtension: ext,
+    contentLength: 0,
+    contentPreview: '解析中…',
+    status: DocumentStatus.Parsing,
+    parseBackend: 'async',
+  };
+}</code></pre>
+            </div>
+            <div class="callout-tip">
+              <strong>可选增强</strong>：加 <code>POST /documents/:id/reparse</code>，
+              仅当 <code>ParseFailed</code> 或 Draft 时重新入队，方便练习重试。
+            </div>
+          </li>
+
+          <li>
+            <h3>模块接线检查单</h3>
+            <ul>
+              <li><code>DocumentModule</code>：providers 加 <code>MineruClient</code>、<code>DocumentParseService</code>；imports 含 ConfigModule；exports <code>DocumentParseService</code>（若 Consumer 在 MqModule）。</li>
+              <li><code>MqModule</code>：providers 加 Publisher + Consumer；imports DocumentModule（或 forwardRef）。</li>
+              <li><code>RabbitMQService.setup</code>：别忘了 bind 新队列，否则消息发出去没人收。</li>
+              <li>审核相关：<code>canSubmitReview</code> 已排除 Parsing——确认前端列表展示「解析中」标签。</li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <section id="design">
+        <h2>设计决策</h2>
+        <table>
+          <thead><tr><th>决策</th><th>选择</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>替换范围</td>
+              <td>旁路 + 开关，不删课 12</td>
+              <td>个人练习要对比质量；MinerU 挂了还能继续开发</td>
+            </tr>
+            <tr>
+              <td>时序</td>
+              <td>异步 MQ</td>
+              <td>MinerU 可能分钟级；同步会拖垮 HTTP / 网关超时</td>
+            </tr>
+            <tr>
+              <td>原件位置</td>
+              <td>先 RustFS 再解析</td>
+              <td>消息体不塞大文件；失败可重试同一 URL</td>
+            </tr>
+            <tr>
+              <td>txt/md</td>
+              <td>默认同步本地</td>
+              <td>无版面问题，过 MinerU 浪费</td>
+            </tr>
+            <tr>
+              <td>协议</td>
+              <td>Tasks API（4.1+）</td>
+              <td>官方主路径；旧 <code>/v1/parse</code> 已淘汰</td>
+            </tr>
+            <tr>
+              <td>与发布管线关系</td>
+              <td>解析成功只到 Draft</td>
+              <td>审核/RAG/KG 仍走课 4+ 发布后链路，边界清晰</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>建议阅读顺序（卡住时）</h3>
+        <ol>
+          <li>本机打开 MinerU <code>/docs</code> 或 <code>/openapi.json</code>，核对字段。</li>
+          <li>课 12 <code>FileParserService</code>：降级要复用的入口。</li>
+          <li>课 4 / 现有 <code>DocumentPipelineConsumer</code>：照抄 registerHandler 模式。</li>
+          <li>官方文档：
+            <a href="https://opendatalab.github.io/MinerU/usage/tasks/" target="_blank" rel="noopener">Tasks API</a>、
+            <a href="https://opendatalab.github.io/MinerU/quick_start/docker_deployment/" target="_blank" rel="noopener">Docker</a>。
+          </li>
+        </ol>
+      </section>
+
+      <section id="diff">
+        <h2>练习版故意简化</h2>
+        <table>
+          <thead><tr><th>完整生产常有</th><th>本课练习版</th></tr></thead>
+          <tbody>
+            <tr><td>解析进度 %、页级 SSE</td><td>只有 Parsing / Draft / ParseFailed</td></tr>
+            <tr><td>多副本 Worker + 并发限流</td><td>单队列单消费者</td></tr>
+            <tr><td>图片资源回传 RustFS 改写 Markdown URL</td><td>先保留 MinerU 结果里的相对/绝对路径；课后作业可再洗</td></tr>
+            <tr><td>死信队列 + 自动重试 N 次</td><td>失败标 ParseFailed，手动 reparse</td></tr>
+            <tr><td>GPU / hybrid-engine 精度</td><td>Mac CPU pipeline 能跑通即可</td></tr>
+            <tr><td>独立 parseStatus 字段</td><td>挤进 DocumentStatus 枚举</td></tr>
+          </tbody>
+        </table>
+        <div class="callout-tip">
+          完成后回 <a href="./index.html">课程目录</a>。
+          本课<strong>没有</strong> origin 对照分支——属于练习仓进阶实验。
+        </div>
+      </section>
+
+      <section id="errors">
+        <h2>常见报错</h2>
+        <table>
+          <thead><tr><th>现象</th><th>排查</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>一直停在 Parsing</td>
+              <td>Consumer 没注册 / queue 没 bind；看 Nest 日志有无 <code>[Parse]</code>；Rabbit 管理台看队列深度</td>
+            </tr>
+            <tr>
+              <td><code>ECONNREFUSED 127.0.0.1:8000</code></td>
+              <td>MinerU 没起；或 <code>MINERU_BASE_URL</code> 指错；auto 模式应降级——检查 <code>PARSE_FALLBACK_LOCAL</code></td>
+            </tr>
+            <tr>
+              <td>建任务 400</td>
+              <td>4.1 字段变更：不要传 <code>file_id</code>；看 openapi 样例</td>
+            </tr>
+            <tr>
+              <td>ZIP 无 .md</td>
+              <td>打印 ZIP 内文件列表；不同 <code>output_formats</code> 产物名不同</td>
+            </tr>
+            <tr>
+              <td>下载原件 403</td>
+              <td>RustFS 私有读；补 GetObject，别依赖公开 URL</td>
+            </tr>
+            <tr>
+              <td>Mac Docker 起不来 / 极慢</td>
+              <td>改用本机 pip/uv + pipeline；别死磕官方 NVIDIA compose</td>
+            </tr>
+            <tr>
+              <td>审核接口拒绝 Parsing 文档</td>
+              <td>预期行为；等 Draft 或失败后 reparse</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+  <button id="back-to-top" type="button" title="返回顶部" aria-label="返回顶部">↑</button>
+  <script>
+    (function () {
+      document.querySelectorAll('.code-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var code = block.querySelector('pre code');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+          navigator.clipboard.writeText(code.textContent).then(function () {
+            btn.textContent = '已复制';
+            btn.classList.add('copied');
+            setTimeout(function () { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+          });
+        });
+      });
+      var topBtn = document.getElementById('back-to-top');
+      window.addEventListener('scroll', function () {
+        if (window.scrollY > 400) topBtn.classList.add('is-visible');
+        else topBtn.classList.remove('is-visible');
+      });
+      topBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var links = document.querySelectorAll('#nav a');
+      var sections = [];
+      links.forEach(function (a) {
+        var id = a.getAttribute('href').slice(1);
+        var el = document.getElementById(id);
+        if (el) sections.push({ link: a, el: el });
+      });
+      function onScroll() {
+        var y = window.scrollY + 120;
+        var current = sections[0];
+        sections.forEach(function (s) { if (s.el.offsetTop <= y) current = s; });
+        links.forEach(function (a) { a.classList.remove('active'); });
+        if (current) current.link.classList.add('active');
+      }
+      window.addEventListener('scroll', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>
