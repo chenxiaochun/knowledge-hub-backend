@@ -90,7 +90,7 @@ const routeSchema = z.object({
   intent: z
     .enum(CHAT_INTENTS)
     .describe(
-      'chitchat=寒暄闲聊；profile=只改用户自己的名字/偏好；kb=制度流程岗位系统；web=只要公开时效信息；kb_then_web=先查库不够再搜网',
+      'chitchat=寒暄闲聊；profile=只改用户自己的名字/偏好；kb=制度流程岗位系统或库内实体（默认优先）；web=明显只要公开时效信息；kb_then_web=同一问同时要内部资料+外部时效',
     ),
   standalone_query: z.string().describe('可独立检索的一句中文短查询，消解指代。闲聊/偏好可原样'),
   graph_queries: z
@@ -161,17 +161,25 @@ const RETRY_REWRITE_PROMPT =
 const ROUTE_PROMPT =
   '你是企业知识库的意图与检索改写器。根据对话判断本轮意图，并给出一条可检索短查询。\n' +
   '\n' +
+  '## 总原则（很重要）\n' +
+  '- 默认优先 kb：本系统是企业内部知识库助手，用户问的实体/组织/产品名，即使你不认识，也先当库内资料\n' +
+  '- 只有「明显只要公开时效信息」才用 web；不要因为专有名词陌生就改成联网\n' +
+  '- kb_then_web 必须同时需要内部制度/资料 + 外部时效信息；缺一不可，不要滥用\n' +
+  '\n' +
   '## intent\n' +
   '- chitchat：问好、致谢、与库无关的闲聊（如「你好」「谢谢」「在吗」）\n' +
   '- profile：只问/改「我自己」的名字、我所在部门、回答长短偏好。主语必须是用户本人\n' +
-  '- kb：公司制度、流程、岗位、内部系统、文档\n' +
-  '- web：只要最新公开信息，明显不是内部制度\n' +
-  '- kb_then_web：像内部问题但也可能要外部时效（政策新闻+内部流程）\n' +
+  '- kb：公司/组织制度、流程、岗位、内部系统、内部文档、库内实体介绍（如「思纽教育是什么」）\n' +
+  '- web：只要最新公开信息，且明显不是在问本公司/本库内容（天气、汇率、国家法规、公网新闻）\n' +
+  '- kb_then_web：同一问里明确同时要「内部规定」和「外部实时/公开数据」\n' +
   '\n' +
   '## 易混\n' +
   '- 「你好 / 谢谢 / 在吗」→ chitchat，不要查知识库\n' +
   '- 「我是哪个部门 / 以后回答短一点」→ profile\n' +
   '- 「预算审核员属于哪个部门」→ kb，不要因为出现「部门」就判 profile\n' +
+  '- 「思纽教育 / XX公司 / 某内部产品叫什么」→ kb，不要因为像机构名就判 web\n' +
+  '- 「今天上海天气 / 美元汇率 / OpenAI 最新模型」→ web\n' +
+  '- 「公司差旅上限 + 现在汇率大概多少」→ kb_then_web\n' +
   '- 记忆里的用户部门不能改变本题意图\n' +
   '\n' +
   '## standalone_query\n' +
@@ -181,7 +189,7 @@ const ROUTE_PROMPT =
   '- 闲聊/偏好：用原问题即可\n' +
   '- 输出不要解释\n' +
   '\n' +
-  '请严格以 JSON 对象格式输出，字段：intent（string）、standalone_query（string）。' +
+  '请严格以 JSON 对象格式输出，字段：intent（string）、standalone_query（string）、graph_queries（string[]，可选）。' +
   '不要 markdown 代码块，不要额外解释。' +
   '## graph_queries\n' +
   '- 只在 kb / kb_then_web 填写，其他意图必须空数组\n' +

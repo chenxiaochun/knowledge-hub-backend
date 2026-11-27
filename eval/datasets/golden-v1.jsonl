@@ -31,3 +31,5 @@
 {"id":"hard-008","question":"国家法定节假日加班工资倍率是多少？","expect":{"intent":"web","allowGraph":false,"allowWeb":true},"notes":"压测：国家法规非本公司制度"}
 {"id":"hard-009","question":"我们公司法定节假日加班工资怎么算？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：公司落实口径，勿判纯 web"}
 {"id":"hard-010","question":"把我的回答偏好改成只给结论不要展开","expect":{"intent":"profile","allowGraph":false,"allowWeb":false},"notes":"压测：明确改偏好"}
+{"id":"hard-011","question":"思纽教育","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：库内组织专名，勿因陌生判 web"}
+{"id":"hard-012","question":"思纽教育是什么？","expect":{"intent":"kb","allowGraph":true,"allowWeb":false},"notes":"压测：库内实体介绍，勿判公开搜索"}
